@@ -8,15 +8,12 @@ import com.unifiedcomms.data.repository.AccountRepository
 import com.unifiedcomms.security.CryptoManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlinx.datetime.Instant
-import javax.inject.Inject
-import javax.inject.Singleton
 
-@Singleton
-class TaskSyncEngineImpl @Inject constructor(
+class TaskSyncEngineImpl(
     private val taskRepo: TaskRepository,
     private val accountRepo: AccountRepository,
     private val crypto: CryptoManager,
@@ -79,7 +76,7 @@ class TaskSyncEngineImpl @Inject constructor(
                             completedAt = task.completedAt,
                             recurrenceRule = task.recurrenceRule,
                             percentComplete = task.percentComplete,
-                            updatedAt = Instant.now(),
+                            updatedAt = Clock.System.now(),
                             etag = task.etag,
                             needsSync = false
                         ))

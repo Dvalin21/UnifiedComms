@@ -3,23 +3,44 @@ package com.unifiedcomms.ui.main
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.viewModels
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.unifiedcomms.R
 import com.unifiedcomms.ui.theme.UnifiedCommsTheme
 import com.unifiedcomms.ui.theme.AccountColors
-import dagger.hilt.android.AndroidEntryPoint
+import com.unifiedcomms.data.db.UnifiedCommsDatabase
+import com.unifiedcomms.data.repository.*
+import com.unifiedcomms.data.db.dao.*
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
-@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
-    @Inject
-    lateinit var viewModel: MainViewModel
+    private val viewModel: MainViewModel by viewModels(factoryProducer = {
+        ComposableViewModel {
+            val db = UnifiedCommsDatabase.getInstance(this@MainActivity)
+            val accountDao = db.accountDao()
+            val emailDao = db.emailDao()
+            val calendarEventDao = db.calendarEventDao()
+            val calendarDao = db.calendarDao()
+            val taskDao = db.taskDao()
+            val taskListDao = db.taskListDao()
+            val messageDao = db.messageDao()
+            val conversationDao = db.conversationDao()
+            val contactDao = db.contactDao()
+
+            val accountRepo = AccountRepositoryImpl(accountDao)
+            val emailRepo = EmailRepositoryImpl(emailDao)
+            val calendarRepo = CalendarRepositoryImpl(calendarEventDao, calendarDao)
+            val taskRepo = TaskRepositoryImpl(taskDao, taskListDao)
+            val messagingRepo = MessagingRepositoryImpl(messageDao, conversationDao)
+            val contactRepo = ContactRepositoryImpl(contactDao)
+
+            MainViewModel(accountRepo, emailRepo, calendarRepo, taskRepo, messagingRepo, contactRepo)
+        }
+    })
 
     private val navController = rememberNavController()
 

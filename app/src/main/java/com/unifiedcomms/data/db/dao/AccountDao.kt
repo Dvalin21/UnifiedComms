@@ -64,7 +64,7 @@ interface AccountDao {
         clearDefault()
         val account = getById(accountId)
         if (account != null) {
-            update(account.copy(isDefault = true, updatedAt = kotlinx.datetime.Instant.now()))
+            update(account.copy(isDefault = true, updatedAt = kotlinx.datetime.Clock.System.now()))
         }
     }
 }

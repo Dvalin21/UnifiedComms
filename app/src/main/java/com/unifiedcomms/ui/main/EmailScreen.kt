@@ -21,17 +21,19 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.icons.Icons
-import androidx.compose.material3.icons.filled.ArrowBack
-import androidx.compose.material3.icons.filled.Delete
-import androidx.compose.material3.icons.filled.Edit
-import androidx.compose.material3.icons.filled.FileDownload
-import androidx.compose.material3.icons.filled.Flag
-import androidx.compose.material3.icons.filled.MarkEmailUnread
-import androidx.compose.material3.icons.filled.MoreVert
-import androidx.compose.material3.icons.filled.Reply
-import androidx.compose.material3.icons.filled.StarBorder
-import androidx.compose.material3.icons.filled.Star
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.MarkEmailUnread
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Reply
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -210,7 +212,7 @@ fun EmailListItem(
                 }
             }
         }
-    }
+    )
 }
 
 @Composable

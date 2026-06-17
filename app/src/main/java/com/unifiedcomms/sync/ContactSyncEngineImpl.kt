@@ -7,15 +7,12 @@ import com.unifiedcomms.data.repository.AccountRepository
 import com.unifiedcomms.security.CryptoManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlinx.datetime.Instant
-import javax.inject.Inject
-import javax.inject.Singleton
 
-@Singleton
-class ContactSyncEngineImpl @Inject constructor(
+class ContactSyncEngineImpl(
     private val contactRepo: ContactRepository,
     private val accountRepo: AccountRepository,
     private val crypto: CryptoManager,
@@ -60,7 +57,7 @@ class ContactSyncEngineImpl @Inject constructor(
                             organization = contact.organization,
                             title = contact.title,
                             notes = contact.notes,
-                            updatedAt = Instant.now()
+                            updatedAt = Clock.System.now()
                         ))
                         updatedItems.add(existing.id)
                     }

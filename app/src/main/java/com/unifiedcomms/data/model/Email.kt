@@ -8,6 +8,7 @@ import androidx.room.TypeConverters
 import com.unifiedcomms.data.db.converters.DateTimeConverter
 import com.unifiedcomms.data.db.converters.StringListConverter
 import kotlinx.datetime.Instant
+import kotlinx.datetime.Clock
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.serialization.Serializable
@@ -21,7 +22,7 @@ import kotlinx.serialization.Serializable
         Index(value = ["threadId"]),
         Index(value = ["isRead"]),
         Index(value = ["isFlagged"]),
-        Index("idx_emails_search", value = ["subject", "sender", "body_text"])
+        Index(value = ["subject", "sender", "body_text"])
     ],
     foreignKeys = [
         ForeignKey(
@@ -48,8 +49,8 @@ data class Email(
     val bodyHtml: String? = null,
     val preview: String = "",
     @TypeConverters(DateTimeConverter::class) val sentAt: Instant,
-    @TypeConverters(DateTimeConverter::class) val receivedAt: Instant = Instant.now(),
-    @TypeConverters(DateTimeConverter::class) val fetchedAt: Instant = Instant.now(),
+    @TypeConverters(DateTimeConverter::class) val receivedAt: Instant = Clock.System.now(),
+    @TypeConverters(DateTimeConverter::class) val fetchedAt: Instant = Clock.System.now(),
     @TypeConverters(StringListConverter::class) val labels: List<String> = emptyList(),
     val systemLabels: SystemLabels = SystemLabels(),
     val flags: EmailFlags = EmailFlags(),
@@ -75,7 +76,7 @@ data class EmailAddress(
     val email: String
 ) {
     override fun toString(): String = name?.let { "\"$it\" <$email>" } ?: email
-    fun getInitials(): String = name?.split(' ').joinToString("") { it.first().uppercase() }
+    fun getInitials(): String = name?.split(' ')?.joinToString("") { it.first().uppercase() }?.takeIf { it.isNotEmpty() }
         ?: email.take(2).uppercase()
 }
 

@@ -105,10 +105,10 @@ class MessageParcel(
                 metadataJson = json.encodeToString(message.metadata),
                 isEncrypted = message.isEncrypted,
                 encryptionKeyId = message.encryptionKeyId,
-                sentAt = message.sentAt.epochMilliseconds,
-                deliveredAt = message.deliveredAt?.epochMilliseconds,
-                readAt = message.readAt?.epochMilliseconds,
-                createdAt = message.createdAt.epochMilliseconds,
+                sentAt = message.sentAt.toEpochMilliseconds(),
+                deliveredAt = message.deliveredAt?.toEpochMilliseconds(),
+                readAt = message.readAt?.toEpochMilliseconds(),
+                createdAt = message.createdAt.toEpochMilliseconds(),
                 isLocalOnly = message.isLocalOnly,
                 needsSync = message.needsSync
             )

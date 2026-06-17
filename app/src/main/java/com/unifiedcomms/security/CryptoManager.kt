@@ -39,9 +39,9 @@ data class EncryptedData(
 data class KeyPair(
     val publicKey: String,  // Base64 encoded
     val privateKey: String  // Base64 encoded (encrypted)
-)
+interface CryptoManager {
 
-class CryptoManagerImpl @Inject constructor(
+class CryptoManagerImpl(
     private val context: Context
 ) : CryptoManager {
 

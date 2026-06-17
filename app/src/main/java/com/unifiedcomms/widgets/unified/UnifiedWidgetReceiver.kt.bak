@@ -145,8 +145,8 @@ class UnifiedWidgetReceiver : GlanceAppWidget() {
                         tasks.forEach { task ->
                             PanelItem(
                                 title = task.title,
-                                subtitle = if (task.isCompleted) "Completed" : "Pending",
-                                color = if (task.isCompleted) colorProvider.onSurfaceVariant.toArgb() else task.color,
+                                subtitle = if (task.isCompleted) "Completed" else "Pending",
+                                color = (if (task.isCompleted) colorProvider.onSurfaceVariant.toArgb() else task.color),
                                 isCompleted = task.isCompleted
                             )
                         }

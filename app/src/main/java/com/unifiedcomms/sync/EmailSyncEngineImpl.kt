@@ -22,16 +22,14 @@ import javax.mail.Session
 import javax.mail.Store
 import javax.mail.Folder
 import javax.mail.Message as JMailMessage
-import javax.mail.FetchProfile
-import javax.mail.internet.MimeMessage
-import javax.mail.internet.MimeMultipart
-import javax.mail.internet.MimeBodyPart
-import javax.mail.Part
-import javax.mail.Transport
-import javax.mail.Message.RecipientType
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 
-@Singleton
-class EmailSyncEngineImpl @Inject constructor(
+class EmailSyncEngineImpl(
     private val emailRepo: EmailRepository,
     private val accountRepo: AccountRepository,
     private val crypto: CryptoManager,
@@ -121,7 +119,7 @@ class EmailSyncEngineImpl @Inject constructor(
                                             labels = email.labels,
                                             systemLabels = email.systemLabels,
                                             etag = email.etag,
-                                            updatedAt = kotlinx.datetime.Instant.now(),
+                                            updatedAt = kotlinx.datetime.Clock.System.now(),
                                             needsSync = false
                                         ))
                                         updatedItems.add(existing.id)

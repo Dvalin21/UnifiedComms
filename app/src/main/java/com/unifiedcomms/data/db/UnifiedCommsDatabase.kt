@@ -65,7 +65,6 @@ abstract class UnifiedCommsDatabase : RoomDatabase() {
                     UnifiedCommsDatabase::class.java,
                     "unifiedcomms.db"
                 )
-                    .setJournalMode(JournalMode.WAL)
                     .enableMultiInstanceInvalidation()
                     .fallbackToDestructiveMigration() // For development - remove in production
                     .addCallback(object : Callback() {

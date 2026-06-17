@@ -26,8 +26,6 @@ interface MessagingRepository {
     suspend fun updateMessageStatus(id: String, status: MessageStatus): Int
     suspend fun markMessagesDelivered(messageIds: List<String>)
     suspend fun markMessagesRead(messageIds: List<String>)
-    suspend fun markConversationRead(conversationId: String, currentUserId: String)
-    suspend fun cleanupOldMessages(conversationId: String, olderThan: Long): Int
 
     // Conversations
     suspend fun insertConversation(conversation: Conversation): Long
@@ -45,7 +43,6 @@ interface MessagingRepository {
     suspend fun getConversationsWithUnread(userId: String): List<Conversation>
     suspend fun getTotalUnreadCount(userId: String): Int
     suspend fun updateLastMessage(conversationId: String, message: Message, currentUserId: String)
-    suspend fun markConversationRead(conversationId: String, currentUserId: String)
     suspend fun togglePin(conversationId: String)
     suspend fun toggleArchive(conversationId: String)
     suspend fun toggleMute(conversationId: String, muteUntil: Instant?)

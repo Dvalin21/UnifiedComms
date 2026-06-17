@@ -8,10 +8,12 @@ import androidx.room.Update
 import androidx.room.Delete
 import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import com.unifiedcomms.data.model.Task
 import com.unifiedcomms.data.model.TaskList
 import com.unifiedcomms.data.model.TaskStatus
 import kotlinx.datetime.Instant
+import kotlinx.datetime.Clock
 
 @Dao
 interface TaskDao {
@@ -88,12 +90,12 @@ interface TaskDao {
     suspend fun markCompleted(id: String, completed: Boolean = true) {
         getById(id)?.let { task ->
             val newStatus = if (completed) TaskStatus.COMPLETED else TaskStatus.NEEDS_ACTION
-            val completedAt = if (completed) com.unifiedcomms.data.model.TaskDateTime.fromInstant(Instant.now()) else null
+            val completedAt = if (completed) com.unifiedcomms.data.model.TaskDateTime.fromInstant(Clock.System.now()) else null
             update(task.copy(
                 status = newStatus,
                 completedAt = completedAt,
                 percentComplete = if (completed) 100 else 0,
-                updatedAt = Instant.now(),
+                updatedAt = Clock.System.now(),
                 needsSync = true
             ))
             // Update parent task progress if exists
@@ -120,7 +122,7 @@ interface TaskDao {
                 subtaskCount = total,
                 percentComplete = percent,
                 status = newStatus,
-                updatedAt = Instant.now(),
+                updatedAt = Clock.System.now(),
                 needsSync = true
             ))
         }

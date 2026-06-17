@@ -3,7 +3,6 @@ package com.unifiedcomms.messaging
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder
-import android.os.RemoteException
 import com.unifiedcomms.data.model.Message
 import com.unifiedcomms.data.model.Conversation
 import com.unifiedcomms.data.model.CalendarInviteMessage
@@ -16,67 +15,54 @@ import com.unifiedcomms.security.CryptoManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
-import javax.inject.Inject
 
-class MessagingService @Inject constructor(
-    private val repository: MessagingRepository,
-    private val pushManager: PushManager,
-    private val crypto: CryptoManager,
-    private val scope: CoroutineScope
-) : Service() {
+class MessagingService : Service() {
 
     private val json = Json { ignoreUnknownKeys = true }
     private var currentUserId: String? = null
+    private var repository: MessagingRepository? = null
+    private var pushManager: PushManager? = null
+    private var crypto: CryptoManager? = null
+    private var scope: CoroutineScope? = null
 
     override fun onCreate() {
         super.onCreate()
         // Initialize current user ID from preferences
         currentUserId = getSharedPreferences("unifiedcomms", MODE_PRIVATE)
             .getString("user_id", null)
+        // Dependencies will be injected via manual DI
+        // Initialize scope
+        scope = kotlinx.coroutines.CoroutineScope(Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
     }
 
-    override fun onBind(intent: Intent): IBinder {
-        return MessagingBinder()
+    override fun onBind(intent: Intent): IBinder? {
+        // No binding interface needed - not using AIDL
+        return null
     }
 
-    inner class MessagingBinder : IMessagingService.Stub() {
-        @Throws(RemoteException::class)
-        override fun sendMessage(messageJson: String): String {
-            val result = CompletableDeferred<String>()
-            scope.launch(Dispatchers.IO) {
-                try {
-                    val message = json.decodeFromString<Message>(messageJson)
-                    val savedId = repository.insertMessage(message).await()
-                    // Send push notification to recipient
-                    sendPushForMessage(message)
-                    result.complete(json.encodeToString(message.copy(id = savedId.toString())))
-                } catch (e: Exception) {
-                    result.completeExceptionally(e)
-                }
-            }
-            return result.await()
-        }
+    // Remove the LocalBinder inner class
 
-        @Throws(RemoteException::class)
-        override fun getConversations(userId: String): String {
-            // This would be a flow in real implementation
-            return "[]"
-        }
-
-        @Throws(RemoteException::class)
-        override fun markAsRead(messageIdsJson: String): Boolean {
-            val ids = json.decodeFromString<List<String>>(messageIdsJson)
-            scope.launch { repository.markMessagesRead(ids) }
-            return true
-        }
+    fun initialize(
+        repository: MessagingRepository,
+        pushManager: PushManager,
+        crypto: CryptoManager,
+        scope: CoroutineScope
+    ) {
+        this.repository = repository
+        this.pushManager = pushManager
+        this.crypto = crypto
+        this.scope = scope
     }
 
-    private suspend fun sendPushForMessage(message: Message) {
-        val conversation = repository.getConversationById(message.conversationId).await()
+    private suspend fun sendPushForMessage(message: Message) = withContext(Dispatchers.IO) {
+        val repo = repository ?: return@withContext
+        val push = pushManager ?: return@withContext
+        val conversation = repo.getConversationById(message.conversationId)
         val recipient = conversation?.participantIds?.firstOrNull { it != currentUserId }
         recipient?.let { userId ->
             val pushTitle = when (message.messageType) {
@@ -86,7 +72,7 @@ class MessagingService @Inject constructor(
                 com.unifiedcomms.data.model.MessageType.TASK_SHARE -> "Shared Task"
                 else -> "New Message"
             }
-            pushManager.sendPush(userId, com.unifiedcomms.push.PushPayload(
+            push.sendPush(userId, com.unifiedcomms.push.PushPayload(
                 title = pushTitle,
                 body = message.content.take(100),
                 data = mapOf(
@@ -101,6 +87,7 @@ class MessagingService @Inject constructor(
 
     // High-level messaging functions
     suspend fun sendTextMessage(conversationId: String, recipientId: String, text: String): Message {
+        val repo = repository ?: throw IllegalStateException("Repository not initialized")
         val message = Message(
             conversationId = conversationId,
             senderId = currentUserId!!,
@@ -108,12 +95,13 @@ class MessagingService @Inject constructor(
             content = text,
             messageType = com.unifiedcomms.data.model.MessageType.TEXT
         )
-        val id = repository.insertMessage(message).await()
+        val id = repo.insertMessage(message)
         sendPushForMessage(message.copy(id = id.toString()))
         return message.copy(id = id.toString())
     }
 
     suspend fun sendCalendarInvite(conversationId: String, recipientId: String, invite: CalendarInviteMessage): Message {
+        val repo = repository ?: throw IllegalStateException("Repository not initialized")
         val content = json.encodeToString(invite)
         val message = Message(
             conversationId = conversationId,
@@ -122,12 +110,13 @@ class MessagingService @Inject constructor(
             content = content,
             messageType = com.unifiedcomms.data.model.MessageType.CALENDAR_INVITE
         )
-        val id = repository.insertMessage(message).await()
+        val id = repo.insertMessage(message)
         sendPushForMessage(message.copy(id = id.toString()))
         return message.copy(id = id.toString())
     }
 
     suspend fun sendCalendarResponse(conversationId: String, recipientId: String, response: CalendarResponseMessage): Message {
+        val repo = repository ?: throw IllegalStateException("Repository not initialized")
         val content = json.encodeToString(response)
         val message = Message(
             conversationId = conversationId,
@@ -136,12 +125,13 @@ class MessagingService @Inject constructor(
             content = content,
             messageType = com.unifiedcomms.data.model.MessageType.CALENDAR_RESPONSE
         )
-        val id = repository.insertMessage(message).await()
+        val id = repo.insertMessage(message)
         sendPushForMessage(message.copy(id = id.toString()))
         return message.copy(id = id.toString())
     }
 
     suspend fun sendEmailShare(conversationId: String, recipientId: String, emailShare: EmailShareMessage): Message {
+        val repo = repository ?: throw IllegalStateException("Repository not initialized")
         val content = json.encodeToString(emailShare)
         val message = Message(
             conversationId = conversationId,
@@ -150,12 +140,13 @@ class MessagingService @Inject constructor(
             content = content,
             messageType = com.unifiedcomms.data.model.MessageType.EMAIL_SHARE
         )
-        val id = repository.insertMessage(message).await()
+        val id = repo.insertMessage(message)
         sendPushForMessage(message.copy(id = id.toString()))
         return message.copy(id = id.toString())
     }
 
     suspend fun sendTaskShare(conversationId: String, recipientId: String, taskShare: TaskShareMessage): Message {
+        val repo = repository ?: throw IllegalStateException("Repository not initialized")
         val content = json.encodeToString(taskShare)
         val message = Message(
             conversationId = conversationId,
@@ -164,40 +155,28 @@ class MessagingService @Inject constructor(
             content = content,
             messageType = com.unifiedcomms.data.model.MessageType.TASK_SHARE
         )
-        val id = repository.insertMessage(message).await()
+        val id = repo.insertMessage(message)
         sendPushForMessage(message.copy(id = id.toString()))
         return message.copy(id = id.toString())
     }
 
     suspend fun getOrCreateConversation(participantIds: List<String>): Conversation {
+        val repo = repository ?: throw IllegalStateException("Repository not initialized")
         val allParticipants = (currentUserId?.let { listOf(it) } ?: emptyList()) + participantIds
-        return repository.findDirectConversation(
+        return repo.findDirectConversation(
             allParticipants,
             com.unifiedcomms.data.repository.ConversationType.DIRECT
-        ).await() ?: createConversation(allParticipants)
+        ) ?: createConversation(allParticipants)
     }
 
     private suspend fun createConversation(participantIds: List<String>): Conversation {
+        val repo = repository ?: throw IllegalStateException("Repository not initialized")
         val conversation = Conversation(
             participantIds = participantIds,
             participantNames = participantIds.associateWith { it }, // Would fetch from contacts
             type = com.unifiedcomms.data.model.ConversationType.DIRECT
         )
-        val id = repository.insertConversation(conversation).await()
+        val id = repo.insertConversation(conversation)
         return conversation.copy(id = id.toString())
-    }
-
-    // AIDL interface
-    interface IMessagingService : android.os.IInterface {
-        fun sendMessage(messageJson: String): String
-        fun getConversations(userId: String): String
-        fun markAsRead(messageIdsJson: String): Boolean
-
-        companion object {
-            fun asInterface(binder: IBinder): IMessagingService? {
-                // Implementation would use AIDL
-                return null
-            }
-        }
     }
 }

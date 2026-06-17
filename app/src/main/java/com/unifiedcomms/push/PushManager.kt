@@ -5,6 +5,7 @@ import com.unifiedcomms.data.model.Message
 import com.unifiedcomms.security.CryptoManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
@@ -43,15 +44,15 @@ data class PushResult(
     val errorMessage: String? = null
 )
 
-class PushManagerImpl @Inject constructor(
+class PushManagerImpl(
     private val context: Context,
     private val crypto: CryptoManager,
     private val scope: CoroutineScope,
     private val okHttp: OkHttpClient
 ) : PushManager {
 
-    private val serverUrl = "https://push.unifiedcomms.app" // Configure via BuildConfig
-    private val apiKey = BuildConfig.PUSH_API_KEY
+    private val serverUrl = "https://push.unifiedcomms.app"
+    private val apiKey = try { BuildConfig.PUSH_API_KEY } catch (e: NoClassDefFoundError) { "" }
 
     private var deviceToken: String? = null
     private var deviceId: String? = null
@@ -62,13 +63,15 @@ class PushManagerImpl @Inject constructor(
         val json = JSONObject().apply {
             put("fcm_token", token)
             put("platform", "android")
-            put("app_version", BuildConfig.VERSION_NAME)
+            put("app_version", try { BuildConfig.VERSION_NAME } catch (e: NoClassDefFoundError) { "1.0.0" })
         }
+        val mediaType = "application/json".toMediaType()
+        val requestBody = RequestBody.create(mediaType, json.toString())
         val request = Request.Builder()
             .url("$serverUrl/api/v1/devices/register")
             .addHeader("Authorization", "Bearer $apiKey")
             .addHeader("Content-Type", "application/json")
-            .post(RequestBody.create(json.toString(), "application/json".toMediaType()))
+            .post(requestBody)
             .build()
         okHttp.newCall(request).execute().use { response ->
             if (response.isSuccessful) {
@@ -108,11 +111,13 @@ class PushManagerImpl @Inject constructor(
             put("ttl", payload.ttlSeconds)
         }
 
+        val mediaType = "application/json".toMediaType()
+        val requestBody = RequestBody.create(mediaType, json.toString())
         val request = Request.Builder()
             .url("$serverUrl/api/v1/push/send")
             .addHeader("Authorization", "Bearer $apiKey")
             .addHeader("Content-Type", "application/json")
-            .post(RequestBody.create(json.toString(), "application/json".toMediaType()))
+            .post(requestBody)
             .build()
 
         okHttp.newCall(request).execute().use { response ->

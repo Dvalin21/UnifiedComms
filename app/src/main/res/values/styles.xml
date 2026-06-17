@@ -4,12 +4,14 @@
     <style name="Theme.UnifiedComms" parent="Theme.Material3.DayNight.NoActionBar">
         <!-- Primary brand color -->
         <item name="colorPrimary">@color/material_dynamic_primary40</item>
-        <item name="colorPrimaryVariant">@color/material_dynamic_primary40</item>
+        <item name="colorPrimaryContainer">@color/material_dynamic_primaryContainer40</item>
         <item name="colorOnPrimary">@color/material_dynamic_onPrimary40</item>
+        <item name="colorOnPrimaryContainer">@color/material_dynamic_onPrimaryContainer40</item>
         <!-- Secondary brand color -->
         <item name="colorSecondary">@color/material_dynamic_secondary40</item>
-        <item name="colorSecondaryVariant">@color/material_dynamic_secondary40</item>
+        <item name="colorSecondaryContainer">@color/material_dynamic_secondaryContainer40</item>
         <item name="colorOnSecondary">@color/material_dynamic_onSecondary40</item>
+        <item name="colorOnSecondaryContainer">@color/material_dynamic_onSecondaryContainer40</item>
         <!-- Status bar color -->
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
@@ -51,11 +53,11 @@
     </style>
 
     <!-- Bottom sheet theme -->
-    <style name="Theme.UnifiedComms.BottomSheet" parent="Theme.Material3.DayNight.BottomSheetDialog">
+    <style name="Theme.UnifiedComms.BottomSheet" parent="Theme.MaterialComponents.BottomSheetDialog">
         <item name="bottomSheetStyle">@style/Widget.UnifiedComms.BottomSheet.Modal</item>
     </style>
 
-    <style name="Widget.UnifiedComms.BottomSheet.Modal" parent="Widget.Material3.BottomSheet.Modal">
+    <style name="Widget.UnifiedComms.BottomSheet.Modal" parent="Widget.MaterialComponents.BottomSheet.Modal">
         <item name="shapeAppearanceOverlay">@style/ShapeAppearance.UnifiedComms.BottomSheet</item>
     </style>
 
@@ -68,25 +70,25 @@
     </style>
 
     <!-- Chip style -->
-    <style name="Widget.UnifiedComms.Chip" parent="Widget.Material3.Chip.Entry">
+    <style name="Widget.UnifiedComms.Chip" parent="Widget.MaterialComponents.Chip.Entry">
         <item name="chipCornerRadius">16dp</item>
         <item name="chipMinHeight">40dp</item>
     </style>
 
     <!-- Button styles -->
-    <style name="Widget.UnifiedComms.Button.Primary" parent="Widget.Material3.Button">
+    <style name="Widget.UnifiedComms.Button.Primary" parent="Widget.MaterialComponents.Button">
         <item name="cornerRadius">12dp</item>
         <item name="android:textSize">16sp</item>
         <item name="android:textStyle">bold</item>
     </style>
 
-    <style name="Widget.UnifiedComms.Button.Secondary" parent="Widget.Material3.Button.OutlinedButton">
+    <style name="Widget.UnifiedComms.Button.Secondary" parent="Widget.MaterialComponents.Button.OutlinedButton">
         <item name="cornerRadius">12dp</item>
         <item name="android:textSize">16sp</item>
     </style>
 
     <!-- Text field style -->
-    <style name="Widget.UnifiedComms.TextInputLayout" parent="Widget.Material3.TextInputLayout.OutlinedBox">
+    <style name="Widget.UnifiedComms.TextInputLayout" parent="Widget.MaterialComponents.TextInputLayout.OutlinedBox">
         <item name="boxCornerRadiusTopStart">12dp</item>
         <item name="boxCornerRadiusTopEnd">12dp</item>
         <item name="boxCornerRadiusBottomStart">12dp</item>
@@ -94,14 +96,13 @@
     </style>
 
     <!-- Card style -->
-    <style name="Widget.UnifiedComms.Card" parent="Widget.Material3.CardView.Elevated">
+    <style name="Widget.UnifiedComms.Card" parent="Widget.MaterialComponents.CardView">
         <item name="cardCornerRadius">16dp</item>
         <item name="cardElevation">2dp</item>
     </style>
 
     <!-- Navigation bar style -->
-    <style name="Widget.UnifiedComms.NavigationBar" parent="Widget.Material3.NavigationBarView">
-        <item name="itemRoundedCornerRadius">16dp</item>
+    <style name="Widget.UnifiedComms.NavigationBar" parent="Widget.MaterialComponents.BottomNavigationView">
         <item name="itemHorizontalPadding">12dp</item>
     </style>
 </resources>

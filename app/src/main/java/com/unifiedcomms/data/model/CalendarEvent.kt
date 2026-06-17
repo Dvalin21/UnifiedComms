@@ -7,6 +7,7 @@ import androidx.room.PrimaryKey
 import androidx.room.TypeConverters
 import com.unifiedcomms.data.db.converters.DateTimeConverter
 import com.unifiedcomms.data.db.converters.StringListConverter
+import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
@@ -14,6 +15,11 @@ import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.ZoneOffset
 import kotlinx.serialization.Serializable
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.LocalDateTime as JLocalDateTime
+import java.time.LocalDate as JLocalDate
+import java.time.LocalTime as JLocalTime
 
 @Serializable
 @Entity(
@@ -24,7 +30,7 @@ import kotlinx.serialization.Serializable
         Index(value = ["accountId", "endAt"]),
         Index(value = ["uid"]),
         Index(value = ["recurrenceId"]),
-        Index("idx_events_search", value = ["title", "description", "location"])
+        Index(value = ["title", "description", "location"])
     ],
     foreignKeys = [
         ForeignKey(
@@ -65,9 +71,9 @@ data class CalendarEvent(
     val sequence: Int = 0,
     val iCalUid: String? = null,
     val etag: String? = null,
-    @TypeConverters(DateTimeConverter::class) val createdAt: Instant = Instant.now(),
-    @TypeConverters(DateTimeConverter::class) val updatedAt: Instant = Instant.now(),
-    @TypeConverters(DateTimeConverter::class) val lastSyncedAt: Instant = Instant.now(),
+    @TypeConverters(DateTimeConverter::class) val createdAt: Instant = Clock.System.now(),
+    @TypeConverters(DateTimeConverter::class) val updatedAt: Instant = Clock.System.now(),
+    @TypeConverters(DateTimeConverter::class) val lastSyncedAt: Instant = Clock.System.now(),
     val isLocalOnly: Boolean = false,
     val needsSync: Boolean = false,
     val isCancelled: Boolean = false
@@ -76,7 +82,7 @@ data class CalendarEvent(
     fun isRecurring(): Boolean = recurrenceRule != null
     fun isInstance(): Boolean = recurrenceId != null
     fun isMaster(): Boolean = recurrenceId == null && recurrenceRule != null
-    fun getDurationMinutes(): Long = endAt.toInstant(startAt.timeZone) - startAt.toInstant(startAt.timeZone)
+    fun getDurationMinutes(): Long = (endAt.toInstant(TimeZone.of(startAt.timeZone)) - startAt.toInstant(TimeZone.of(startAt.timeZone))).inWholeMinutes
     fun getAttendeeStatus(email: String): AttendeeStatus = attendees.find { it.email == email }?.status ?: AttendeeStatus.NEEDS_ACTION
     fun hasAttendee(email: String): Boolean = attendees.any { it.email == email }
     fun getOrganizerEmail(): String = organizer?.email ?: ""
@@ -91,19 +97,23 @@ data class EventDateTime(
     val isAllDay: Boolean = false
 ) {
     fun toInstant(tz: TimeZone = TimeZone.currentSystemDefault()): Instant {
+        val zoneId = ZoneId.of(timeZone)
         return when {
-            isAllDay -> date!!.atStartOfDay(tz).toInstant()
-            dateTime != null -> dateTime!!.toInstant(ZoneOffset.of(tz.id))
-            else -> Instant.now()
+            isAllDay -> Instant.fromEpochMilliseconds(JLocalDateTime.of(JLocalDate.of(date!!.year, date!!.monthNumber, date!!.dayOfMonth), JLocalTime.MIDNIGHT).atZone(zoneId).toInstant().toEpochMilli())
+            dateTime != null -> Instant.fromEpochMilliseconds(JLocalDateTime.parse(dateTime.toString()).atZone(zoneId).toInstant().toEpochMilli())
+            else -> Clock.System.now()
         }
     }
 
     companion object {
         fun fromInstant(instant: Instant, tz: TimeZone = TimeZone.currentSystemDefault(), allDay: Boolean = false): EventDateTime {
+            val zoneId = ZoneId.of(tz.id)
+            val javaInstant = java.time.Instant.ofEpochMilli(instant.toEpochMilliseconds())
+            val zoned = javaInstant.atZone(zoneId)
             return if (allDay) {
-                EventDateTime(date = instant.toLocalDate(tz), isAllDay = true, timeZone = tz.id)
+                EventDateTime(date = LocalDate.parse(zoned.toLocalDate().toString()), isAllDay = true, timeZone = tz.id)
             } else {
-                EventDateTime(dateTime = instant.toLocalDateTime(tz), timeZone = tz.id)
+                EventDateTime(dateTime = LocalDateTime.parse(zoned.toLocalDateTime().toString()), timeZone = tz.id)
             }
         }
     }
@@ -120,7 +130,7 @@ data class EventColor(
 
     companion object {
         fun Default(): EventColor = EventColor("#2196F3", "#FFFFFF")
-        fun fromInt(background: Int, foreground: Int = 0xFFFFFFFF): EventColor =
+        fun fromInt(background: Int, foreground: Int = -1): EventColor =
             EventColor(String.format("#%06X", (0xFFFFFF and background)), String.format("#%06X", (0xFFFFFF and foreground)))
         fun generate(accountColor: Int, index: Int): EventColor {
             val colors = listOf(
@@ -209,15 +219,15 @@ data class RecurrenceRule(
         if (interval > 1) sb.append(";INTERVAL=$interval")
         count?.let { sb.append(";COUNT=$it") }
         until?.let { sb.append(";UNTIL=${it.toString().replace("-", "").replace(":", "").replace(".", "")}Z") }
-        bySecond.ifNotEmpty { sb.append(";BYSECOND=${it.joinToString(",")}") }
-        byMinute.ifNotEmpty { sb.append(";BYMINUTE=${it.joinToString(",")}") }
-        byHour.ifNotEmpty { sb.append(";BYHOUR=${it.joinToString(",")}") }
-        byDay.ifNotEmpty { sb.append(";BYDAY=${it.joinToString(",")}") }
-        byMonthDay.ifNotEmpty { sb.append(";BYMONTHDAY=${it.joinToString(",")}") }
-        byYearDay.ifNotEmpty { sb.append(";BYYEARDAY=${it.joinToString(",")}") }
-        byWeekNo.ifNotEmpty { sb.append(";BYWEEKNO=${it.joinToString(",")}") }
-        byMonth.ifNotEmpty { sb.append(";BYMONTH=${it.joinToString(",")}") }
-        bySetPos.ifNotEmpty { sb.append(";BYSETPOS=${it.joinToString(",")}") }
+        if (bySecond.isNotEmpty()) sb.append(";BYSECOND=${bySecond.joinToString(",")}")
+        if (byMinute.isNotEmpty()) sb.append(";BYMINUTE=${byMinute.joinToString(",")}")
+        if (byHour.isNotEmpty()) sb.append(";BYHOUR=${byHour.joinToString(",")}")
+        if (byDay.isNotEmpty()) sb.append(";BYDAY=${byDay.joinToString(",")}")
+        if (byMonthDay.isNotEmpty()) sb.append(";BYMONTHDAY=${byMonthDay.joinToString(",")}")
+        if (byYearDay.isNotEmpty()) sb.append(";BYYEARDAY=${byYearDay.joinToString(",")}")
+        if (byWeekNo.isNotEmpty()) sb.append(";BYWEEKNO=${byWeekNo.joinToString(",")}")
+        if (byMonth.isNotEmpty()) sb.append(";BYMONTH=${byMonth.joinToString(",")}")
+        if (bySetPos.isNotEmpty()) sb.append(";BYSETPOS=${bySetPos.joinToString(",")}")
         wkst?.let { sb.append(";WKST=$it") }
         return sb.toString()
     }
@@ -274,9 +284,8 @@ enum class EventVisibility {
 }
 
 @Serializable
-enum class EventPriority {
+enum class EventPriority(val priority: Int) {
     LOW(0), NORMAL(5), HIGH(9)
-    val priority: Int
 }
 
 @Serializable
@@ -347,6 +356,7 @@ data class GeoLocation(
 )
 
 @Serializable
+@Entity(tableName = "calendars")
 data class Calendar(
     @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
     val accountId: String,

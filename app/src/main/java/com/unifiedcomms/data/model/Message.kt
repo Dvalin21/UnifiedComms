@@ -7,6 +7,7 @@ import androidx.room.PrimaryKey
 import androidx.room.TypeConverters
 import com.unifiedcomms.data.db.converters.DateTimeConverter
 import kotlinx.datetime.Instant
+import kotlinx.datetime.Clock
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -18,7 +19,7 @@ import kotlinx.serialization.Serializable
         Index(value = ["recipientId"]),
         Index(value = ["status"]),
         Index(value = ["messageType"]),
-        Index("idx_messages_search", value = ["content"])
+        Index(value = ["content"])
     ],
     foreignKeys = [
         ForeignKey(
@@ -43,10 +44,10 @@ data class Message(
     val metadata: Map<String, String> = emptyMap(),
     val isEncrypted: Boolean = true,
     val encryptionKeyId: String? = null,
-    @TypeConverters(DateTimeConverter::class) val sentAt: Instant = Instant.now(),
+    @TypeConverters(DateTimeConverter::class) val sentAt: Instant = Clock.System.now(),
     @TypeConverters(DateTimeConverter::class) val deliveredAt: Instant? = null,
     @TypeConverters(DateTimeConverter::class) val readAt: Instant? = null,
-    @TypeConverters(DateTimeConverter::class) val createdAt: Instant = Instant.now(),
+    @TypeConverters(DateTimeConverter::class) val createdAt: Instant = Clock.System.now(),
     val isLocalOnly: Boolean = false,
     val needsSync: Boolean = false
 ) {
@@ -119,15 +120,15 @@ data class Conversation(
     val description: String? = null,
     val lastMessageId: String? = null,
     val lastMessagePreview: String? = null,
-    @TypeConverters(DateTimeConverter::class) val lastActivityAt: Instant = Instant.now(),
+    @TypeConverters(DateTimeConverter::class) val lastActivityAt: Instant = Clock.System.now(),
     val unreadCount: Int = 0,
     val isArchived: Boolean = false,
     val isPinned: Boolean = false,
     val isMuted: Boolean = false,
     val muteUntil: Instant? = null,
     val settings: ConversationSettings = ConversationSettings(),
-    @TypeConverters(DateTimeConverter::class) val createdAt: Instant = Instant.now(),
-    @TypeConverters(DateTimeConverter::class) val updatedAt: Instant = Instant.now()
+    @TypeConverters(DateTimeConverter::class) val createdAt: Instant = Clock.System.now(),
+    @TypeConverters(DateTimeConverter::class) val updatedAt: Instant = Clock.System.now()
 ) {
     fun getOtherParticipantIds(currentUserId: String): List<String> = participantIds.filter { it != currentUserId }
     fun getOtherParticipantNames(currentUserId: String): List<String> = getOtherParticipantIds(currentUserId).map { participantNames[it] ?: it }
@@ -180,13 +181,17 @@ data class UnifiedContact(
     val source: ContactSource = ContactSource.LOCAL,
     val sourceId: String? = null,
     val accountId: String? = null, // Which account this contact came from
-    @TypeConverters(DateTimeConverter::class) val createdAt: Instant = Instant.now(),
-    @TypeConverters(DateTimeConverter::class) val updatedAt: Instant = Instant.now(),
+    @TypeConverters(DateTimeConverter::class) val createdAt: Instant = Clock.System.now(),
+    @TypeConverters(DateTimeConverter::class) val updatedAt: Instant = Clock.System.now(),
     @TypeConverters(DateTimeConverter::class) val lastSyncedAt: Instant? = null
 ) {
     fun hasUnifiedComms(): Boolean = unifiedCommsId != null
-    fun getInitials(): String = firstName?.firstOrNull()?.uppercase().toString() ?: ""
-        + lastName?.firstOrNull()?.uppercase().toString() ?: displayName.take(2).uppercase()
+    fun getInitials(): String {
+        val first = firstName?.firstOrNull()?.uppercase() ?: ""
+        val last = lastName?.firstOrNull()?.uppercase() ?: ""
+        val initials = first + last
+        return if (initials.isNotEmpty()) initials else displayName.take(2).uppercase()
+    }
 }
 
 @Serializable
@@ -233,7 +238,7 @@ data class CalendarResponseMessage(
     val attendeeName: String? = null,
     val status: AttendeeStatus,
     val comment: String? = null,
-    @TypeConverters(DateTimeConverter::class) val respondedAt: Instant = Instant.now()
+    @TypeConverters(DateTimeConverter::class) val respondedAt: Instant = Clock.System.now()
 )
 
 @Serializable
