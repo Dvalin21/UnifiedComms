@@ -4,16 +4,23 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.repository.AccountRepository
+import com.unifiedcomms.data.repository.EmailRepository
+import com.unifiedcomms.data.repository.CalendarRepository
+import com.unifiedcomms.data.repository.TaskRepository
+import com.unifiedcomms.data.repository.MessagingRepository
+import com.unifiedcomms.data.repository.ContactRepository
 import com.unifiedcomms.sync.SyncManager
-import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
-@HiltViewModel
-class MainViewModel @Inject constructor(
+class MainViewModel(
     private val accountRepo: AccountRepository,
+    private val emailRepo: EmailRepository,
+    private val calendarRepo: CalendarRepository,
+    private val taskRepo: TaskRepository,
+    private val messagingRepo: MessagingRepository,
+    private val contactRepo: ContactRepository,
     private val syncManager: SyncManager
 ) : ViewModel() {
 
@@ -82,4 +89,13 @@ class MainViewModel @Inject constructor(
     fun getAccountColor(accountId: String): Int {
         return com.unifiedcomms.ui.theme.AccountColors.getColorForAccount(accountId).container
     }
+
+    // Repository accessors for screens
+    val accountRepository: AccountRepository = accountRepo
+    val emailRepository: EmailRepository = emailRepo
+    val calendarRepository: CalendarRepository = calendarRepo
+    val taskRepository: TaskRepository = taskRepo
+    val messagingRepository: MessagingRepository = messagingRepo
+    val contactRepository: ContactRepository = contactRepo
+    val syncManagerInstance: SyncManager = syncManager
 }

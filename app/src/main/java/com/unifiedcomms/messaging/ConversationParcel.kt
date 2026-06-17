@@ -96,15 +96,15 @@ class ConversationParcel(
                 description = conversation.description,
                 lastMessageId = conversation.lastMessageId,
                 lastMessagePreview = conversation.lastMessagePreview,
-                lastActivityAt = conversation.lastActivityAt.epochMilliseconds,
+                lastActivityAt = conversation.lastActivityAt.toEpochMilliseconds(),
                 unreadCount = conversation.unreadCount,
                 isArchived = conversation.isArchived,
                 isPinned = conversation.isPinned,
                 isMuted = conversation.isMuted,
-                muteUntil = conversation.muteUntil?.epochMilliseconds,
+                muteUntil = conversation.muteUntil?.toEpochMilliseconds(),
                 settingsJson = json.encodeToString(conversation.settings),
-                createdAt = conversation.createdAt.epochMilliseconds,
-                updatedAt = conversation.updatedAt.epochMilliseconds
+                createdAt = conversation.createdAt.toEpochMilliseconds(),
+                updatedAt = conversation.updatedAt.toEpochMilliseconds()
             )
         }
 

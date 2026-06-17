@@ -4,12 +4,11 @@ import android.app.Application
 import android.content.Context
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.unifiedcomms.data.db.UnifiedCommsDatabase
-import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 
-@HiltAndroidApp
+// @HiltAndroidApp
 class UnifiedCommsApplication : Application() {
 
     private val mainScope = CoroutineScope(Dispatchers.Main + SupervisorJob())

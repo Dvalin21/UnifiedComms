@@ -1,28 +1,34 @@
 package com.unifiedcomms.ui.search
 
 import android.os.Bundle
-import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.icons.Icons
-import androidx.compose.material3.icons.filled.ArrowBack
-import androidx.compose.material3.icons.filled.Search
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import com.unifiedcomms.R
 import com.unifiedcomms.ui.theme.UnifiedCommsTheme
-import dagger.hilt.android.AndroidEntryPoint
 
-@AndroidEntryPoint
 class SearchActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -42,32 +48,32 @@ class SearchActivity : ComponentActivity() {
 
 @Composable
 fun SearchScreen() {
-    var query by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
-    
-    androidx.compose.material3.TopAppBar(
+    var query by remember { mutableStateOf("") }
+
+    TopAppBar(
         title = {
-            androidx.compose.material3.TextField(
+            TextField(
                 value = query,
                 onValueChange = { query = it },
                 placeholder = { Text("Search emails, events, tasks, messages") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                leadingIcon = { androidx.compose.material3.Icon(Icons.Default.Search, contentDescription = "Search") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
                 trailingIcon = {
                     if (query.isNotEmpty()) {
-                        androidx.compose.material3.IconButton(onClick = { query = "" }) {
-                            androidx.compose.material3.Icon(Icons.Default.Close, contentDescription = "Clear")
+                        IconButton(onClick = { query = "" }) {
+                            Icon(Icons.Default.Close, contentDescription = "Clear")
                         }
                     }
                 },
-                colors = androidx.compose.material3.TextFieldDefaults.textFieldColors(
+                colors = TextFieldDefaults.textFieldColors(
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
                 )
             )
         },
         navigationIcon = {
-            androidx.compose.material3.IconButton(onClick = { (androidx.activity.ComponentActivity)@thisContext.finish() }) {
-                androidx.compose.material3.Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+            IconButton(onClick = { finish() }) {
+                Icon(Icons.Default.ArrowBack, contentDescription = "Back")
             }
         }
     )

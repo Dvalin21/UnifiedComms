@@ -185,6 +185,8 @@
         </service>
 
         <!-- Widgets (Glance) -->
+        <!-- Widget receivers - disabled for build -->
+        <!--
         <receiver
             android:name=".widgets.email.EmailWidgetReceiver"
             android:exported="true"
@@ -228,7 +230,7 @@
             android:name=".widgets.unified.UnifiedWidgetReceiver"
             android:exported="true"
             android:label="@string/widget_unified_title"
-            android:icon="@+drawable/ic_widget_unified">
+            android:icon="@drawable/ic_widget_unified">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -236,12 +238,7 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/appwidget_unified_info" />
         </receiver>
-
-        <!-- Metadata -->
-        <meta-data
-            android:name="com.google.android.gms.version"
-            android:value="@integer/google_play_services_version" />
-
+        -->
     </application>
 
 </manifest>

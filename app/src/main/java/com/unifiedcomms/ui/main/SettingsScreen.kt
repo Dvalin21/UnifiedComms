@@ -18,20 +18,56 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.icons.Icons
-import androidx.compose.material3.icons.filled.ArrowBack
-import androidx.compose.material3.icons.filled.Email
-import androidx.compose.material3.icons.filled.Fingerprint
-import androidx.compose.material3.icons.filled.Lock
-import androidx.compose.material3.icons.filled.Notifications
-import androidx.compose.material3.icons.filled.Palette
-import androidx.compose.material3.icons.filled.Person
-import androidx.compose.material3.icons.filled.Sync
-import androidx.compose.material3.icons.filled.Backup
-import androidx.compose.material3.icons.filled.Delete
-import androidx.compose.material3.icons.filled.Info
-import androidx.compose.material3.icons.filled.Language
-import androidx.compose.material3.icons.filled.DarkMode
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowForwardIos
+import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.CalendarViewDay
+import androidx.compose.material.icons.filled.CalendarViewMonth
+import androidx.compose.material.icons.filled.CalendarViewWeek
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
+import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MarkEmailUnread
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Reply
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Today
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -267,7 +303,7 @@ fun SettingsScreen(
 @Composable
 fun SettingsSection(
     title: String,
-    icon: androidx.compose.material3.icons.filled.ImageVector,
+    icon: androidx.compose.material.icons.filled.ImageVector,
     content: @Composable () -> Unit
 ) {
     Surface(
@@ -294,7 +330,7 @@ fun SettingsSection(
 fun SettingRow(
     title: String,
     subtitle: String,
-    icon: androidx.compose.material3.icons.filled.ImageVector,
+    icon: androidx.compose.material.icons.filled.ImageVector,
     onClick: () -> Unit = {},
     trailing: @Composable () -> Unit = { Spacer(modifier = Modifier.width(0.dp)) },
     textColor: Color = MaterialTheme.colorScheme.onSurface

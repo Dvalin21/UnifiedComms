@@ -8,10 +8,17 @@ import androidx.room.TypeConverters
 import com.unifiedcomms.data.db.converters.DateTimeConverter
 import com.unifiedcomms.data.db.converters.StringListConverter
 import kotlinx.datetime.Instant
+import kotlinx.datetime.Clock
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
 import kotlinx.serialization.Serializable
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.LocalDateTime as JLocalDateTime
+import java.time.LocalDate as JLocalDate
+import java.time.LocalTime as JLocalTime
 
 @Serializable
 @Entity(
@@ -21,7 +28,7 @@ import kotlinx.serialization.Serializable
         Index(value = ["accountId", "dueAt"]),
         Index(value = ["accountId", "status"]),
         Index(value = ["uid"]),
-        Index("idx_tasks_search", value = ["title", "description"])
+        Index(value = ["title", "description"])
     ],
     foreignKeys = [
         ForeignKey(
@@ -62,15 +69,20 @@ data class Task(
     val hasSubtasks: Boolean = false,
     val subtaskCount: Int = 0,
     val completedSubtaskCount: Int = 0,
-    @TypeConverters(DateTimeConverter::class) val createdAt: Instant = Instant.now(),
-    @TypeConverters(DateTimeConverter::class) val updatedAt: Instant = Instant.now(),
-    @TypeConverters(DateTimeConverter::class) val lastSyncedAt: Instant = Instant.now(),
+    @TypeConverters(DateTimeConverter::class) val createdAt: Instant = Clock.System.now(),
+    @TypeConverters(DateTimeConverter::class) val updatedAt: Instant = Clock.System.now(),
+    @TypeConverters(DateTimeConverter::class) val lastSyncedAt: Instant = Clock.System.now(),
     val etag: String? = null,
     val isLocalOnly: Boolean = false,
     val needsSync: Boolean = false
 ) {
-    fun isOverdue(): Boolean = dueAt?.let { it.toInstant() < Instant.now() } ?: false
-    fun isDueToday(): Boolean = dueAt?.let { it.toInstant().toLocalDate() == Instant.now().toLocalDate() } ?: false
+    fun isOverdue(): Boolean = dueAt?.let { it.toInstant() < Clock.System.now() } ?: false
+    fun isDueToday(): Boolean = dueAt?.let {
+        val instant = it.toInstant()
+        val javaInstant = java.time.Instant.ofEpochMilli(instant.toEpochMilliseconds())
+        val zoneId = ZoneId.systemDefault()
+        javaInstant.atZone(zoneId).toLocalDate() == java.time.Instant.ofEpochMilli(Clock.System.now().toEpochMilliseconds()).atZone(ZoneId.systemDefault()).toLocalDate()
+    } ?: false
     fun isCompleted(): Boolean = status == TaskStatus.COMPLETED
     fun getProgressText(): String {
         if (hasSubtasks) return "$completedSubtaskCount/$subtaskCount"
@@ -90,10 +102,24 @@ data class TaskDateTime(
     val hasTime: Boolean = true
 ) {
     fun toInstant(tz: TimeZone = TimeZone.currentSystemDefault()): Instant {
+        val zoneId = ZoneId.of(timeZone)
         return when {
-            dateTime != null -> dateTime!!.toInstant(androidx.timeZone.ZoneOffset.of(timeZone))
-            date != null -> date!!.atStartOfDay(tz).toInstant()
-            else -> Instant.now()
+            dateTime != null -> Instant.fromEpochMilliseconds(JLocalDateTime.parse(dateTime.toString()).atZone(ZoneId.of(timeZone)).toInstant().toEpochMilli())
+            date != null -> Instant.fromEpochMilliseconds(JLocalDateTime.of(JLocalDate.parse(date.toString()), JLocalTime.MIDNIGHT).atZone(zoneId).toInstant().toEpochMilli())
+            else -> Clock.System.now()
+        }
+    }
+
+    companion object {
+        fun fromInstant(instant: Instant, tz: TimeZone = TimeZone.currentSystemDefault(), hasTime: Boolean = true): TaskDateTime {
+            val zoneId = ZoneId.of(tz.id)
+            val javaInstant = java.time.Instant.ofEpochMilli(instant.toEpochMilliseconds())
+            val zoned = javaInstant.atZone(ZoneId.of(tz.id))
+            return if (hasTime) {
+                TaskDateTime(dateTime = LocalDateTime.parse(zoned.toLocalDateTime().toString()), timeZone = tz.id, hasTime = true)
+            } else {
+                TaskDateTime(date = LocalDate.parse(zoned.toLocalDate().toString()), timeZone = tz.id, hasTime = false)
+            }
         }
     }
 }
@@ -109,9 +135,8 @@ enum class TaskStatus {
 }
 
 @Serializable
-enum class TaskPriority {
+enum class TaskPriority(val priority: Int) {
     NONE(0), LOW(1), MEDIUM(5), HIGH(9), URGENT(10)
-    val priority: Int
 }
 
 @Serializable
@@ -119,7 +144,7 @@ data class TaskAssignee(
     val email: String,
     val name: String? = null,
     val status: AttendeeStatus = AttendeeStatus.NEEDS_ACTION,
-    @TypeConverters(DateTimeConverter::class) val assignedAt: Instant = Instant.now()
+    @TypeConverters(DateTimeConverter::class) val assignedAt: Instant = Clock.System.now()
 )
 
 @Serializable
@@ -133,6 +158,7 @@ data class TaskAttachment(
 )
 
 @Serializable
+@Entity(tableName = "task_lists")
 data class TaskList(
     @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
     val accountId: String,
