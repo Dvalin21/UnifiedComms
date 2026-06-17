@@ -8,15 +8,13 @@ import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.repository.AccountRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import javax.inject.Inject
-import javax.inject.Singleton
 
-@Singleton
-class SyncManager @Inject constructor(
+class SyncManager(
     private val emailSync: EmailSyncEngine,
     private val calendarSync: CalendarSyncEngine,
     private val taskSync: TaskSyncEngine,

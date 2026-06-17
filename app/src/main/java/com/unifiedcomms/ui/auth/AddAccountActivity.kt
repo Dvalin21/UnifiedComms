@@ -11,21 +11,19 @@ import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.model.AuthConfig
 import com.unifiedcomms.data.model.AccountType
 import com.unifiedcomms.data.repository.AccountRepository
+import com.unifiedcomms.data.repository.AccountRepositoryImpl
 import com.unifiedcomms.security.CryptoManager
-import dagger.hilt.android.AndroidEntryPoint
+import com.unifiedcomms.security.CryptoManagerImpl
+import com.unifiedcomms.data.db.dao.AccountDao
+import com.unifiedcomms.data.db.UnifiedCommsDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
-@AndroidEntryPoint
 class AddAccountActivity : AppCompatActivity() {
 
-    @Inject
-    lateinit var accountRepo: AccountRepository
-    
-    @Inject
-    lateinit var crypto: CryptoManager
+    private lateinit var accountRepo: AccountRepository
+    private lateinit var crypto: CryptoManager
 
     private val scope = CoroutineScope(Dispatchers.Main)
 
@@ -34,11 +32,17 @@ class AddAccountActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
+        // Initialize dependencies manually since Hilt is disabled
+        val db = UnifiedCommsDatabase.getInstance(this)
+        val accountDao = db.accountDao()
+        accountRepo = AccountRepositoryImpl(accountDao)
+        crypto = CryptoManagerImpl(this)
+
         val intent = intent
         accountType = AccountType.valueOf(intent.getStringExtra("accountType") ?: "")
         pendingIntent = intent.getParcelableExtra(android.accounts.AccountManager.KEY_ACCOUNT_AUTHENTICATOR_RESPONSE)
-        
+
         when (accountType) {
             AccountType.GOOGLE -> startGoogleAuth()
             AccountType.OUTLOOK -> startOutlookAuth()
@@ -58,7 +62,7 @@ class AddAccountActivity : AppCompatActivity() {
             "scope=${Uri.encode("https://mail.google.com/ https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/contacts https://www.googleapis.com/auth/tasks")}&" +
             "access_type=offline&" +
             "prompt=consent"
-        
+
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(authUrl))
         intent.addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY)
         startActivity(intent)
@@ -70,7 +74,7 @@ class AddAccountActivity : AppCompatActivity() {
             "redirect_uri=${Uri.encode("unifiedcomms://oauth2redirect/outlook")}&" +
             "response_type=code&" +
             "scope=${Uri.encode("https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send https://outlook.office.com/Calendars.ReadWrite https://outlook.office.com/Contacts.ReadWrite https://outlook.office.com/Tasks.ReadWrite")}"
-        
+
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(authUrl))
         intent.addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY)
         startActivity(intent)
@@ -82,7 +86,7 @@ class AddAccountActivity : AppCompatActivity() {
             "redirect_uri=${Uri.encode("unifiedcomms://oauth2redirect/yahoo")}&" +
             "response_type=code&" +
             "scope=mail-r%20mail-w%20cal-r%20cal-w%20contacts-r%20contacts-w"
-        
+
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(authUrl))
         intent.addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY)
         startActivity(intent)
@@ -95,7 +99,7 @@ class AddAccountActivity : AppCompatActivity() {
             "response_type=code&" +
             "scope=name%20email%20icloud.calendars%20icloud.contacts%20icloud.tasks&" +
             "response_mode=form_post"
-        
+
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(authUrl))
         intent.addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY)
         startActivity(intent)
@@ -109,21 +113,21 @@ class AddAccountActivity : AppCompatActivity() {
 
     private fun showManualSetup() {
         setContentView(R.layout.activity_add_account_manual)
-        
+
         val serverInput = findViewById<android.widget.EditText>(R.id.server_input)
         val emailInput = findViewById<android.widget.EditText>(R.id.email_input)
         val passwordInput = findViewById<android.widget.EditText>(R.id.password_input)
         val nameInput = findViewById<android.widget.EditText>(R.id.name_input)
         val connectButton = findViewById<android.widget.Button>(R.id.connect_button)
-        
+
         connectButton.setOnClickListener {
             val email = emailInput.text.toString().trim()
             val password = passwordInput.text.toString().trim()
             val server = serverInput.text.toString().trim()
             val name = nameInput.text.toString().trim()
-            
+
             if (email.isBlank() || password.isBlank() || server.isBlank()) return@setOnClickListener
-            
+
             scope.launch {
                 val account = createManualAccount(accountType!!, email, password, server, name)
                 val id = accountRepo.insert(account)
@@ -155,7 +159,7 @@ class AddAccountActivity : AppCompatActivity() {
             AccountType.EXCHANGE -> com.unifiedcomms.data.model.ServerConfig.ExchangeDefaults(server)
             else -> com.unifiedcomms.data.model.ServerConfig.MailcowDefaults(server)
         }
-        
+
         return Account(
             name = name.ifBlank { email },
             email = email,
@@ -175,7 +179,7 @@ class AddAccountActivity : AppCompatActivity() {
     private fun handleOAuthCallback(intent: Intent) {
         val uri = intent.data ?: return
         val code = uri.getQueryParameter("code") ?: return
-        
+
         scope.launch {
             when (accountType) {
                 AccountType.GOOGLE -> exchangeGoogleCode(code)
@@ -259,7 +263,7 @@ class AddAccountActivity : AppCompatActivity() {
             putExtra(android.accounts.AccountManager.KEY_ACCOUNT_TYPE, "com.unifiedcomms.account")
         }
         setResult(Activity.RESULT_OK, result)
-        
+
         pendingIntent?.let { pending ->
             try {
                 pending.send(this, Activity.RESULT_OK, result)
@@ -267,7 +271,7 @@ class AddAccountActivity : AppCompatActivity() {
                 Log.e("AddAccountActivity", "Failed to send result", e)
             }
         }
-        
+
         finish()
     }
 }

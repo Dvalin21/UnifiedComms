@@ -6,6 +6,7 @@ import androidx.room.TypeConverters
 import com.unifiedcomms.data.db.converters.DateTimeConverter
 import com.unifiedcomms.data.db.converters.StringListConverter
 import kotlinx.datetime.Instant
+import kotlinx.datetime.Clock
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -19,8 +20,8 @@ data class Account(
     val authConfig: AuthConfig,
     val syncConfig: SyncConfig,
     val uiConfig: UIConfig,
-    @TypeConverters(DateTimeConverter::class) val createdAt: Instant = Instant.now(),
-    @TypeConverters(DateTimeConverter::class) val updatedAt: Instant = Instant.now(),
+    @TypeConverters(DateTimeConverter::class) val createdAt: Instant = Clock.System.now(),
+    @TypeConverters(DateTimeConverter::class) val updatedAt: Instant = Clock.System.now(),
     @TypeConverters(DateTimeConverter::class) val lastSyncAt: Instant? = null,
     val isActive: Boolean = true,
     val isDefault: Boolean = false
@@ -44,7 +45,7 @@ data class Account(
                 email = email,
                 accountType = AccountType.MAILCOW,
                 serverConfig = ServerConfig.MailcowDefaults(serverUrl),
-                authConfig = AuthConfig.Password(),
+                authConfig = AuthConfig.Password(username = email, password = ""),
                 syncConfig = SyncConfig.Defaults(),
                 uiConfig = UIConfig.Defaults()
             )
@@ -56,7 +57,7 @@ data class Account(
                 email = email,
                 accountType = AccountType.GENERIC_IMAP_SMTP,
                 serverConfig = serverConfig,
-                authConfig = AuthConfig.Password(),
+                authConfig = AuthConfig.Password(username = email, password = ""),
                 syncConfig = SyncConfig.Defaults(),
                 uiConfig = UIConfig.Defaults()
             )
@@ -296,7 +297,7 @@ enum class ConflictResolution {
 
 @Serializable
 data class UIConfig(
-    val color: Int = 0xFF2196F3, // Material Blue default
+    val color: Int = 0xFF2196F3.toInt(), // Material Blue default
     val avatar: String? = null,
     val signature: String? = null,
     val showInUnifiedInbox: Boolean = true,

@@ -23,17 +23,17 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.icons.Icons
-import androidx.compose.material3.icons.filled.Add
-import androidx.compose.material3.icons.filled.ArrowBack
-import androidx.compose.material3.icons.filled.Check
-import androidx.compose.material3.icons.filled.CheckBox
-import androidx.compose.material3.icons.filled.CheckBoxOutlineBlank
-import androidx.compose.material3.icons.filled.Delete
-import androidx.compose.material3.icons.filled.Edit
-import androidx.compose.material3.icons.filled.FilterList
-import androidx.compose.material3.icons.filled.Star
-import androidx.compose.material3.icons.filled.Today
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckBox
+import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Today
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -158,7 +158,7 @@ fun TaskItem(
             IconButton(onClick = onToggle) {
                 Icon(
                     imageVector = if (task.isCompleted) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank,
-                    contentDescription = if (task.isCompleted) "Mark incomplete" : "Mark complete",
+                    contentDescription = (if (task.isCompleted) "Mark incomplete" else "Mark complete"),
                     tint = if (task.isCompleted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }

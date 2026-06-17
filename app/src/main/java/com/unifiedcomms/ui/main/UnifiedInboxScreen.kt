@@ -22,19 +22,19 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.icons.Icons
-import androidx.compose.material3.icons.filled.AccountCircle
-import androidx.compose.material3.icons.filled.Add
-import androidx.compose.material3.icons.filled.CalendarMonth
-import androidx.compose.material3.icons.filled.Checklist
-import androidx.compose.material3.icons.filled.Email
-import androidx.compose.material3.icons.filled.Inbox
-import androidx.compose.material3.icons.filled.Menu
-import androidx.compose.material3.icons.filled.Message
-import androidx.compose.material3.icons.filled.MoreVert
-import androidx.compose.material3.icons.filled.Search
-import androidx.compose.material3.icons.filled.Settings
-import androidx.compose.material3.icons.filled.Sync
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Inbox
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Message
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.MarkEmailUnread
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsStateWithLifecycle
@@ -131,7 +131,7 @@ fun UnifiedInboxScreen(
     }
 }
 
-data class NavigationItem(val label: String, val icon: androidx.compose.material3.icons.filled.ImageVector, val index: Int)
+data class NavigationItem(val label: String, val icon: androidx.compose.material.icons.filled.ImageVector, val index: Int)
 
 @Composable
 fun UnifiedInboxContent(

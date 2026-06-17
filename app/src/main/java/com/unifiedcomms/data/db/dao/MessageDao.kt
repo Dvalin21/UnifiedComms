@@ -8,12 +8,14 @@ import androidx.room.Update
 import androidx.room.Delete
 import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import com.unifiedcomms.data.model.Message
 import com.unifiedcomms.data.model.Conversation
 import com.unifiedcomms.data.model.UnifiedContact
 import com.unifiedcomms.data.model.MessageStatus
 import com.unifiedcomms.data.model.MessageType
 import kotlinx.datetime.Instant
+import kotlinx.datetime.Clock
 
 @Dao
 interface MessageDao {
@@ -77,7 +79,7 @@ interface MessageDao {
         messageIds.forEach { id ->
             val msg = getById(id)
             if (msg != null) {
-                update(msg.copy(status = MessageStatus.READ, readAt = Instant.now()))
+                update(msg.copy(status = MessageStatus.READ, readAt = Clock.System.now()))
             }
         }
     }
@@ -85,8 +87,10 @@ interface MessageDao {
     @Transaction
     suspend fun markConversationRead(conversationId: String, currentUserId: String) {
         val messages = getByConversation(conversationId, 1000, 0).first()
-        messages.filter { it.recipientId == currentUserId && it.status != MessageStatus.READ }
-            .forEach { markRead(listOf(it.id)) }
+        val toMark = messages.filter { it.recipientId == currentUserId && it.status != MessageStatus.READ }
+        for (msg in toMark) {
+            markRead(listOf(msg.id))
+        }
     }
 
     @Query("DELETE FROM messages WHERE conversationId = :conversationId AND sentAt < :olderThan")
@@ -147,7 +151,7 @@ interface ConversationDao {
                 lastMessagePreview = message.content.take(100),
                 lastActivityAt = message.sentAt,
                 unreadCount = newUnread,
-                updatedAt = Instant.now()
+                updatedAt = Clock.System.now()
             ))
         }
     }
@@ -155,28 +159,28 @@ interface ConversationDao {
     @Transaction
     suspend fun markConversationRead(conversationId: String, currentUserId: String) {
         getById(conversationId)?.let { conv ->
-            update(conv.copy(unreadCount = 0, updatedAt = Instant.now()))
+            update(conv.copy(unreadCount = 0, updatedAt = Clock.System.now()))
         }
     }
 
     @Transaction
     suspend fun togglePin(conversationId: String) {
         getById(conversationId)?.let { conv ->
-            update(conv.copy(isPinned = !conv.isPinned, updatedAt = Instant.now()))
+            update(conv.copy(isPinned = !conv.isPinned, updatedAt = Clock.System.now()))
         }
     }
 
     @Transaction
     suspend fun toggleArchive(conversationId: String) {
         getById(conversationId)?.let { conv ->
-            update(conv.copy(isArchived = !conv.isArchived, updatedAt = Instant.now()))
+            update(conv.copy(isArchived = !conv.isArchived, updatedAt = Clock.System.now()))
         }
     }
 
     @Transaction
     suspend fun toggleMute(conversationId: String, muteUntil: Instant? = null) {
         getById(conversationId)?.let { conv ->
-            update(conv.copy(isMuted = !conv.isMuted, muteUntil = muteUntil, updatedAt = Instant.now()))
+            update(conv.copy(isMuted = !conv.isMuted, muteUntil = muteUntil, updatedAt = Clock.System.now()))
         }
     }
 }

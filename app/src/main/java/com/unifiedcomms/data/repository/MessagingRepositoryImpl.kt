@@ -55,12 +55,6 @@ class MessagingRepositoryImpl(
 
     override suspend fun markMessagesRead(messageIds: List<String>) = msgDao.markRead(messageIds)
 
-    override suspend fun markConversationRead(conversationId: String, currentUserId: String) =
-        msgDao.markConversationRead(conversationId, currentUserId)
-
-    override suspend fun cleanupOldMessages(conversationId: String, olderThan: Long): Int =
-        msgDao.cleanupOldMessages(conversationId, olderThan)
-
     // Conversations
     override suspend fun insertConversation(conversation: Conversation): Long = convDao.insert(conversation)
 
@@ -93,9 +87,6 @@ class MessagingRepositoryImpl(
 
     override suspend fun updateLastMessage(conversationId: String, message: Message, currentUserId: String) =
         convDao.updateLastMessage(conversationId, message, currentUserId)
-
-    override suspend fun markConversationRead(conversationId: String, currentUserId: String) =
-        convDao.markConversationRead(conversationId, currentUserId)
 
     override suspend fun togglePin(conversationId: String) = convDao.togglePin(conversationId)
 

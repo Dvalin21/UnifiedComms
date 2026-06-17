@@ -15,41 +15,39 @@ import com.unifiedcomms.R
 import com.unifiedcomms.data.model.CalendarEvent
 import com.unifiedcomms.data.model.ReminderMethod
 import com.unifiedcomms.data.repository.CalendarRepository
-import dagger.hilt.android.AndroidEntryPoint
+import com.unifiedcomms.data.repository.CalendarRepositoryImpl
+import com.unifiedcomms.data.db.dao.CalendarEventDao
+import com.unifiedcomms.data.db.UnifiedCommsDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
 class ReminderAlarmReceiver : BroadcastReceiver() {
-
-    @Inject
-    lateinit var calendarRepo: CalendarRepository
 
     override fun onReceive(context: Context, intent: Intent) {
         val eventId = intent.getStringExtra("event_id") ?: return
         val accountId = intent.getStringExtra("account_id") ?: return
-        
+
         // Launch full-screen reminder activity
         val launchIntent = Intent(context, FullScreenReminderActivity::class.java).apply {
             putExtra("event_id", eventId)
             putExtra("account_id", accountId)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
         }
-        
+
         // Turn on screen and show over lock screen
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             context.startForegroundService(launchIntent)
         } else {
             context.startActivity(launchIntent)
         }
-        
+
         // Also show notification as backup
         showNotification(context, eventId)
     }
 
     private fun showNotification(context: Context, eventId: String) {
-        val notification = NotificationCompat.Builder(context, UnifiedCommsApplication.CHANNEL_ID_REMINDERS)
+        val notification = NotificationCompat.Builder(context, "CHANNEL_ID_REMINDERS")
             .setSmallIcon(R.drawable.ic_notification_reminder)
             .setContentTitle("Event Reminder")
             .setContentText("Tap to view event")
@@ -70,15 +68,18 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
     }
 }
 
-@AndroidEntryPoint
 class FullScreenReminderActivity : Activity() {
 
-    @Inject
-    lateinit var calendarRepo: CalendarRepository
+    private lateinit var calendarRepo: CalendarRepository
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
+        // Initialize dependencies manually since Hilt is disabled
+        val db = UnifiedCommsDatabase.getInstance(this)
+        val calendarDao = db.calendarEventDao()
+        calendarRepo = CalendarRepositoryImpl(calendarDao)
+
         // Full-screen, over lock screen
         window.addFlags(
             WindowManager.LayoutParams.FLAG_FULLSCREEN or
@@ -87,12 +88,12 @@ class FullScreenReminderActivity : Activity() {
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
             WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
         )
-        
+
         setContentView(R.layout.activity_fullscreen_reminder)
-        
+
         val eventId = intent.getStringExtra("event_id") ?: return
         val accountId = intent.getStringExtra("account_id") ?: return
-        
+
         // Load event and populate UI
         CoroutineScope(Dispatchers.IO).launch {
             val event = calendarRepo.getEventById(eventId)
@@ -104,15 +105,15 @@ class FullScreenReminderActivity : Activity() {
 
     private fun populateUI(event: CalendarEvent) {
         findViewById<android.widget.TextView>(R.id.tv_event_title).text = event.title
-        findViewById<android.widget.TextView>(R.id.tv_event_time).text = 
+        findViewById<android.widget.TextView>(R.id.tv_event_time).text =
             "${event.startAt.toInstant().toString()} - ${event.endAt.toInstant().toString()}"
         findViewById<android.widget.TextView>(R.id.tv_event_location).text = event.location ?: ""
         findViewById<android.widget.TextView>(R.id.tv_event_description).text = event.description ?: ""
-        
+
         // Color the background
         val color = event.getColorInt()
         findViewById<android.view.View>(R.id.reminder_background).setBackgroundColor(color)
-        
+
         // Buttons
         findViewById<android.widget.Button>(R.id.btn_snooze).setOnClickListener {
             snoozeReminder(event)
@@ -138,7 +139,7 @@ class FullScreenReminderActivity : Activity() {
             intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-        
+
         val triggerTime = System.currentTimeMillis() + 5 * 60 * 1000 // 5 minutes
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             alarmManager.setExactAndAllowWhileIdle(
@@ -149,7 +150,7 @@ class FullScreenReminderActivity : Activity() {
         } else {
             alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
         }
-        
+
         finish()
     }
 
@@ -163,11 +164,11 @@ class FullScreenReminderActivity : Activity() {
     }
 }
 
-class ReminderScheduler @Inject constructor(
+class ReminderScheduler(
     private val context: Context,
     private val calendarRepo: CalendarRepository
 ) {
-    
+
     fun scheduleReminders(accountId: String) {
         CoroutineScope(Dispatchers.IO).launch {
             val upcomingEvents = calendarRepo.getUpcomingEvents(accountId, System.currentTimeMillis(), 50)
@@ -181,8 +182,8 @@ class ReminderScheduler @Inject constructor(
 
     private fun scheduleEventReminder(event: CalendarEvent) {
         event.reminders.forEach { reminder ->
-            val triggerTime = event.startAt.toInstant().epochMilliseconds - (reminder.minutesBefore * 60 * 1000)
-            
+            val triggerTime = event.startAt.toInstant().toEpochMilliseconds() - (reminder.minutesBefore * 60 * 1000)
+
             if (triggerTime > System.currentTimeMillis()) {
                 val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
                 val intent = Intent(context, ReminderAlarmReceiver::class.java).apply {
@@ -195,7 +196,7 @@ class ReminderScheduler @Inject constructor(
                     intent,
                     PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
                 )
-                
+
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     alarmManager.setExactAndAllowWhileIdle(
                         AlarmManager.RTC_WAKEUP,

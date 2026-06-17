@@ -35,7 +35,7 @@ sealed interface AuthenticationResult {
     object Lockout : AuthenticationResult
 }
 
-class BiometricManagerImpl @Inject constructor(
+class BiometricManagerImpl(
     private val context: Context
 ) : BiometricManager {
 

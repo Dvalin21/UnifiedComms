@@ -12,6 +12,7 @@ import com.unifiedcomms.data.model.CalendarEvent
 import com.unifiedcomms.data.model.Calendar
 import com.unifiedcomms.data.model.EventStatus
 import kotlinx.datetime.Instant
+import kotlinx.datetime.Clock
 import kotlinx.datetime.LocalDate
 
 @Dao
@@ -91,7 +92,7 @@ interface CalendarEventDao {
     @Transaction
     suspend fun markCancelled(eventUid: String, accountId: String) {
         getByUid(eventUid, accountId)?.let { event ->
-            update(event.copy(isCancelled = true, status = EventStatus.CANCELLED, updatedAt = Instant.now(), needsSync = true))
+            update(event.copy(isCancelled = true, status = EventStatus.CANCELLED, updatedAt = Clock.System.now(), needsSync = true))
         }
     }
 

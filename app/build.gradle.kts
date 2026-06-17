@@ -2,20 +2,23 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.kapt")
-    id("com.google.dagger.hilt.android")
-    id("com.google.gms.google-services")
+    // id("com.google.dagger.hilt.android")
 }
 
 android {
     namespace = "com.unifiedcomms"
     compileSdk = 34
 
-    signingConfigs {
-        create("release") {
-            storeFile = file(System.getenv("KEYSTORE_PATH") ?: "")
-            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
-            keyAlias = System.getenv("KEY_ALIAS") ?: ""
-            keyPassword = System.getenv("KEY_PASSWORD") ?: ""
+    // Only configure release signing if keystore path is provided
+    val keystorePath = System.getenv("KEYSTORE_PATH") ?: ""
+    if (keystorePath.isNotBlank()) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
+                keyAlias = System.getenv("KEY_ALIAS") ?: ""
+                keyPassword = System.getenv("KEY_PASSWORD") ?: ""
+            }
         }
     }
 
@@ -44,7 +47,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("release") // Configure in local.properties
+            if (keystorePath.isNotBlank()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
         debug {
             isDebuggable = true
@@ -62,23 +67,24 @@ android {
     kotlinOptions {
         jvmTarget = "17"
         freeCompilerArgs += listOf(
-            "-Xopt-in=kotlin.RequiresOptIn",
-            "-Xopt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
-            "-Xopt-in=androidx.lifecycle.ExperimentalLifecycleApi"
+            "-opt-in=kotlin.RequiresOptIn",
+            "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
+            "-opt-in=androidx.lifecycle.ExperimentalLifecycleApi"
         )
     }
 
     buildFeatures {
         viewBinding = true
-        dataBinding = true
+        dataBinding = false
         compose = true
+        buildConfig = true
     }
 
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.13"
+        kotlinCompilerExtensionVersion = "1.5.14"
     }
 
-    packagingOptions {
+    packaging {
         resources {
             excludes += listOf("META-INF/*")
         }
@@ -100,6 +106,7 @@ dependencies {
     // Material 3
     implementation("androidx.compose.material3:material3:1.3.0")
     implementation("androidx.compose.material3:material3-window-size-class:1.3.0")
+    implementation("com.google.android.material:material:1.12.0")
 
     // Compose
     implementation(platform("androidx.compose:compose-bom:2024.06.00"))
@@ -115,14 +122,15 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.4")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
+    implementation("androidx.lifecycle:lifecycle-process:2.8.4")
 
     // Navigation
     implementation("androidx.navigation:navigation-compose:2.7.7")
 
-    // Hilt DI
-    implementation("com.google.dagger:hilt-android:2.50")
-    kapt("com.google.dagger:hilt-compiler:2.50")
-    implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
+    // Hilt DI - disabled for build
+    // implementation("com.google.dagger:hilt-android:2.50")
+    // kapt("com.google.dagger:hilt-compiler:2.50")
+    // implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
 
     // Room Database
     implementation("androidx.room:room-runtime:2.6.1")
@@ -134,7 +142,7 @@ dependencies {
 
     // Coroutines & Flow
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-flow:1.8.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.4.1")
 
     // Serialization
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
@@ -151,9 +159,9 @@ dependencies {
     implementation("com.sun.mail:android-mail:1.6.7")
     implementation("com.sun.mail:android-activation:1.6.7")
 
-    // CalDAV/CardDAV
-    implementation("at.bitfire.ical4android:ical4android:1.2.1")
-    implementation("at.bitfire.dav4jvm:dav4jvm:3.5.2")
+    // CalDAV/CardDAV - commented out for build, add back with correct versions
+    // implementation("at.bitfire.ical4android:ical4android:1.2.1")
+    // implementation("at.bitfire.dav4jvm:dav4jvm:3.5.2")
 
     // Crypto/Security
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
@@ -179,7 +187,7 @@ dependencies {
     implementation("androidx.glance:glance:1.1.0")
     implementation("androidx.glance:glance-appwidget:1.1.0")
     implementation("androidx.glance:glance-appwidget-proto:1.1.0")
-    implementation("androidx.glance:glance-wear-tiles:1.1.0")
+    // implementation("androidx.glance:glance-wear-tiles:1.1.0") // not available
 
     // Testing
     testImplementation("junit:junit:4.13.2")
@@ -204,13 +212,13 @@ kapt {
     }
 }
 
-tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
     kotlinOptions {
         freeCompilerArgs += listOf(
-            "-Xopt-in=kotlin.RequiresOptIn",
-            "-Xopt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
-            "-Xopt-in=androidx.lifecycle.ExperimentalLifecycleApi",
-            "-Xopt-in=com.google.devtools.ksp.ExperimentalKspInterop"
+            "-opt-in=kotlin.RequiresOptIn",
+            "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
+            "-opt-in=androidx.lifecycle.ExperimentalLifecycleApi",
+            "-opt-in=com.google.devtools.ksp.ExperimentalKspInterop"
         )
     }
 }

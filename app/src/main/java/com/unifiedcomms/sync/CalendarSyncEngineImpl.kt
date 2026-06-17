@@ -12,24 +12,12 @@ import com.unifiedcomms.data.repository.AccountRepository
 import com.unifiedcomms.security.CryptoManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlinx.datetime.Instant
-import kotlinx.datetime.LocalDateTime
-import kotlinx.datetime.TimeZone
-import javax.inject.Inject
-import javax.inject.Singleton
-import at.bitfire.dav4jvm.DavResource
-import at.bitfire.ical4android.AndroidCalendar
-import at.bitfire.ical4android.AndroidEvent
-import at.bitfire.dav4jvm.HttpClient
-import at.bitfire.dav4jvm.PropertyRegistry
-import okhttp3.OkHttpClient
-import java.util.Locale
 
-@Singleton
-class CalendarSyncEngineImpl @Inject constructor(
+class CalendarSyncEngineImpl(
     private val calendarRepo: CalendarRepository,
     private val accountRepo: AccountRepository,
     private val crypto: CryptoManager,
@@ -98,7 +86,7 @@ class CalendarSyncEngineImpl @Inject constructor(
                             recurrenceRule = event.recurrenceRule,
                             status = event.status,
                             reminders = event.reminders,
-                            updatedAt = kotlinx.datetime.Instant.now(),
+                            updatedAt = kotlinx.datetime.Clock.System.now(),
                             etag = event.etag,
                             needsSync = false
                         ))

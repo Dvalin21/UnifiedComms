@@ -13,27 +13,63 @@ import com.unifiedcomms.sync.CalendarSyncEngine
 import com.unifiedcomms.sync.TaskSyncEngine
 import com.unifiedcomms.sync.ContactSyncEngine
 import com.unifiedcomms.data.repository.AccountRepository
-import dagger.hilt.android.AndroidEntryPoint
-import javax.inject.Inject
+import com.unifiedcomms.data.repository.AccountRepositoryImpl
+import com.unifiedcomms.data.repository.EmailRepository
+import com.unifiedcomms.data.repository.EmailRepositoryImpl
+import com.unifiedcomms.data.repository.CalendarRepository
+import com.unifiedcomms.data.repository.CalendarRepositoryImpl
+import com.unifiedcomms.data.repository.TaskRepository
+import com.unifiedcomms.data.repository.TaskRepositoryImpl
+import com.unifiedcomms.data.repository.ContactRepository
+import com.unifiedcomms.data.repository.ContactRepositoryImpl
+import com.unifiedcomms.data.db.dao.*
+import com.unifiedcomms.data.db.UnifiedCommsDatabase
+import com.unifiedcomms.sync.SyncManager
+import com.unifiedcomms.sync.EmailSyncEngine
+import com.unifiedcomms.sync.EmailSyncEngineImpl
+import com.unifiedcomms.sync.CalendarSyncEngine
+import com.unifiedcomms.sync.CalendarSyncEngineImpl
+import com.unifiedcomms.sync.TaskSyncEngine
+import com.unifiedcomms.sync.TaskSyncEngineImpl
+import com.unifiedcomms.sync.ContactSyncEngine
+import com.unifiedcomms.sync.ContactSyncEngineImpl
 
-@AndroidEntryPoint
 class UnifiedCommsSyncService : AbstractThreadedSyncAdapter() {
 
-    @Inject
-    lateinit var syncManager: SyncManager
-    @Inject
-    lateinit var emailSync: EmailSyncEngine
-    @Inject
-    lateinit var calendarSync: CalendarSyncEngine
-    @Inject
-    lateinit var taskSync: TaskSyncEngine
-    @Inject
-    lateinit var contactSync: ContactSyncEngine
-    @Inject
-    lateinit var accountRepo: AccountRepository
+    private lateinit var syncManager: SyncManager
+    private lateinit var accountRepo: AccountRepository
 
-    constructor(context: Context) : super(context, true)
-    constructor(context: Context, autoInitialize: Boolean) : super(context, autoInitialize)
+    constructor(context: Context) : super(context, true) {
+        initDependencies(context)
+    }
+
+    constructor(context: Context, autoInitialize: Boolean) : super(context, autoInitialize) {
+        initDependencies(context)
+    }
+
+    private fun initDependencies(context: Context) {
+        val db = UnifiedCommsDatabase.getInstance(context)
+        val accountDao = db.accountDao()
+        val emailDao = db.emailDao()
+        val calendarEventDao = db.calendarEventDao()
+        val calendarDao = db.calendarDao()
+        val taskDao = db.taskDao()
+        val taskListDao = db.taskListDao()
+        val contactDao = db.contactDao()
+
+        accountRepo = AccountRepositoryImpl(accountDao)
+        val emailRepo = EmailRepositoryImpl(emailDao)
+        val calendarRepo = CalendarRepositoryImpl(calendarEventDao, calendarDao)
+        val taskRepo = TaskRepositoryImpl(taskDao, taskListDao)
+        val contactRepo = ContactRepositoryImpl(contactDao)
+
+        val emailSync = EmailSyncEngineImpl(emailRepo, accountRepo, null)
+        val calendarSync = CalendarSyncEngineImpl(calendarRepo, accountRepo, null)
+        val taskSync = TaskSyncEngineImpl(taskRepo, accountRepo, null)
+        val contactSync = ContactSyncEngineImpl(contactRepo, accountRepo, null)
+
+        syncManager = SyncManager(emailSync, calendarSync, taskSync, contactSync)
+    }
 
     override fun onPerformSync(
         account: Account,
@@ -48,7 +84,7 @@ class UnifiedCommsSyncService : AbstractThreadedSyncAdapter() {
 
         // Run sync
         val result = syncManager.performFullSync(unifiedAccount)
-        
+
         result.errorMessage?.let { error ->
             syncResult.stats.numIoExceptions++
             // Log error
