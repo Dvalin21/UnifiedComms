@@ -1,0 +1,230 @@
+package com.unifiedcomms.data.db.dao
+
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import androidx.room.Update
+import androidx.room.Delete
+import androidx.room.Transaction
+import kotlinx.coroutines.flow.Flow
+import com.unifiedcomms.data.model.Message
+import com.unifiedcomms.data.model.Conversation
+import com.unifiedcomms.data.model.UnifiedContact
+import com.unifiedcomms.data.model.MessageStatus
+import com.unifiedcomms.data.model.MessageType
+import kotlinx.datetime.Instant
+
+@Dao
+interface MessageDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(message: Message): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(messages: List<Message>): List<Long>
+
+    @Update
+    suspend fun update(message: Message): Int
+
+    @Update
+    suspend fun updateAll(messages: List<Message>): Int
+
+    @Delete
+    suspend fun delete(message: Message): Int
+
+    @Query("DELETE FROM messages WHERE id = :id")
+    suspend fun deleteById(id: String): Int
+
+    @Query("SELECT * FROM messages WHERE id = :id")
+    suspend fun getById(id: String): Message?
+
+    @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY sentAt ASC LIMIT :limit OFFSET :offset")
+    fun getByConversation(conversationId: String, limit: Int, offset: Int): Flow<List<Message>>
+
+    @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY sentAt DESC LIMIT 1")
+    suspend fun getLastMessage(conversationId: String): Message?
+
+    @Query("SELECT * FROM messages WHERE conversationId = :conversationId AND status IN (:statuses) ORDER BY sentAt ASC")
+    fun getPendingMessages(conversationId: String, statuses: List<MessageStatus>): Flow<List<Message>>
+
+    @Query("SELECT * FROM messages WHERE senderId = :senderId AND recipientId = :recipientId ORDER BY sentAt DESC LIMIT :limit")
+    suspend fun getDirectMessages(senderId: String, recipientId: String, limit: Int): List<Message>
+
+    @Query("SELECT * FROM messages WHERE (content LIKE :query) AND conversationId IN (:conversationIds) ORDER BY sentAt DESC LIMIT :limit")
+    fun searchMessages(query: String, conversationIds: List<String>, limit: Int): Flow<List<Message>>
+
+    @Query("SELECT * FROM messages WHERE messageType = :type AND conversationId = :conversationId ORDER BY sentAt DESC")
+    fun getByType(conversationId: String, type: MessageType): Flow<List<Message>>
+
+    @Query("SELECT * FROM messages WHERE needsSync = 1")
+    suspend fun getNeedingSync(): List<Message>
+
+    @Query("SELECT * FROM messages WHERE isLocalOnly = 1")
+    suspend fun getLocalOnly(): List<Message>
+
+    @Query("UPDATE messages SET status = :status WHERE id = :id")
+    suspend fun updateStatus(id: String, status: MessageStatus): Int
+
+    @Transaction
+    suspend fun markDelivered(messageIds: List<String>) {
+        messageIds.forEach { id ->
+            updateStatus(id, MessageStatus.DELIVERED)
+        }
+    }
+
+    @Transaction
+    suspend fun markRead(messageIds: List<String>) {
+        messageIds.forEach { id ->
+            val msg = getById(id)
+            if (msg != null) {
+                update(msg.copy(status = MessageStatus.READ, readAt = Instant.now()))
+            }
+        }
+    }
+
+    @Transaction
+    suspend fun markConversationRead(conversationId: String, currentUserId: String) {
+        val messages = getByConversation(conversationId, 1000, 0).first()
+        messages.filter { it.recipientId == currentUserId && it.status != MessageStatus.READ }
+            .forEach { markRead(listOf(it.id)) }
+    }
+
+    @Query("DELETE FROM messages WHERE conversationId = :conversationId AND sentAt < :olderThan")
+    suspend fun cleanupOldMessages(conversationId: String, olderThan: Long): Int
+}
+
+@Dao
+interface ConversationDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(conversation: Conversation): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(conversations: List<Conversation>): List<Long>
+
+    @Update
+    suspend fun update(conversation: Conversation): Int
+
+    @Delete
+    suspend fun delete(conversation: Conversation): Int
+
+    @Query("DELETE FROM conversations WHERE id = :id")
+    suspend fun deleteById(id: String): Int
+
+    @Query("SELECT * FROM conversations WHERE id = :id")
+    suspend fun getById(id: String): Conversation?
+
+    @Query("SELECT * FROM conversations WHERE id IN (:ids)")
+    suspend fun getByIds(ids: List<String>): List<Conversation>
+
+    @Query("SELECT * FROM conversations WHERE :userId IN (participantIds) ORDER BY isPinned DESC, lastActivityAt DESC")
+    fun getAllForUser(userId: String): Flow<List<Conversation>>
+
+    @Query("SELECT * FROM conversations WHERE :userId IN (participantIds) AND isArchived = 0 ORDER BY isPinned DESC, lastActivityAt DESC")
+    fun getActiveForUser(userId: String): Flow<List<Conversation>>
+
+    @Query("SELECT * FROM conversations WHERE :userId IN (participantIds) AND isArchived = 1 ORDER BY lastActivityAt DESC")
+    fun getArchivedForUser(userId: String): Flow<List<Conversation>>
+
+    @Query("SELECT * FROM conversations WHERE :userId IN (participantIds) AND isPinned = 1 ORDER BY lastActivityAt DESC")
+    fun getPinnedForUser(userId: String): Flow<List<Conversation>>
+
+    @Query("SELECT * FROM conversations WHERE participantIds = :participants AND type = :type")
+    suspend fun findDirectConversation(participants: List<String>, type: com.unifiedcomms.data.model.ConversationType): Conversation?
+
+    @Query("SELECT * FROM conversations WHERE unreadCount > 0 AND :userId IN (participantIds)")
+    suspend fun getWithUnread(userId: String): List<Conversation>
+
+    @Query("SELECT SUM(unreadCount) FROM conversations WHERE :userId IN (participantIds)")
+    suspend fun getTotalUnreadCount(userId: String): Int
+
+    @Transaction
+    suspend fun updateLastMessage(conversationId: String, message: Message, currentUserId: String) {
+        getById(conversationId)?.let { conv ->
+            val isIncoming = message.recipientId == currentUserId
+            val newUnread = if (isIncoming && message.status != MessageStatus.READ) conv.unreadCount + 1 else conv.unreadCount
+            update(conv.copy(
+                lastMessageId = message.id,
+                lastMessagePreview = message.content.take(100),
+                lastActivityAt = message.sentAt,
+                unreadCount = newUnread,
+                updatedAt = Instant.now()
+            ))
+        }
+    }
+
+    @Transaction
+    suspend fun markConversationRead(conversationId: String, currentUserId: String) {
+        getById(conversationId)?.let { conv ->
+            update(conv.copy(unreadCount = 0, updatedAt = Instant.now()))
+        }
+    }
+
+    @Transaction
+    suspend fun togglePin(conversationId: String) {
+        getById(conversationId)?.let { conv ->
+            update(conv.copy(isPinned = !conv.isPinned, updatedAt = Instant.now()))
+        }
+    }
+
+    @Transaction
+    suspend fun toggleArchive(conversationId: String) {
+        getById(conversationId)?.let { conv ->
+            update(conv.copy(isArchived = !conv.isArchived, updatedAt = Instant.now()))
+        }
+    }
+
+    @Transaction
+    suspend fun toggleMute(conversationId: String, muteUntil: Instant? = null) {
+        getById(conversationId)?.let { conv ->
+            update(conv.copy(isMuted = !conv.isMuted, muteUntil = muteUntil, updatedAt = Instant.now()))
+        }
+    }
+}
+
+@Dao
+interface ContactDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(contact: UnifiedContact): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(contacts: List<UnifiedContact>): List<Long>
+
+    @Update
+    suspend fun update(contact: UnifiedContact): Int
+
+    @Delete
+    suspend fun delete(contact: UnifiedContact): Int
+
+    @Query("DELETE FROM contacts WHERE id = :id")
+    suspend fun deleteById(id: String): Int
+
+    @Query("SELECT * FROM contacts WHERE id = :id")
+    suspend fun getById(id: String): UnifiedContact?
+
+    @Query("SELECT * FROM contacts WHERE unifiedCommsId = :id")
+    suspend fun getByUnifiedCommsId(id: String): UnifiedContact?
+
+    @Query("SELECT * FROM contacts WHERE :email IN (emails)")
+    suspend fun getByEmail(email: String): UnifiedContact?
+
+    @Query("SELECT * FROM contacts WHERE :phone IN (phoneNumbers)")
+    suspend fun getByPhone(phone: String): UnifiedContact?
+
+    @Query("SELECT * FROM contacts WHERE accountId = :accountId ORDER BY displayName ASC")
+    fun getByAccount(accountId: String): Flow<List<UnifiedContact>>
+
+    @Query("SELECT * FROM contacts WHERE source = :source AND accountId = :accountId ORDER BY displayName ASC")
+    fun getBySourceAndAccount(source: com.unifiedcomms.data.model.ContactSource, accountId: String): Flow<List<UnifiedContact>>
+
+    @Query("SELECT * FROM contacts WHERE hasUnifiedComms = 1 ORDER BY displayName ASC")
+    fun getUnifiedCommsContacts(): Flow<List<UnifiedContact>>
+
+    @Query("SELECT * FROM contacts WHERE isFavorite = 1 ORDER BY displayName ASC")
+    fun getFavorites(): Flow<List<UnifiedContact>>
+
+    @Query("SELECT * FROM contacts WHERE (displayName LIKE :query OR :query IN (emails) OR :query IN (phoneNumbers)) LIMIT :limit")
+    fun search(query: String, limit: Int): Flow<List<UnifiedContact>>
+
+    @Query("SELECT * FROM contacts WHERE needsSync = 1")
+    suspend fun getNeedingSync(): List<UnifiedContact>
+}

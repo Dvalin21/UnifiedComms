@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <exclude domain="database" path="unifiedcomms.db" />
+    <exclude domain="sharedpref" path="unifiedcomms_prefs.xml" />
+    <exclude domain="file" path="auth_tokens/" />
+    <exclude domain="file" path="encryption_keys/" />
+    <exclude domain="file" path="attachments/" />
+    <exclude domain="file" path="logs/" />
+</full-backup-content>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">googleapis.com</domain>
+        <domain includeSubdomains="true">googleusercontent.com</domain>
+        <domain includeSubdomains="true">gmail.com</domain>
+        <domain includeSubdomains="true">outlook.com</domain>
+        <domain includeSubdomains="true">office365.com</domain>
+        <domain includeSubdomains="true">live.com</domain>
+        <domain includeSubdomains="true">yahoo.com</domain>
+        <domain includeSubdomains="true">icloud.com</domain>
+        <domain includeSubdomains="true">me.com</domain>
+        <domain includeSubdomains="true">fastmail.com</domain>
+        <domain includeSubdomains="true">protonmail.com</domain>
+        <domain includeSubdomains="true">zoho.com</domain>
+        <domain includeSubdomains="true">gmx.com</domain>
+        <domain includeSubdomains="true">aol.com</domain>
+        <!-- Allow user-configured custom domains -->
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">10.0.2.2</domain>
+    </domain-config>
+    
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </debug-overrides>
+</network-security-config>

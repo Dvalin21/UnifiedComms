@@ -1,0 +1,286 @@
+package com.unifiedcomms.widgets.unified
+
+import android.content.Context
+import android.content.Intent
+import androidx.compose.runtime.Composable
+import androidx.glance.GlanceModifier
+import androidx.glance.layout.Box
+import androidx.glance.layout.Column
+import androidx.glance.layout.Row
+import androidx.glance.layout.fillMaxWidth
+import androidx.glance.layout.padding
+import androidx.glance.text.Text
+import androidx.glance.text.fontWeight
+import androidx.glance.text.textAlign
+import androidx.glance.text.textStyle
+import androidx.glance.Alignment
+import androidx.glance.unit.dp
+import androidx.glance.unit.sp
+import androidx.glance.ColorProvider
+import androidx.glance.GlanceId
+import androidx.glance.appwidget.GlanceAppWidget
+import androidx.glance.wear.tiles.provideTileComposition
+import androidx.glance.action.StartActivity
+import androidx.glance.action.Action
+import com.unifiedcomms.R
+import com.unifiedcomms.ui.main.MainActivity
+import com.unifiedcomms.ui.theme.AccountColors
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import java.time.LocalDate
+
+class UnifiedWidgetReceiver : GlanceAppWidget() {
+
+    @Composable
+    override fun Content() {
+        val context = LocalContext.current
+        val today = LocalDate.now()
+        
+        // Mock data - would come from repositories
+        val unreadEmailCount = 12
+        val todayEvents = listOf(
+            UnifiedEvent("Team Standup", 9, 10, 0xFF64B5F6),
+            UnifiedEvent("Lunch", 12, 13, 0xFF81C784),
+            UnifiedEvent("Project Review", 14, 15, 0xFFE57373),
+        )
+        val todayTasks = listOf(
+            UnifiedTask("Review PR #42", false, 0xFFFFB74D),
+            UnifiedTask("Buy groceries", true, 0xFF64B5F6),
+            UnifiedTask("Call dentist", false, 0xFF81C784),
+        )
+        
+        UnifiedWidgetComposition(
+            date = today,
+            unreadEmailCount = unreadEmailCount,
+            events = todayEvents,
+            tasks = todayTasks,
+            onClick = StartActivity(context, Intent(context, MainActivity::class.java))
+        )
+    }
+
+    @Composable
+    private fun UnifiedWidgetComposition(
+        date: LocalDate,
+        unreadEmailCount: Int,
+        events: List<UnifiedEvent>,
+        tasks: List<UnifiedTask>,
+        onClick: Action
+    ) {
+        val colorProvider = ColorProviderDefaults()
+        
+        Column(
+            modifier = GlanceModifier.fillMaxSize().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Header
+            Row(
+                modifier = GlanceModifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text(
+                        text = "UnifiedComms",
+                        style = textStyle(fontWeight = FontWeight.Bold, fontSize = 18.sp, color = colorProvider.onSurface)
+                    )
+                    Text(
+                        text = "${date.dayOfWeek}, ${date.month} ${date.dayOfMonth}",
+                        style = textStyle(fontSize = 11.sp, color = colorProvider.onSurfaceVariant)
+                    )
+                }
+                
+                // Email badge
+                if (unreadEmailCount > 0) {
+                    Surface(
+                        modifier = GlanceModifier
+                            .background(Color(0xFFE57373), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(
+                            modifier = GlanceModifier.padding(horizontal = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            androidx.glance.Text(text = "✉", style = textStyle(fontSize = 12.sp))
+                            androidx.glance.Text(
+                                text = unreadEmailCount.toString(),
+                                style = textStyle(fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Three panels
+            Column(
+                modifier = GlanceModifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Calendar panel
+                Panel(
+                    title = "Calendar",
+                    icon = "📅",
+                    accentColor = 0xFF64B5F6,
+                    content = {
+                        events.forEach { event ->
+                            PanelItem(
+                                title = event.title,
+                                subtitle = "${String.format("%02d:%02d", event.startHour, 0)} - ${String.format("%02d:%02d", event.endHour, 0)}",
+                                color = event.color
+                            )
+                        }
+                        if (events.isEmpty()) {
+                            PanelItem(title = "No events today", subtitle = "", color = colorProvider.onSurfaceVariant.toArgb())
+                        }
+                    }
+                )
+
+                // Tasks panel
+                Panel(
+                    title = "Tasks",
+                    icon = "✅",
+                    accentColor = 0xFF81C784,
+                    content = {
+                        tasks.forEach { task ->
+                            PanelItem(
+                                title = task.title,
+                                subtitle = if (task.isCompleted) "Completed" : "Pending",
+                                color = if (task.isCompleted) colorProvider.onSurfaceVariant.toArgb() else task.color,
+                                isCompleted = task.isCompleted
+                            )
+                        }
+                        if (tasks.isEmpty()) {
+                            PanelItem(title = "No tasks today", subtitle = "", color = colorProvider.onSurfaceVariant.toArgb())
+                        }
+                    }
+                )
+
+                // Quick actions panel
+                Panel(
+                    title = "Quick Actions",
+                    icon = "⚡",
+                    accentColor = 0xFFFFB74D,
+                    content = {
+                        Row(
+                            modifier = GlanceModifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            QuickActionButton(label = "Compose", color = 0xFF6750A4, onClick = onClick)
+                            QuickActionButton(label = "New Event", color = 0xFF64B5F6, onClick = onClick)
+                            QuickActionButton(label = "New Task", color = 0xFF81C784, onClick = onClick)
+                        }
+                    }
+                )
+            }
+        }
+    }
+
+    @Composable
+    private fun Panel(
+        title: String,
+        icon: String,
+        accentColor: Int,
+        content: @Composable () -> Unit
+    ) {
+        val colorProvider = ColorProviderDefaults()
+        
+        Surface(
+            modifier = GlanceModifier.fillMaxWidth()
+                .background(colorProvider.surfaceContainerLow),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(
+                modifier = GlanceModifier.fillMaxWidth().padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = GlanceModifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(text = icon, style = textStyle(fontSize = 16.sp))
+                        Text(text = title, style = textStyle(fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(accentColor)))
+                    }
+                    // Expand indicator
+                    Text(text = "⌄", style = textStyle(fontSize = 14.sp, color = colorProvider.onSurfaceVariant))
+                }
+                content()
+            }
+        }
+    }
+
+    @Composable
+    private fun PanelItem(
+        title: String,
+        subtitle: String,
+        color: Int,
+        isCompleted: Boolean = false
+    ) {
+        val colorProvider = ColorProviderDefaults()
+        
+        Row(
+            modifier = GlanceModifier.fillMaxWidth().padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column {
+                Text(
+                    text = title,
+                    style = textStyle(
+                        fontSize = 13.sp,
+                        color = if (isCompleted) colorProvider.onSurfaceVariant else Color(color),
+                        decoration = if (isCompleted) androidx.compose.ui.text.style.TextDecoration.LineThrough else null
+                    )
+                )
+                if (subtitle.isNotEmpty()) {
+                    Text(
+                        text = subtitle,
+                        style = textStyle(fontSize = 11.sp, color = colorProvider.onSurfaceVariant)
+                    )
+                }
+            }
+            // Color indicator
+            Box(
+                modifier = GlanceModifier
+                    .width(3.dp)
+                    .height(20.dp)
+                    .background(Color(color), RoundedCornerShape(1.5.dp))
+            )
+        }
+    }
+
+    @Composable
+    private fun QuickActionButton(label: String, color: Int, onClick: Action) {
+        val colorProvider = ColorProviderDefaults()
+        
+        androidx.glance.Text(
+            text = label,
+            modifier = GlanceModifier
+                .fillMaxWidth()
+                .weight(1f)
+                .background(Color(color), RoundedCornerShape(8.dp))
+                .padding(vertical = 10.dp)
+                .clickable(onClick),
+            textAlign = TextAlign.Center,
+            style = textStyle(fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+        )
+    }
+}
+
+data class UnifiedEvent(
+    val title: String,
+    val startHour: Int,
+    val endHour: Int,
+    val color: Int
+)
+
+data class UnifiedTask(
+    val title: String,
+    val isCompleted: Boolean,
+    val color: Int
+)
+
+@Composable
+fun provideGlance(context: Context, glanceId: GlanceId) {
+    UnifiedWidgetReceiver().provideGlance(context, glanceId)
+}

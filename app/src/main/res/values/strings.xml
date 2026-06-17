@@ -1,0 +1,167 @@
+<resources>
+    <string name="app_name">UnifiedComms</string>
+    
+    <!-- Widgets -->
+    <string name="widget_email_title">UnifiedComms Email</string>
+    <string name="widget_calendar_title">UnifiedComms Calendar</string>
+    <string name="widget_tasks_title">UnifiedComms Tasks</string>
+    <string name="widget_unified_title">UnifiedComms Unified</string>
+    
+    <!-- Account Types -->
+    <string name="account_type_google">Google</string>
+    <string name="account_type_mailcow">Mailcow</string>
+    <string name="account_type_outlook">Outlook / Hotmail</string>
+    <string name="account_type_yahoo">Yahoo Mail</string>
+    <string name="account_type_exchange">Exchange / Office 365</string>
+    <string name="account_type_icloud">iCloud</string>
+    <string name="account_type_generic_imap">Generic IMAP/SMTP</string>
+    <string name="account_type_generic_caldav">CalDAV/CardDAV</string>
+    
+    <!-- Sync -->
+    <string name="sync_status_syncing">Syncing…</string>
+    <string name="sync_status_synced">Synced %1$s ago</string>
+    <string name="sync_status_error">Sync error: %1$s</string>
+    <string name="sync_status_offline">Offline</string>
+    
+    <!-- Email -->
+    <string name="email_compose">Compose</string>
+    <string name="email_reply">Reply</string>
+    <string name="email_reply_all">Reply All</string>
+    <string name="email_forward">Forward</string>
+    <string name="email_delete">Delete</string>
+    <string name="email_archive">Archive</string>
+    <string name="email_spam">Spam</string>
+    <string name="email_mark_read">Mark as Read</string>
+    <string name="email_mark_unread">Mark as Unread</string>
+    <string name="email_flag">Flag</string>
+    <string name="email_unflag">Unflag</string>
+    <string name="email_attachments">Attachments</string>
+    <string name="email_no_messages">No messages in this folder</string>
+    <string name="email_loading">Loading messages…</string>
+    <string name="email_pull_to_refresh">Pull to refresh</string>
+    
+    <!-- Calendar -->
+    <string name="calendar_today">Today</string>
+    <string name="calendar_tomorrow">Tomorrow</string>
+    <string name="calendar_this_week">This Week</string>
+    <string name="calendar_next_week">Next Week</string>
+    <string name="calendar_month_view">Month</string>
+    <string name="calendar_week_view">Week</string>
+    <string name="calendar_day_view">Day</string>
+    <string name="calendar_create_event">Create Event</string>
+    <string name="calendar_edit_event">Edit Event</string>
+    <string name="calendar_event_title">Title</string>
+    <string name="calendar_event_location">Location</string>
+    <string name="calendar_event_description">Description</string>
+    <string name="calendar_event_start">Start</string>
+    <string name="calendar_event_end">End</string>
+    <string name="calendar_event_all_day">All Day</string>
+    <string name="calendar_event_reminder">Reminder</string>
+    <string name="calendar_event_attendees">Attendees</string>
+    <string name="calendar_event_color">Color</string>
+    <string name="calendar_invite_sent">Invitation sent</string>
+    <string name="calendar_response_accepted">Accepted</string>
+    <string name="calendar_response_declined">Declined</string>
+    <string name="calendar_response_tentative">Tentative</string>
+    <string name="calendar_no_events">No events</string>
+    
+    <!-- Tasks -->
+    <string name="tasks_create">Create Task</string>
+    <string name="tasks_edit">Edit Task</string>
+    <string name="tasks_title">Title</string>
+    <string name="tasks_description">Description</string>
+    <string name="tasks_due_date">Due Date</string>
+    <string name="tasks_priority">Priority</string>
+    <string name="tasks_list">List</string>
+    <string name="tasks_subtasks">Subtasks</string>
+    <string name="tasks_completed">Completed</string>
+    <string name="tasks_pending">Pending</string>
+    <string name="tasks_overdue">Overdue</string>
+    <string name="tasks_no_tasks">No tasks</string>
+    <string name="tasks_filter_all">All</string>
+    <string name="tasks_filter_active">Active</string>
+    <string name="tasks_filter_completed">Completed</string>
+    <string name="tasks_filter_starred">Starred</string>
+    <string name="tasks_filter_today">Today</string>
+    <string name="tasks_filter_overdue">Overdue</string>
+    
+    <!-- Messages -->
+    <string name="messages_new">New Message</string>
+    <string name="messages_search">Search conversations</string>
+    <string name="messages_no_conversations">No conversations yet</string>
+    <string name="messages_type_message">Type a message</string>
+    <string name="messages_send">Send</string>
+    <string name="messages_attach">Attach</string>
+    <string name="messages_calendar_invite">Calendar Invite</string>
+    <string name="messages_share_email">Share Email</string>
+    <string name="messages_share_task">Share Task</string>
+    <string name="messages_voice">Voice Message</string>
+    
+    <!-- Settings -->
+    <string name="settings_accounts">Accounts</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_sync">Sync &amp; Data</string>
+    <string name="settings_notifications">Notifications</string>
+    <string name="settings_security">Security &amp; Privacy</string>
+    <string name="settings_advanced">Advanced</string>
+    <string name="settings_add_account">Add Account</string>
+    <string name="settings_remove_account">Remove Account</string>
+    <string name="settings_default_account">Default Account</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_auto_sync">Auto-sync</string>
+    <string name="settings_sync_interval">Sync Interval</string>
+    <string name="settings_wifi_only">Wi-Fi Only</string>
+    <string name="settings_download_attachments">Download Attachments</string>
+    <string name="settings_backup_restore">Backup &amp; Restore</string>
+    <string name="settings_email_notifications">Email Notifications</string>
+    <string name="settings_calendar_reminders">Calendar Reminders</string>
+    <string name="settings_task_reminders">Task Reminders</string>
+    <string name="settings_message_notifications">Message Notifications</string>
+    <string name="settings_fullscreen_reminders">Full-Screen Reminders</string>
+    <string name="settings_biometric_lock">Biometric Lock</string>
+    <string name="settings_auto_lock">Auto-lock Timeout</string>
+    <string name="settings_encryption">Encryption</string>
+    <string name="settings_no_telemetry">No Telemetry</string>
+    <string name="settings_default_reminder">Default Reminder</string>
+    <string name="settings_debug_logging">Debug Logging</string>
+    <string name="settings_about">About</string>
+    <string name="settings_clear_data">Clear All Data</string>
+    
+    <!-- Reminders -->
+    <string name="reminder_at_time">At time of event</string>
+    <string name="reminder_5min">5 minutes before</string>
+    <string name="reminder_15min">15 minutes before</string>
+    <string name="reminder_30min">30 minutes before</string>
+    <string name="reminder_1hour">1 hour before</string>
+    <string name="reminder_1day">1 day before</string>
+    <string name="reminder_snooze">Snooze</string>
+    <string name="reminder_dismiss">Dismiss</string>
+    <string name="reminder_view">View Event</string>
+    
+    <!-- Security -->
+    <string name="security_unlock">Unlock UnifiedComms</string>
+    <string name="security_use_biometric">Use fingerprint or face</string>
+    <string name="security_use_pin">Use PIN</string>
+    <string name="security_encrypted">All data encrypted with AES-256</string>
+    <string name="security_no_tracking">Zero tracking, zero analytics</string>
+    
+    <!-- General -->
+    <string name="loading">Loading…</string>
+    <string name="error_generic">Something went wrong</string>
+    <string name="error_network">Network error</string>
+    <string name="error_auth">Authentication failed</string>
+    <string name="retry">Retry</string>
+    <string name="cancel">Cancel</string>
+    <string name="save">Save</string>
+    <string name="delete">Delete</string>
+    <string name="edit">Edit</string>
+    <string name="done">Done</string>
+    <string name="next">Next</string>
+    <string name="back">Back</string>
+    <string name="search">Search</string>
+    <string name="filter">Filter</string>
+    <string name="sort">Sort</string>
+    <string name="select_all">Select All</string>
+    <string name="deselect_all">Deselect All</string>
+</resources>

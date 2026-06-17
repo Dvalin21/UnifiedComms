@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Material 3 Dynamic Colors - These will be overridden by dynamic theming -->
+    <color name="material_dynamic_primary40">#6750A4</color>
+    <color name="material_dynamic_onPrimary40">#FFFFFF</color>
+    <color name="material_dynamic_primaryContainer40">#EADDFF</color>
+    <color name="material_dynamic_onPrimaryContainer40">#21005D</color>
+    <color name="material_dynamic_secondary40">#625B71</color>
+    <color name="material_dynamic_onSecondary40">#FFFFFF</color>
+    <color name="material_dynamic_secondaryContainer40">#E8DEF8</color>
+    <color name="material_dynamic_onSecondaryContainer40">#1D192B</color>
+    <color name="material_dynamic_tertiary40">#7D5260</color>
+    <color name="material_dynamic_onTertiary40">#FFFFFF</color>
+    <color name="material_dynamic_tertiaryContainer40">#FFD8E4</color>
+    <color name="material_dynamic_onTertiaryContainer40">#31111D</color>
+    <color name="material_dynamic_error40">#B3261E</color>
+    <color name="material_dynamic_onError40">#FFFFFF</color>
+    <color name="material_dynamic_errorContainer40">#F9DEDC</color>
+    <color name="material_dynamic_onErrorContainer40">#410E0B</color>
+    <color name="material_dynamic_background40">#FFFBFE</color>
+    <color name="material_dynamic_onBackground40">#1C1B1F</color>
+    <color name="material_dynamic_surface40">#FFFBFE</color>
+    <color name="material_dynamic_onSurface40">#1C1B1F</color>
+    <color name="material_dynamic_surfaceVariant40">#E7E0EC</color>
+    <color name="material_dynamic_onSurfaceVariant40">#49454F</color>
+    <color name="material_dynamic_outline40">#79747E</color>
+    <color name="material_dynamic_outlineVariant40">#CAC4D0</color>
+    <color name="material_dynamic_shadow40">#000000</color>
+    <color name="material_dynamic_scrim40">#000000</color>
+    <color name="material_dynamic_inverseSurface40">#313033</color>
+    <color name="material_dynamic_inverseOnSurface40">#F4EFF4</color>
+    <color name="material_dynamic_inversePrimary40">#D0BCFF</color>
+    
+    <!-- Neutral colors -->
+    <color name="material_dynamic_neutral10">#1D1D1D</color>
+    <color name="material_dynamic_neutral30">#333333</color>
+    <color name="material_dynamic_neutral50">#616161</color>
+    <color name="material_dynamic_neutral90">#E0E0E0</color>
+    <color name="material_dynamic_neutral95">#EEEEEE</color>
+    <color name="material_dynamic_neutral99">#FAFAFA</color>
+    
+    <!-- Custom accent colors for accounts -->
+    <color name="account_red">#E57373</color>
+    <color name="account_pink">#F06292</color>
+    <color name="account_purple">#BA68C8</color>
+    <color name="account_deep_purple">#9575CD</color>
+    <color name="account_indigo">#7986CB</color>
+    <color name="account_blue">#64B5F6</color>
+    <color name="account_light_blue">#4FC3F7</color>
+    <color name="account_cyan">#4DD0E1</color>
+    <color name="account_teal">#4DB6AC</color>
+    <color name="account_green">#81C784</color>
+    <color name="account_light_green">#AED581</color>
+    <color name="account_lime">#DCE775</color>
+    <color name="account_yellow">#FFF176</color>
+    <color name="account_amber">#FFD54F</color>
+    <color name="account_orange">#FFB74D</color>
+    <color name="account_deep_orange">#FF8A65</color>
+    <color name="account_brown">#A1887F</color>
+    <color name="account_grey">#90A4AE</color>
+    <color name="account_blue_grey">#78909C</color>
+    
+    <!-- Semantic colors -->
+    <color name="priority_low">#81C784</color>
+    <color name="priority_normal">#64B5F6</color>
+    <color name="priority_high">#FFB74D</color>
+    <color name="priority_urgent">#E57373</color>
+    <color name="status_accepted">#4CAF50</color>
+    <color name="status_declined">#E57373</color>
+    <color name="status_tentative">#FFB74D</color>
+</resources>

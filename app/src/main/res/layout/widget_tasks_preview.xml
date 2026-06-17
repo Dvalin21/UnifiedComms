@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="@color/material_dynamic_neutral99"
+    android:gravity="center">
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="UnifiedComms"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="@color/material_dynamic_neutral10" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:text="✅"
+            android:textSize="24sp" />
+
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="2 of 4 completed • 50%"
+        android:textSize="14sp"
+        android:textColor="@color/material_dynamic_neutral50" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:orientation="vertical"
+        android:gravity="center">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:orientation="horizontal"
+            android:padding="12dp"
+            android:background="@color/material_dynamic_secondary40"
+            android:gravity="center_vertical">
+
+            <CheckBox
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginEnd="12dp"
+                android:buttonTint="@color/material_dynamic_primary40" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Review PR #42"
+                android:textSize="14sp"
+                android:textColor="@android:color/white" />
+
+            <View
+                android:layout_width="4dp"
+                android:layout_height="24dp"
+                android:layout_marginStart="8dp"
+                android:background="@color/material_dynamic_tertiary40" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:orientation="horizontal"
+            android:padding="12dp"
+            android:background="@color/material_dynamic_primary40"
+            android:gravity="center_vertical">
+
+            <CheckBox
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginEnd="12dp"
+                android:checked="true"
+                android:buttonTint="@color/material_dynamic_secondary40" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Buy groceries"
+                android:textSize="14sp"
+                android:textColor="@android:color/white"
+                android:paintFlags="17" />
+
+            <View
+                android:layout_width="4dp"
+                android:layout_height="24dp"
+                android:layout_marginStart="8dp"
+                android:background="@color/material_dynamic_primary40" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:orientation="horizontal"
+            android:padding="12dp"
+            android:background="@color/material_dynamic_tertiary40"
+            android:gravity="center_vertical">
+
+            <CheckBox
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginEnd="12dp"
+                android:buttonTint="@color/material_dynamic_primary40" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Call dentist"
+                android:textSize="14sp"
+                android:textColor="@android:color/white" />
+
+            <View
+                android:layout_width="4dp"
+                android:layout_height="24dp"
+                android:layout_marginStart="8dp"
+                android:background="@color/material_dynamic_secondary40" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:orientation="horizontal"
+        android:gravity="center">
+
+        <Button
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginEnd="4dp"
+            android:text="New Task"
+            android:backgroundTint="@color/material_dynamic_primary40" />
+
+        <Button
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="4dp"
+            android:text="All Tasks"
+            android:backgroundTint="@color/material_dynamic_secondary40" />
+
+    </LinearLayout>
+
+</LinearLayout>

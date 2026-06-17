@@ -1,0 +1,92 @@
+# Gradle
+.gradle/
+build/
+*/build/
+*/build.gradle.kts.d/
+
+# Local configuration
+local.properties
+local.properties.example
+gradle.properties.local
+
+# IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+*.classpath
+*.project
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build outputs
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+
+# Generated files
+*.generated.java
+*/generated/
+
+# Kotlin
+*.kt.bin
+
+# Room
+*.db
+*.db-journal
+
+# Logs
+*.log
+logs/
+
+# Temp
+*.tmp
+*.temp
+temp/
+
+# Keystore
+*.jks
+*.keystore
+
+# Crashlytics
+com_crashlytics_export_strings.xml
+crashlytics.properties
+crashlytics-build.properties
+fabric.properties
+
+# Google Services
+google-services.json
+
+# CI/CD
+.fastlane/
+.flint/
+
+# IntelliJ
+*.ipr
+*.iml
+*.iws
+.idea/
+
+# Android Studio
+*.apk
+*.ap_
+*.dex
+*.class
+*.jar
+*.so
+*.o
+*.obj
+
+# External native build
+.cxx/
+*.so
+
+# Test
+test-results/
+coverage/
+*.ec
