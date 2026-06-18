@@ -12,22 +12,25 @@ import com.unifiedcomms.data.repository.AccountRepository
 import com.unifiedcomms.security.CryptoManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import javax.inject.Inject
-import javax.inject.Singleton
 import java.util.Properties
 import javax.mail.Session
 import javax.mail.Store
 import javax.mail.Folder
 import javax.mail.Message as JMailMessage
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
+import javax.mail.FetchProfile
+import javax.mail.Flags
+import javax.mail.RecipientType
+import javax.mail.Part
+import javax.mail.Multipart
+import javax.mail.MimeMultipart
+import javax.mail.internet.MimeMessage
+import javax.mail.Transport
+import javax.mail.internet.InternetAddress
+import kotlinx.datetime.Clock
 
 class EmailSyncEngineImpl(
     private val emailRepo: EmailRepository,
@@ -50,11 +53,11 @@ class EmailSyncEngineImpl(
     private suspend fun syncFolders(account: Account, folders: List<String>): SyncResult {
         val config = account.serverConfig
         val auth = crypto.decryptAuthConfig(account.authConfig)
-        
+
         return withContext(Dispatchers.IO) {
             try {
                 updateProgress(account.id, folder = null, SyncStage.CONNECTING, 0, 0)
-                
+
                 val props = Properties().apply {
                     put("mail.imap.host", config.imapHost)
                     put("mail.imap.port", config.imapPort)
@@ -66,11 +69,11 @@ class EmailSyncEngineImpl(
 
                 val session = Session.getInstance(props)
                 val store = session.getStore("imap")
-                
+
                 updateProgress(account.id, folder = null, SyncStage.AUTHENTICATING, 0, 0)
-                
+
                 store.connect(config.imapHost, auth.username!!, auth.passwordEncrypted!!)
-                
+
                 var totalSynced = 0
                 var totalFailed = 0
                 val newItems = mutableListOf<String>()
@@ -79,12 +82,12 @@ class EmailSyncEngineImpl(
 
                 for (folderName in folders) {
                     updateProgress(account.id, folderName, SyncStage.LISTING_FOLDERS, 0, 0)
-                    
+
                     val folder = store.getFolder(folderName)
                     if (!folder.exists()) continue
-                    
+
                     folder.open(Folder.READ_WRITE)
-                    
+
                     val messageCount = folder.messageCount
                     if (messageCount == 0) {
                         folder.close(false)
@@ -92,19 +95,19 @@ class EmailSyncEngineImpl(
                     }
 
                     updateProgress(account.id, folderName, SyncStage.FETCHING_HEADERS, 0, messageCount)
-                    
+
                     // Fetch messages in batches
                     val batchSize = 50
                     for (start in 1..messageCount step batchSize) {
                         val end = minOf(start + batchSize - 1, messageCount)
                         val messages = folder.getMessages(start, end)
-                        
+
                         val fp = FetchProfile()
                         fp.add(FetchProfile.Item.ENVELOPE)
                         fp.add(FetchProfile.Item.FLAGS)
                         fp.add("X-GM-LABELS")
                         folder.fetch(messages, fp)
-                        
+
                         for (msg in messages) {
                             try {
                                 val email = parseEmail(msg, account.id, folderName)
@@ -119,7 +122,7 @@ class EmailSyncEngineImpl(
                                             labels = email.labels,
                                             systemLabels = email.systemLabels,
                                             etag = email.etag,
-                                            updatedAt = kotlinx.datetime.Clock.System.now(),
+                                            updatedAt = Clock.System.now(),
                                             needsSync = false
                                         ))
                                         updatedItems.add(existing.id)
@@ -130,24 +133,24 @@ class EmailSyncEngineImpl(
                                 totalFailed++
                             }
                         }
-                        
+
                         updateProgress(account.id, folderName, SyncStage.FETCHING_HEADERS, end, messageCount)
                     }
-                    
+
                     folder.close(false)
                 }
 
                 store.close()
-                
+
                 updateProgress(account.id, folder = null, SyncStage.COMPLETED, totalSynced, totalSynced)
-                
+
                 return@withContext SyncResult.success(
                     itemsSynced = totalSynced,
                     newItems = newItems,
                     updatedItems = updatedItems,
                     deletedItems = deletedItems
                 )
-                
+
             } catch (e: Exception) {
                 updateProgress(account.id, folder = null, SyncStage.ERROR, 0, 0)
                 return@withContext SyncResult.failure(e.message ?: "Unknown error", totalFailed)
@@ -162,38 +165,38 @@ class EmailSyncEngineImpl(
             val threadId = msg.getHeader("X-GM-THRID").firstOrNull() ?: messageId
             val inReplyTo = msg.getHeader("In-Reply-To").firstOrNull()
             val references = msg.getHeader("References").toList()
-            
+
             val sender = EmailAddress(
                 name = msg.getHeader("From").firstOrNull()?.takeIf { it.contains("<") }?.substringBefore("<")?.trim(),
-                email = msg.getHeader("From").firstOrNull()?.takeIf { it.contains("<") }?.substringAfter("<")?.substringBefore(">")?.trim() 
+                email = msg.getHeader("From").firstOrNull()?.takeIf { it.contains("<") }?.substringAfter("<")?.substringBefore(">")?.trim()
                     ?: msg.getHeader("From").firstOrNull()?.trim() ?: ""
             )
-            
+
             val recipients = EmailRecipients(
                 to = parseAddresses(msg, RecipientType.TO),
                 cc = parseAddresses(msg, RecipientType.CC),
                 bcc = parseAddresses(msg, RecipientType.BCC),
                 replyTo = parseAddresses(msg, RecipientType.REPLY_TO)
             )
-            
+
             val subject = msg.subject ?: ""
             val sentAt = msg.sentDate?.time ?: System.currentTimeMillis()
             val receivedAt = msg.receivedDate?.time ?: System.currentTimeMillis()
-            
+
             var bodyText: String? = null
             var bodyHtml: String? = null
             val attachments = mutableListOf<com.unifiedcomms.data.model.Attachment>()
-            
+
             extractContent(msg, bodyText, bodyHtml, attachments)
-            
+
             val preview = bodyText?.take(200) ?: subject
             val flags = EmailFlags(
-                isRead = msg.isSet(javax.mail.Flags.Flag.SEEN),
-                isFlagged = msg.isSet(javax.mail.Flags.Flag.FLAGGED),
-                isAnswered = msg.isSet(javax.mail.Flags.Flag.ANSWERED),
+                isRead = msg.isSet(Flags.Flag.SEEN),
+                isFlagged = msg.isSet(Flags.Flag.FLAGGED),
+                isAnswered = msg.isSet(Flags.Flag.ANSWERED),
                 isForwarded = subject.startsWith("Fwd:") || subject.startsWith("Forwarded:")
             )
-            
+
             val systemLabels = SystemLabels(
                 inbox = folder.equals("INBOX", ignoreCase = true) || folder.equals("Inbox", ignoreCase = true),
                 sent = folder.equals("Sent", ignoreCase = true),
@@ -201,7 +204,7 @@ class EmailSyncEngineImpl(
                 trash = folder.equals("Trash", ignoreCase = true),
                 spam = folder.equals("Spam", ignoreCase = true) || folder.equals("Junk", ignoreCase = true)
             )
-            
+
             return Email(
                 accountId = accountId,
                 folder = folder,
@@ -235,7 +238,7 @@ class EmailSyncEngineImpl(
             msg.getRecipients(type)?.map { addr ->
                 EmailAddress(
                     name = addr.toString().takeIf { it.contains("<") }?.substringBefore("<")?.trim(),
-                    email = addr.toString().takeIf { it.contains("<") }?.substringAfter("<")?.substringBefore(">")?.trim() 
+                    email = addr.toString().takeIf { it.contains("<") }?.substringAfter("<")?.substringBefore(">")?.trim()
                         ?: addr.toString().trim()
                 )
             } ?: emptyList()
@@ -285,7 +288,7 @@ class EmailSyncEngineImpl(
             try {
                 val config = account.serverConfig
                 val auth = crypto.decryptAuthConfig(account.authConfig)
-                
+
                 val props = Properties().apply {
                     put("mail.smtp.host", config.smtpHost)
                     put("mail.smtp.port", config.smtpPort)
@@ -300,15 +303,15 @@ class EmailSyncEngineImpl(
                 })
 
                 val mimeMessage = MimeMessage(session)
-                mimeMessage.setFrom(javax.mail.internet.InternetAddress(email.sender.email, email.sender.name))
-                
-                email.recipients.to.forEach { mimeMessage.addRecipient(RecipientType.TO, javax.mail.internet.InternetAddress(it.email, it.name)) }
-                email.recipients.cc.forEach { mimeMessage.addRecipient(RecipientType.CC, javax.mail.internet.InternetAddress(it.email, it.name)) }
-                email.recipients.bcc.forEach { mimeMessage.addRecipient(RecipientType.BCC, javax.mail.internet.InternetAddress(it.email, it.name)) }
-                email.recipients.replyTo.forEach { mimeMessage.addRecipient(RecipientType.REPLY_TO, javax.mail.internet.InternetAddress(it.email, it.name)) }
+                mimeMessage.setFrom(InternetAddress(email.sender.email, email.sender.name))
+
+                email.recipients.to.forEach { mimeMessage.addRecipient(RecipientType.TO, InternetAddress(it.email, it.name)) }
+                email.recipients.cc.forEach { mimeMessage.addRecipient(RecipientType.CC, InternetAddress(it.email, it.name)) }
+                email.recipients.bcc.forEach { mimeMessage.addRecipient(RecipientType.BCC, InternetAddress(it.email, it.name)) }
+                email.recipients.replyTo.forEach { mimeMessage.addRecipient(RecipientType.REPLY_TO, InternetAddress(it.email, it.name)) }
 
                 mimeMessage.subject = email.subject
-                
+
                 if (email.bodyHtml != null) {
                     mimeMessage.setContent(email.bodyHtml, "text/html; charset=utf-8")
                 } else {
@@ -343,7 +346,7 @@ class EmailSyncEngineImpl(
             try {
                 val config = account.serverConfig
                 val auth = crypto.decryptAuthConfig(account.authConfig)
-                
+
                 val props = Properties().apply {
                     put("mail.imap.host", config.imapHost)
                     put("mail.imap.port", config.imapPort)
@@ -363,8 +366,6 @@ class EmailSyncEngineImpl(
     }
 
     private fun updateProgress(accountId: String, folder: String?, stage: SyncStage, current: Int, total: Int) {
-        _syncProgress.update { progress ->
-            progress + (accountId to SyncProgress(accountId, folder, stage, current, total))
-        }
+        _syncProgress.value = _syncProgress.value + (accountId to SyncProgress(accountId, folder, stage, current, total))
     }
 }

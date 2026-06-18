@@ -12,6 +12,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.datetime.Clock
 
 class TaskSyncEngineImpl(
     private val taskRepo: TaskRepository,
@@ -27,7 +28,7 @@ class TaskSyncEngineImpl(
         return withContext(Dispatchers.IO) {
             try {
                 updateProgress(account.id, null, SyncStage.CONNECTING, 0, 0)
-                
+
                 val lists = getTaskListsFromServer(account)
                 updateProgress(account.id, null, SyncStage.LISTING_FOLDERS, 0, lists.size)
 
@@ -44,7 +45,7 @@ class TaskSyncEngineImpl(
 
                 updateProgress(account.id, null, SyncStage.COMPLETED, totalSynced, totalSynced)
                 SyncResult.success(totalSynced, newItems, updatedItems)
-                
+
             } catch (e: Exception) {
                 updateProgress(account.id, null, SyncStage.ERROR, 0, 0)
                 SyncResult.failure(e.message ?: "Task sync failed")
@@ -56,7 +57,7 @@ class TaskSyncEngineImpl(
         return withContext(Dispatchers.IO) {
             try {
                 updateProgress(account.id, taskList.title, SyncStage.FETCHING_HEADERS, 0, 0)
-                
+
                 val tasks = fetchTasksFromServer(account, taskList.serverId)
                 var synced = 0
                 val newItems = mutableListOf<String>()
@@ -87,7 +88,7 @@ class TaskSyncEngineImpl(
 
                 updateProgress(account.id, taskList.title, SyncStage.COMPLETED, synced, synced)
                 SyncResult.success(synced, newItems, updatedItems)
-                
+
             } catch (e: Exception) {
                 updateProgress(account.id, taskList.title, SyncStage.ERROR, 0, 0)
                 SyncResult.failure(e.message ?: "Task list sync failed")
@@ -169,8 +170,6 @@ class TaskSyncEngineImpl(
     }
 
     private fun updateProgress(accountId: String, folder: String?, stage: SyncStage, current: Int, total: Int) {
-        _syncProgress.update { progress ->
-            progress + (accountId to SyncProgress(accountId, folder, stage, current, total))
-        }
+        _syncProgress.value = _syncProgress.value + (accountId to SyncProgress(accountId, folder, stage, current, total))
     }
 }

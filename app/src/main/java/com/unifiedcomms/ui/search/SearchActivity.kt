@@ -3,13 +3,14 @@ package com.unifiedcomms.ui.search
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -19,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -48,33 +50,37 @@ class SearchActivity : ComponentActivity() {
 
 @Composable
 fun SearchScreen() {
-    var query by remember { mutableStateOf("") }
+    val queryState = remember { mutableStateOf<String>("") }
+    val context = LocalContext.current
 
     TopAppBar(
-        title = {
-            TextField(
-                value = query,
-                onValueChange = { query = it },
-                placeholder = { Text("Search emails, events, tasks, messages") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
-                trailingIcon = {
-                    if (query.isNotEmpty()) {
-                        IconButton(onClick = { query = "" }) {
-                            Icon(Icons.Default.Close, contentDescription = "Clear")
-                        }
-                    }
-                },
-                colors = TextFieldDefaults.textFieldColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
-                )
-            )
-        },
+        title = { SearchField(queryState, context) },
         navigationIcon = {
-            IconButton(onClick = { finish() }) {
+            IconButton(onClick = { (context as? android.app.Activity)?.finish() }) {
                 Icon(Icons.Default.ArrowBack, contentDescription = "Back")
             }
         }
+    )
+}
+
+@Composable
+fun SearchField(queryState: androidx.compose.runtime.SnapshotState<String>, context: androidx.compose.ui.platform.LocalContext) {
+    var query by remember { mutableStateOf(queryState.value) }
+    queryState.value = query
+    TextField(
+        value = query,
+        onValueChange = { query = it },
+        placeholder = { Text("Search emails, events, tasks, messages") },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
+        trailingIcon = {
+            if (query.isNotEmpty()) {
+                IconButton(onClick = { query = "" }) {
+                    Icon(Icons.Default.Close, contentDescription = "Clear")
+                }
+            }
+        },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
     )
 }

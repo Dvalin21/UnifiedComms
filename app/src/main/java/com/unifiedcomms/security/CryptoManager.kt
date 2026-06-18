@@ -15,6 +15,7 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import java.nio.charset.StandardCharsets
 
 interface CryptoManager {
     suspend fun encrypt(text: String): EncryptedData
@@ -39,7 +40,7 @@ data class EncryptedData(
 data class KeyPair(
     val publicKey: String,  // Base64 encoded
     val privateKey: String  // Base64 encoded (encrypted)
-interface CryptoManager {
+)
 
 class CryptoManagerImpl(
     private val context: Context
@@ -65,13 +66,13 @@ class CryptoManagerImpl(
     }
 
     override suspend fun encrypt(text: String): EncryptedData = withContext(Dispatchers.IO) {
-        val bytes = text.toByteArray(Charsets.UTF_8)
+        val bytes = text.toByteArray(StandardCharsets.UTF_8)
         encryptBytes(bytes)
     }
 
     override suspend fun decrypt(data: EncryptedData): String = withContext(Dispatchers.IO) {
         val bytes = decryptBytes(data)
-        String(bytes, Charsets.UTF_8)
+        String(bytes, StandardCharsets.UTF_8)
     }
 
     override suspend fun encryptBytes(bytes: ByteArray): EncryptedData = withContext(Dispatchers.IO) {
