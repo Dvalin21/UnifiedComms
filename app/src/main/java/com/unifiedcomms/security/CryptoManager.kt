@@ -1,11 +1,10 @@
 package com.unifiedcomms.security
 
 import android.content.Context
+import android.util.Base64
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
 import com.unifiedcomms.data.model.AuthConfig
-import com.unifiedcomms.data.model.Email
-import com.unifiedcomms.data.model.Message
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.security.KeyStore
@@ -103,15 +102,15 @@ class CryptoManagerImpl(
         val encryptedPrivate = encryptBytes(privateKeyBytes)
 
         KeyPair(
-            publicKey = android.util.Base64.encodeToString(pair.public.encoded, android.util.Base64.NO_WRAP),
-            privateKey = android.util.Base64.encodeToString(encryptedPrivate.ciphertext, android.util.Base64.NO_WRAP)
+            publicKey = Base64.encodeToString(pair.public.encoded, Base64.NO_WRAP),
+            privateKey = Base64.encodeToString(encryptedPrivate.ciphertext, Base64.NO_WRAP)
         )
     }
 
     override suspend fun signData(data: ByteArray, privateKey: String): String = withContext(Dispatchers.IO) {
         // Decrypt private key
         val encryptedPrivate = EncryptedData(
-            ciphertext = android.util.Base64.decode(privateKey, android.util.Base64.NO_WRAP),
+            ciphertext = Base64.decode(privateKey, Base64.NO_WRAP),
             iv = ByteArray(12) // Would be stored with the key
         )
         val decryptedPrivate = decryptBytes(encryptedPrivate)
@@ -122,12 +121,12 @@ class CryptoManagerImpl(
         val signature = java.security.Signature.getInstance("SHA256withRSA")
         signature.initSign(key)
         signature.update(data)
-        android.util.Base64.encodeToString(signature.sign(), android.util.Base64.NO_WRAP)
+        Base64.encodeToString(signature.sign(), Base64.NO_WRAP)
     }
 
     override suspend fun verifySignature(data: ByteArray, signature: String, publicKey: String): Boolean = withContext(Dispatchers.IO) {
-        val sigBytes = android.util.Base64.decode(signature, android.util.Base64.NO_WRAP)
-        val pubBytes = android.util.Base64.decode(publicKey, android.util.Base64.NO_WRAP)
+        val sigBytes = Base64.decode(signature, Base64.NO_WRAP)
+        val pubBytes = Base64.decode(publicKey, Base64.NO_WRAP)
         val keyFactory = java.security.KeyFactory.getInstance("RSA")
         val pubSpec = java.security.spec.X509EncodedKeySpec(pubBytes)
         val key = keyFactory.generatePublic(pubSpec)
@@ -179,12 +178,14 @@ class CryptoManagerImpl(
         }
     }
 
-    private fun encryptSync(text: String): String = runBlocking {
-        encrypt(text).ciphertext.encodeToBase64()
+    private fun encryptSync(text: String): String {
+        return runBlocking { encrypt(text).ciphertext.let { Base64.encodeToString(it, Base64.NO_WRAP) } }
     }
 
-    private fun decryptSync(base64: String): String = runBlocking {
-        decrypt(EncryptedData(android.util.Base64.decode(base64, android.util.Base64.NO_WRAP), ByteArray(12)))
+    private fun decryptSync(base64: String): String {
+        return runBlocking { 
+            decrypt(EncryptedData(Base64.decode(base64, Base64.NO_WRAP), ByteArray(12)))
+        }
     }
 
     private fun getOrCreateAesKey(): SecretKey = withContext(Dispatchers.IO) {

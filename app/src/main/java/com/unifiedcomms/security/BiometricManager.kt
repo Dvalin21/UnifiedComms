@@ -1,16 +1,15 @@
 package com.unifiedcomms.security
 
 import android.content.Context
-import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricManager as AndroidBiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 
-interface BiometricManager {
+interface BiometricAuthManager {
     val canAuthenticate: Boolean
     val biometricType: BiometricType
     suspend fun authenticate(reason: String, activity: FragmentActivity): AuthenticationResult
@@ -38,17 +37,17 @@ sealed interface AuthenticationResult {
 
 class BiometricManagerImpl(
     private val context: Context
-) : BiometricManager {
+) : BiometricAuthManager {
 
     override val canAuthenticate: Boolean
-        get() = BiometricManager.from(context).canAuthenticate(
-            BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
-        ) == BiometricManager.BIOMETRIC_SUCCESS
+        get() = AndroidBiometricManager.from(context).canAuthenticate(
+            AndroidBiometricManager.Authenticators.BIOMETRIC_STRONG or AndroidBiometricManager.Authenticators.DEVICE_CREDENTIAL
+        ) == AndroidBiometricManager.BIOMETRIC_SUCCESS
 
     override val biometricType: BiometricType
         get() = when {
             !canAuthenticate -> BiometricType.NONE
-            BiometricManager.from(context).canAuthenticate(BiometricManager.Authenticators.DEVICE_CREDENTIAL) == BiometricManager.BIOMETRIC_SUCCESS -> {
+            AndroidBiometricManager.from(context).canAuthenticate(AndroidBiometricManager.Authenticators.DEVICE_CREDENTIAL) == AndroidBiometricManager.BIOMETRIC_SUCCESS -> {
                 BiometricType.STRONG
             }
             else -> BiometricType.WEAK
