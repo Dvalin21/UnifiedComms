@@ -180,7 +180,7 @@ class CryptoManagerImpl(
 
     // Simple AES encryption for config fields (non-suspend, uses cached key)
     private fun encryptSimple(text: String): String {
-        try {
+        val result = try {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             val iv = ByteArray(12)
             secureRandom.nextBytes(iv)
@@ -196,10 +196,11 @@ class CryptoManagerImpl(
             // Fallback to Base64 for non-critical config fields
             Base64.encodeToString(text.toByteArray(StandardCharsets.UTF_8), Base64.NO_WRAP)
         }
+        return result
     }
 
     private fun decryptSimple(base64: String): String {
-        try {
+        val result = try {
             val combined = Base64.decode(base64, Base64.NO_WRAP)
             if (combined.size < 12) return base64 // Fallback for old format
             val iv = combined.copyOfRange(0, 12)
@@ -217,6 +218,7 @@ class CryptoManagerImpl(
                 base64
             }
         }
+        return result
     }
 
     private fun getOrCreateAesKey(): SecretKey = withContext(Dispatchers.IO) {
