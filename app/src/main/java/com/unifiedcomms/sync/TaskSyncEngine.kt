@@ -4,8 +4,10 @@ import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.model.Task
 import com.unifiedcomms.data.model.TaskList
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 
 interface TaskSyncEngine {
+    val syncProgress: StateFlow<Map<String, SyncProgress>>
     suspend fun syncAccount(account: Account): SyncResult
     suspend fun syncTaskList(account: Account, taskList: TaskList): SyncResult
     suspend fun fetchTask(account: Account, listId: String, uid: String): Task?

@@ -33,8 +33,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 class SyncForegroundService : Service() {
 
     private lateinit var syncManager: SyncManager
-    private val _syncProgress = MutableStateFlow<Int>(0)
-    val syncProgress = _syncProgress
 
     private val notificationId = 1001
 
@@ -81,8 +79,9 @@ class SyncForegroundService : Service() {
             var completed = 0
             for (account in accounts) {
                 completed++
-                _syncProgress.value = (completed * 100 / accounts.size)
-                NotificationHelper.showSyncNotification(this@SyncForegroundService, "Syncing ${account.name}... ${completed}/${accounts.size}", _syncProgress.value)
+                val progress = (completed * 100 / accounts.size)
+                _syncProgress.value = progress
+                NotificationHelper.showSyncNotification(this@SyncForegroundService, "Syncing ${account.name}... ${completed}/${accounts.size}", progress)
                 syncManager.performFullSync(account)
             }
             
@@ -98,6 +97,9 @@ class SyncForegroundService : Service() {
 
         return START_NOT_STICKY
     }
+
+    private val _syncProgress = MutableStateFlow<Int>(0)
+    val syncProgress = _syncProgress
 
     override fun onBind(intent: Intent?): IBinder? = null
 
