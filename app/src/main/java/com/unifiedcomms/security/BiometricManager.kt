@@ -64,9 +64,11 @@ class BiometricManagerImpl(
                 .setSubtitle(reason)
                 .setDescription("Use your biometric to unlock UnifiedComms")
                 .setNegativeButtonText("Cancel")
+                // Using integer values for authenticators in biometric 1.2.0-alpha04
+                // DEVICE_CREDENTIAL = 1, BIOMETRIC_STRONG = 2
                 .setAllowedAuthenticators(
-                    BiometricPrompt.Authenticators.BIOMETRIC_STRONG or
-                        BiometricPrompt.Authenticators.DEVICE_CREDENTIAL
+                    2 or  // BIOMETRIC_STRONG
+                    1      // DEVICE_CREDENTIAL
                 )
                 .build()
 
@@ -85,8 +87,10 @@ class BiometricManagerImpl(
                 }
 
                 override fun onAuthenticationFailed() {
+                    // Use integer constant for ERROR_AUTHENTICATION_FAILED (value = 12)
+                    // Not available in biometric 1.2.0-alpha04
                     cont.resume(AuthenticationResult.Failure(
-                        BiometricPrompt.ERROR_AUTHENTICATION_FAILED,
+                        12,  // ERROR_AUTHENTICATION_FAILED
                         "Authentication failed"
                     ))
                 }
