@@ -2,42 +2,42 @@ package com.unifiedcomms.util
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
-import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
 import java.lang.reflect.Type
-import java.security.KeyStore
 
-object PreferencesManager {
-    private const val PREFS_NAME = "unifiedcomms_prefs"
-    private var instance: PreferencesManager? = null
-    private lateinit var encryptedPrefs: SharedPreferences
-    private val gson = Gson()
+class PreferencesManager private constructor(
+    private val encryptedPrefs: SharedPreferences,
+    private val gson: Gson
+) {
+    companion object {
+        private const val PREFS_NAME = "unifiedcomms_prefs"
+        @Volatile private var instance: PreferencesManager? = null
 
-    fun initialize(context: Context) {
-        if (instance == null) {
-            instance = PreferencesManager(context)
+        fun initialize(context: Context) {
+            if (instance == null) {
+                synchronized(this) {
+                    if (instance == null) {
+                        val masterKey = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
+                        val encryptedPrefs = EncryptedSharedPreferences.create(
+                            PREFS_NAME,
+                            masterKey,
+                            context,
+                            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                        )
+                        instance = PreferencesManager(encryptedPrefs, Gson())
+                    }
+                }
+            }
         }
-    }
 
-    fun getInstance(): PreferencesManager = instance!!
-
-    private constructor(context: Context) {
-        val masterKey = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
-        encryptedPrefs = EncryptedSharedPreferences.create(
-            PREFS_NAME,
-            masterKey,
-            context,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
+        fun getInstance(): PreferencesManager = instance!!
     }
 
     fun putString(key: String, value: String) {
@@ -68,7 +68,7 @@ object PreferencesManager {
         encryptedPrefs.edit().putStringSet(key, value).apply()
     }
 
-    fun getStringSet(key: String): Set<String>? = encryptedPrefs.getStringSet(key)
+    fun getStringSet(key: String): Set<String>? = encryptedPrefs.getStringSet(key, emptySet())
 
     fun <T> putObject(key: String, value: T) {
         putString(key, gson.toJson(value))
@@ -90,23 +90,23 @@ object PreferencesManager {
     fun contains(key: String): Boolean = encryptedPrefs.contains(key)
 }
 
+inline fun <reified T> PreferencesManager.getObject(key: String, default: T): T {
+    val type = object : TypeToken<T>() {}.type
+    return getObject(key, type, default)
+}
+
 object CoroutineProvider {
-    private val mainScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-    private val ioScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val defaultScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    private val mainScope = CoroutineScope(Dispatchers.Main + Job())
+    private val ioScope = CoroutineScope(Dispatchers.IO + Job())
+    private val defaultScope = CoroutineScope(Dispatchers.Default + Job())
 
     val main: CoroutineScope = mainScope
     val io: CoroutineScope = ioScope
     val default: CoroutineScope = defaultScope
 
     fun shutdown() {
-        mainScope.coroutineContext.cancelChildren()
-        ioScope.coroutineContext.cancelChildren()
-        defaultScope.coroutineContext.cancelChildren()
+        mainScope.coroutineContext[Job]?.cancel()
+        ioScope.coroutineContext[Job]?.cancel()
+        defaultScope.coroutineContext[Job]?.cancel()
     }
-}
-
-inline fun <reified T> PreferencesManager.getObject(key: String, default: T): T {
-    val type = object : TypeToken<T>() {}.type
-    return getObject(key, type, default)
 }

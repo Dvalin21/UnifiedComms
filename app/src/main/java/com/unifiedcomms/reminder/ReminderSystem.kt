@@ -47,7 +47,7 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
     }
 
     private fun showNotification(context: Context, eventId: String) {
-        val notification = NotificationCompat.Builder(context, "CHANNEL_ID_REMINDERS")
+        val notification = NotificationCompat.Builder(context, "reminders")
             .setSmallIcon(R.drawable.ic_notification_reminder)
             .setContentTitle("Event Reminder")
             .setContentText("Tap to view event")

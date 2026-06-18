@@ -106,7 +106,7 @@ object AccountColors {
 
     fun getColor(index: Int): AccountColor = palette[index % palette.size]
     fun getColorForAccount(accountId: String): AccountColor {
-        val hash = accountId.hashCode().abs()
+        val hash = abs(accountId.hashCode())
         return palette[hash % palette.size]
     }
 }

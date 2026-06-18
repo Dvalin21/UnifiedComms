@@ -4,12 +4,17 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.unifiedcomms.data.model.AttendeeStatus
+import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.repository.CalendarRepository
 import com.unifiedcomms.data.repository.CalendarRepositoryImpl
+import com.unifiedcomms.data.repository.AccountRepository
+import com.unifiedcomms.data.repository.AccountRepositoryImpl
 import com.unifiedcomms.data.db.dao.CalendarEventDao
+import com.unifiedcomms.data.db.dao.CalendarDao
 import com.unifiedcomms.data.db.UnifiedCommsDatabase
-import com.unifiedcomms.sync.CalendarSyncEngine
 import com.unifiedcomms.sync.CalendarSyncEngineImpl
+import com.unifiedcomms.security.CryptoManager
+import com.unifiedcomms.security.CryptoManagerImpl
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -23,13 +28,17 @@ class InviteActionReceiver : BroadcastReceiver() {
 
         // Manually get dependencies since Hilt is disabled
         val db = UnifiedCommsDatabase.getInstance(context)
-        val calendarDao = db.calendarEventDao()
-        val calendarRepo = CalendarRepositoryImpl(calendarDao)
-        val calendarSync = CalendarSyncEngineImpl(calendarRepo, null, null)
+        val calendarEventDao = db.calendarEventDao()
+        val calendarDao = db.calendarDao()
+        val calendarRepo = CalendarRepositoryImpl(calendarEventDao, calendarDao)
+        val accountRepo = AccountRepositoryImpl(db.accountDao())
+        val crypto = CryptoManagerImpl(context)
+        val calendarSync = CalendarSyncEngineImpl(calendarRepo, accountRepo, crypto, CoroutineScope(Dispatchers.IO))
 
         CoroutineScope(Dispatchers.IO).launch {
             val event = calendarRepo.getEventById(eventId)
             event?.let { e ->
+                val account = accountRepo.getById(e.accountId) ?: return@launch
                 val updatedAttendees = e.attendees.map { attendee ->
                     // Find current user and update their status
                     // For now, just update all (would need user ID matching)
@@ -50,7 +59,7 @@ class InviteActionReceiver : BroadcastReceiver() {
                 )
 
                 calendarRepo.updateEvent(updatedEvent)
-                calendarSync.updateEvent(e.accountId, updatedEvent)
+                calendarSync.updateEvent(account, updatedEvent)
             }
         }
     }

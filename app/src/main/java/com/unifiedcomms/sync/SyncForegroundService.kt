@@ -26,10 +26,13 @@ import com.unifiedcomms.data.db.UnifiedCommsDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
 
 class SyncForegroundService : Service() {
 
     private lateinit var syncManager: SyncManager
+    private val _syncProgress = MutableStateFlow<Int>(0)
+    val syncProgress = _syncProgress
 
     private val notificationId = 1001
 
@@ -49,10 +52,10 @@ class SyncForegroundService : Service() {
         val taskRepo = TaskRepositoryImpl(taskDao, taskListDao)
         val contactRepo = ContactRepositoryImpl(contactDao)
 
-        val emailSync = EmailSyncEngineImpl(emailRepo, null, null)
-        val calendarSync = CalendarSyncEngineImpl(calendarRepo, null, null)
-        val taskSync = TaskSyncEngineImpl(taskRepo, null, null)
-        val contactSync = ContactSyncEngineImpl(contactRepo, null, null)
+        val emailSync = EmailSyncEngineImpl(emailRepo, null, null, CoroutineScope(Dispatchers.IO))
+        val calendarSync = CalendarSyncEngineImpl(calendarRepo, null, null, CoroutineScope(Dispatchers.IO))
+        val taskSync = TaskSyncEngineImpl(taskRepo, null, null, CoroutineScope(Dispatchers.IO))
+        val contactSync = ContactSyncEngineImpl(contactRepo, null, null, CoroutineScope(Dispatchers.IO))
 
         syncManager = SyncManager(emailSync, calendarSync, taskSync, contactSync)
 
@@ -68,10 +71,11 @@ class SyncForegroundService : Service() {
             NotificationHelper.showSyncNotification(this@SyncForegroundService, "Starting sync...", 0)
             syncManager.syncAllAccounts()
             syncManager.syncProgress.onEach { progress ->
-                if (progress == 100) {
+                _syncProgress.value = progress
+                if (progress.progress == 100) {
                     NotificationHelper.showSyncNotification(this@SyncForegroundService, "Sync completed", 100)
                 } else {
-                    NotificationHelper.showSyncNotification(this@SyncForegroundService, "Syncing... $progress%", progress)
+                    NotificationHelper.showSyncNotification(this@SyncForegroundService, "Syncing... ${progress.progress}%", progress.progress)
                 }
             }.launchIn(this@SyncForegroundService)
 

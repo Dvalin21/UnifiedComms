@@ -19,19 +19,17 @@ import kotlinx.datetime.Instant
 
 object NotificationHelper {
 
-    companion object {
-        const val CHANNEL_ID_EMAIL = "email"
-        const val CHANNEL_ID_CALENDAR = "calendar"
-        const val CHANNEL_ID_TASKS = "tasks"
-        const val CHANNEL_ID_MESSAGES = "messages"
-        const val CHANNEL_ID_REMINDERS = "reminders"
-        const val CHANNEL_ID_SYNC = "sync"
-        const val CHANNEL_ID_SECURITY = "security"
-    }
+    const val CHANNEL_ID_EMAIL = "email"
+    const val CHANNEL_ID_CALENDAR = "calendar"
+    const val CHANNEL_ID_TASKS = "tasks"
+    const val CHANNEL_ID_MESSAGES = "messages"
+    const val CHANNEL_ID_REMINDERS = "reminders"
+    const val CHANNEL_ID_SYNC = "sync"
+    const val CHANNEL_ID_SECURITY = "security"
 
     fun createNotificationChannels(context: Context) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channels = listOf(
                 NotificationChannel(CHANNEL_ID_EMAIL, "Email", NotificationManager.IMPORTANCE_HIGH).apply {
@@ -62,16 +60,16 @@ object NotificationHelper {
                     lightColor = Color.MAGENTA
                     lockscreenVisibility = Notification.VISIBILITY_PRIVATE
                 },
-                NotificationChannel(CHANNEL_ID_REMINDERS, "Reminders", NotificationManager.IMPORTANCE_MAX).apply {
+                NotificationChannel(
+                    CHANNEL_ID_REMINDERS,
+                    "Reminders",
+                    NotificationManager.IMPORTANCE_MAX
+                ).apply {
                     description = "Full-screen calendar reminders"
                     enableVibration(true)
                     vibrationPattern = longArrayOf(0, 1000, 500, 1000)
                     lightColor = Color.RED
                     lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-                    audioAttributes = AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
                 },
                 NotificationChannel(CHANNEL_ID_SYNC, "Sync", NotificationManager.IMPORTANCE_LOW).apply {
                     description = "Background sync status"
@@ -86,7 +84,7 @@ object NotificationHelper {
                     lockscreenVisibility = Notification.VISIBILITY_PRIVATE
                 }
             )
-            
+
             channels.forEach { manager.createNotificationChannel(it) }
         }
     }
@@ -105,7 +103,7 @@ object NotificationHelper {
             putExtra("navigate_to", "email/$accountId/INBOX")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
-        
+
         val pendingIntent = PendingIntent.getActivity(
             context, messageId.hashCode(), intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
@@ -140,12 +138,12 @@ object NotificationHelper {
             putExtra("navigate_to", "event_detail/$eventId")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
-        
+
         val fullScreenIntent = Intent(context, com.unifiedcomms.reminder.FullScreenReminderActivity::class.java).apply {
             putExtra("event_id", eventId)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        
+
         val fullScreenPendingIntent = PendingIntent.getActivity(
             context, eventId.hashCode(), fullScreenIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
@@ -166,7 +164,6 @@ object NotificationHelper {
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .setOngoing(true)
-            .setVibrationPattern(longArrayOf(0, 1000, 500, 1000))
             .build()
 
         NotificationManagerCompat.from(context).notify(eventId.hashCode(), notification)
@@ -182,7 +179,7 @@ object NotificationHelper {
             putExtra("navigate_to", "task_detail/$taskId")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
-        
+
         val pendingIntent = PendingIntent.getActivity(
             context, taskId.hashCode(), intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
@@ -212,7 +209,7 @@ object NotificationHelper {
             putExtra("navigate_to", "conversation/$conversationId")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
-        
+
         val pendingIntent = PendingIntent.getActivity(
             context, conversationId.hashCode(), intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
@@ -245,7 +242,7 @@ object NotificationHelper {
             putExtra("navigate_to", "event_detail/$eventId")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
-        
+
         val acceptIntent = Intent(context, InviteActionReceiver::class.java).apply {
             putExtra("event_id", eventId)
             putExtra("response", AttendeeStatus.ACCEPTED.ordinal)
@@ -330,7 +327,7 @@ object NotificationHelper {
             putExtra("navigate_to", "settings")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
-        
+
         val pendingIntent = PendingIntent.getActivity(
             context, 0, intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT

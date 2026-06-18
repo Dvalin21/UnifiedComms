@@ -16,6 +16,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.datetime.Clock
 
 class CalendarSyncEngineImpl(
     private val calendarRepo: CalendarRepository,
@@ -31,10 +32,10 @@ class CalendarSyncEngineImpl(
         return withContext(Dispatchers.IO) {
             try {
                 updateProgress(account.id, null, SyncStage.CONNECTING, 0, 0)
-                
+
                 val config = account.serverConfig
                 val auth = crypto.decryptAuthConfig(account.authConfig)
-                
+
                 val calendars = getCalendarsFromServer(account)
                 updateProgress(account.id, null, SyncStage.LISTING_FOLDERS, 0, calendars.size)
 
@@ -51,7 +52,7 @@ class CalendarSyncEngineImpl(
 
                 updateProgress(account.id, null, SyncStage.COMPLETED, totalSynced, totalSynced)
                 SyncResult.success(totalSynced, newItems, updatedItems)
-                
+
             } catch (e: Exception) {
                 updateProgress(account.id, null, SyncStage.ERROR, 0, 0)
                 SyncResult.failure(e.message ?: "Calendar sync failed")
@@ -63,7 +64,7 @@ class CalendarSyncEngineImpl(
         return withContext(Dispatchers.IO) {
             try {
                 updateProgress(account.id, cal.name, SyncStage.FETCHING_HEADERS, 0, 0)
-                
+
                 val events = fetchEventsFromServer(account, cal.serverId)
                 var synced = 0
                 val newItems = mutableListOf<String>()
@@ -86,7 +87,7 @@ class CalendarSyncEngineImpl(
                             recurrenceRule = event.recurrenceRule,
                             status = event.status,
                             reminders = event.reminders,
-                            updatedAt = kotlinx.datetime.Clock.System.now(),
+                            updatedAt = Clock.System.now(),
                             etag = event.etag,
                             needsSync = false
                         ))
@@ -98,7 +99,7 @@ class CalendarSyncEngineImpl(
                 calendarRepo.updateLastSynced(account.id, System.currentTimeMillis())
                 updateProgress(account.id, cal.name, SyncStage.COMPLETED, synced, synced)
                 SyncResult.success(synced, newItems, updatedItems)
-                
+
             } catch (e: Exception) {
                 updateProgress(account.id, cal.name, SyncStage.ERROR, 0, 0)
                 SyncResult.failure(e.message ?: "Calendar sync failed")
@@ -189,8 +190,6 @@ class CalendarSyncEngineImpl(
     }
 
     private fun updateProgress(accountId: String, folder: String?, stage: SyncStage, current: Int, total: Int) {
-        _syncProgress.update { progress ->
-            progress + (accountId to SyncProgress(accountId, folder, stage, current, total))
-        }
+        _syncProgress.value = _syncProgress.value + (accountId to SyncProgress(accountId, folder, stage, current, total))
     }
 }

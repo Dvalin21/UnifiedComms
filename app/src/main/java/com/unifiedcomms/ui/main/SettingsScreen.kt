@@ -1,6 +1,7 @@
 package com.unifiedcomms.ui.main
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,6 +9,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.weight
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Divider
@@ -16,8 +24,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.PasswordVisualTransformation
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForwardIos
@@ -44,6 +57,7 @@ import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MarkEmailUnread
@@ -68,21 +82,22 @@ import androidx.compose.material.icons.filled.Today
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.material3.Switch
 import com.unifiedcomms.data.model.Account
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     viewModel: MainViewModel,
@@ -100,8 +115,13 @@ fun SettingsScreen(
             )
         }
     ) { innerPadding ->
-        androidx.compose.material3.ScrollableColumn(
-            modifier = Modifier.padding(innerPadding).padding(16.dp).fillMaxSize(),
+        val scrollState = rememberScrollState()
+        Column(
+            modifier = Modifier
+                .padding(innerPadding)
+                .padding(16.dp)
+                .fillMaxSize()
+                .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             // Accounts section
@@ -300,6 +320,7 @@ fun SettingsScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsSection(
     title: String,
@@ -309,7 +330,7 @@ fun SettingsSection(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        color = MaterialTheme.colorScheme.surfaceContainerLow
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -326,13 +347,14 @@ fun SettingsSection(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingRow(
     title: String,
     subtitle: String,
     icon: androidx.compose.material.icons.filled.ImageVector,
     onClick: () -> Unit = {},
-    trailing: @Composable () -> Unit = { Spacer(modifier = Modifier.width(0.dp)) },
+    trailing: () -> Unit = { },
     textColor: Color = MaterialTheme.colorScheme.onSurface
 ) {
     Row(
@@ -352,6 +374,7 @@ fun SettingRow(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AccountSettingsRow(
     account: Account,
@@ -372,7 +395,7 @@ fun AccountSettingsRow(
             modifier = Modifier
                 .width(12.dp)
                 .fillMaxHeight()
-                .background(Color(color.container), RoundedCornerShape(6.dp))
+                .background(color.container, RoundedCornerShape(6.dp))
         )
 
         Spacer(modifier = Modifier.width(16.dp))
@@ -399,6 +422,7 @@ fun AccountSettingsRow(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddAccountScreen(
     viewModel: MainViewModel,
@@ -419,8 +443,13 @@ fun AddAccountScreen(
             )
         }
     ) { innerPadding ->
-        androidx.compose.material3.ScrollableColumn(
-            modifier = Modifier.padding(innerPadding).padding(24.dp).fillMaxSize(),
+        val scrollState = rememberScrollState()
+        Column(
+            modifier = Modifier
+                .padding(innerPadding)
+                .padding(24.dp)
+                .fillMaxSize()
+                .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             Text(text = "Choose Account Type", fontSize = 20.sp, fontWeight = FontWeight.Bold)
@@ -438,7 +467,7 @@ fun AddAccountScreen(
             if (accountType != AccountSetupType.GOOGLE && accountType != AccountSetupType.OUTLOOK && accountType != AccountSetupType.YAHOO) {
                 Divider()
                 Text(text = "Server Settings", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                androidx.compose.material3.TextField(
+                TextField(
                     value = serverUrl,
                     onValueChange = { serverUrl = it },
                     label = { Text("Server URL (e.g., mail.example.com)") },
@@ -449,30 +478,30 @@ fun AddAccountScreen(
 
             Divider()
             Text(text = "Account Details", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            androidx.compose.material3.TextField(
+            TextField(
                 value = name,
                 onValueChange = { name = it },
                 label = { Text("Display Name (optional)") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
-            androidx.compose.material3.TextField(
+            TextField(
                 value = email,
                 onValueChange = { email = it },
                 label = { Text("Email Address *") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                keyboardOptions = androidx.compose.ui.text.input.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Email)
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
             )
 
             if (accountType.requiresPassword) {
-                androidx.compose.material3.TextField(
+                TextField(
                     value = password,
                     onValueChange = { password = it },
                     label = { Text("Password / App Password *") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    visualTransformation = androidx.compose.material3.PasswordVisualTransformation()
+                    visualTransformation = PasswordVisualTransformation()
                 )
             }
 
@@ -529,7 +558,7 @@ fun AddAccountScreen(
                     onComplete()
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = email.isNotBlank() && !isLoading && (accountType.requiresPassword.not() || password.isNotBlank())
+                enabled = email.isNotBlank() && !isLoading && (!accountType.requiresPassword || password.isNotBlank())
             ) {
                 if (isLoading) {
                     androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(20.dp).padding(end = 8.dp))
@@ -551,6 +580,7 @@ enum class AccountSetupType(val requiresPassword: Boolean) {
     GENERIC_CALDAV(true)
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AccountTypeCard(
     type: AccountSetupType,
@@ -576,7 +606,10 @@ fun AccountTypeCard(
                 if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
                 RoundedCornerShape(12.dp)
             )
-            .border(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent, 2.dp, RoundedCornerShape(12.dp)),
+            .border(
+                androidx.compose.foundation.BorderStroke(2.dp, if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent),
+                RoundedCornerShape(12.dp)
+            ),
         onClick = onClick
     ) {
         Row(
@@ -586,7 +619,7 @@ fun AccountTypeCard(
             Surface(
                 modifier = Modifier.size(48.dp),
                 shape = RoundedCornerShape(12.dp),
-                containerColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest
+                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest
             ) {
                 Icon(
                     imageVector = icon,
@@ -607,6 +640,7 @@ fun AccountTypeCard(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AccountSettingsScreen(
     viewModel: MainViewModel,
@@ -625,15 +659,20 @@ fun AccountSettingsScreen(
             )
         }
     ) { innerPadding ->
-        androidx.compose.material3.ScrollableColumn(
-            modifier = Modifier.padding(innerPadding).padding(16.dp).fillMaxSize(),
+        val scrollState = rememberScrollState()
+        Column(
+            modifier = Modifier
+                .padding(innerPadding)
+                .padding(16.dp)
+                .fillMaxSize()
+                .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Account header
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                containerColor = Color(color.container)
+                color = color.container
             ) {
                 Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row {
@@ -641,12 +680,12 @@ fun AccountSettingsScreen(
                             modifier = Modifier.size(64.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(text = account?.name?.first()?.uppercase() ?: "?", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color(color.onContainer))
+                            Text(text = account?.name?.first()?.uppercase() ?: "?", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = color.onContainer)
                         }
                         Spacer(modifier = Modifier.width(16.dp))
                         Column {
-                            Text(text = account?.name ?: "", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(color.onContainer))
-                            Text(text = account?.email ?: "", fontSize = 14.sp, color = Color(color.onContainer).copy(alpha = 0.8f))
+                            Text(text = account?.name ?: "", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = color.onContainer)
+                            Text(text = account?.email ?: "", fontSize = 14.sp, color = color.onContainer.copy(alpha = 0.8f))
                         }
                     }
                 }
