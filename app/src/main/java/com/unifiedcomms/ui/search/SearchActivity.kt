@@ -3,9 +3,10 @@ package com.unifiedcomms.ui.search
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Modifier
+import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -56,8 +57,8 @@ fun SearchScreen() {
     TopAppBar(
         title = { SearchField(queryState) },
         navigationIcon = {
-            IconButton(onClick = { (context as? android.app.Activity)?.finish() }) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+            androidx.compose.material3.IconButton(onClick = { (context as? android.app.Activity)?.finish() }) {
+                androidx.compose.material3.Icon(Icons.Default.ArrowBack, contentDescription = "Back")
             }
         }
     )
@@ -67,10 +68,9 @@ fun SearchScreen() {
 fun SearchField(queryState: androidx.compose.runtime.MutableState<String>) {
     val query = mutableStateOf(queryState.value)
     queryState.value = query.value
-    TextField(
-        value = query.value,
-        onValueChange = { newValue -> query.value = newValue },
-        placeholder = { Text("Search emails, events, tasks, messages") },
+    androidx.compose.material3.TextField(
+        value = query.value as String,
+        onValueChange = { newValue: String -> query.value = newValue },
         modifier = Modifier
             .fillMaxWidth()
             .height(56.dp),
