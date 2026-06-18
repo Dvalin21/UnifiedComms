@@ -36,7 +36,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Today
-import androidx.compose.material.icons.rounded.Save
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -278,7 +278,7 @@ fun CreateTaskScreen(
             TopAppBar(
                 title = { Text("Create Task") },
                 navigationIcon = { IconButton(onClick = onSave) { Icon(Icons.Default.ArrowBack, contentDescription = "Cancel") } },
-                actions = { IconButton(onClick = onSave) { Icon(Save, contentDescription = "Save") } }
+                actions = { IconButton(onClick = onSave) { Icon(Icons.Filled.Save, contentDescription = "Save") } }
             )
         }
     ) { innerPadding ->

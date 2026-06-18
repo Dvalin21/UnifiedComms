@@ -4,8 +4,10 @@ import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.model.CalendarEvent
 import com.unifiedcomms.data.model.Calendar
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 
 interface CalendarSyncEngine {
+    val syncProgress: StateFlow<Map<String, SyncProgress>>
     suspend fun syncAccount(account: Account): SyncResult
     suspend fun syncCalendar(account: Account, calendar: Calendar): SyncResult
     suspend fun fetchEvent(account: Account, calendarId: String, uid: String): CalendarEvent?
@@ -16,17 +18,4 @@ interface CalendarSyncEngine {
     fun observeSyncProgress(accountId: String): Flow<SyncProgress>
     suspend fun testConnection(account: Account): ConnectionTestResult
     suspend fun getCalendars(account: Account): List<Calendar>
-}
-
-data class CreateResult(
-    val success: Boolean,
-    val serverId: String? = null,
-    val uid: String? = null,
-    val etag: String? = null,
-    val errorMessage: String? = null
-) {
-    companion object {
-        fun success(serverId: String, uid: String, etag: String? = null): CreateResult = CreateResult(true, serverId, uid, etag)
-        fun failure(error: String): CreateResult = CreateResult(false, errorMessage = error)
-    }
 }

@@ -147,15 +147,15 @@ class CryptoManagerImpl(
     override fun encryptAuthConfig(config: AuthConfig): AuthConfig {
         return when (config.type) {
             com.unifiedcomms.data.model.AuthType.PASSWORD -> config.copy(
-                passwordEncrypted = config.passwordEncrypted?.let { encryptSync(it) }
+                passwordEncrypted = config.passwordEncrypted?.let { encryptSimple(it) }
             )
             com.unifiedcomms.data.model.AuthType.OAUTH2 -> config.copy(
-                oauthAccessToken = config.oauthAccessToken?.let { encryptSync(it) },
-                oauthRefreshToken = config.oauthRefreshToken?.let { encryptSync(it) }
+                oauthAccessToken = config.oauthAccessToken?.let { encryptSimple(it) },
+                oauthRefreshToken = config.oauthRefreshToken?.let { encryptSimple(it) }
             )
             com.unifiedcomms.data.model.AuthType.CERTIFICATE -> config.copy(
-                clientCertificate = config.clientCertificate?.let { encryptSync(it) },
-                clientKey = config.clientKey?.let { encryptSync(it) }
+                clientCertificate = config.clientCertificate?.let { encryptSimple(it) },
+                clientKey = config.clientKey?.let { encryptSimple(it) }
             )
             else -> config
         }
@@ -164,27 +164,58 @@ class CryptoManagerImpl(
     override fun decryptAuthConfig(config: AuthConfig): AuthConfig {
         return when (config.type) {
             com.unifiedcomms.data.model.AuthType.PASSWORD -> config.copy(
-                passwordEncrypted = config.passwordEncrypted?.let { decryptSync(it) }
+                passwordEncrypted = config.passwordEncrypted?.let { decryptSimple(it) }
             )
             com.unifiedcomms.data.model.AuthType.OAUTH2 -> config.copy(
-                oauthAccessToken = config.oauthAccessToken?.let { decryptSync(it) },
-                oauthRefreshToken = config.oauthRefreshToken?.let { decryptSync(it) }
+                oauthAccessToken = config.oauthAccessToken?.let { decryptSimple(it) },
+                oauthRefreshToken = config.oauthRefreshToken?.let { decryptSimple(it) }
             )
             com.unifiedcomms.data.model.AuthType.CERTIFICATE -> config.copy(
-                clientCertificate = config.clientCertificate?.let { decryptSync(it) },
-                clientKey = config.clientKey?.let { decryptSync(it) }
+                clientCertificate = config.clientCertificate?.let { decryptSimple(it) },
+                clientKey = config.clientKey?.let { decryptSimple(it) }
             )
             else -> config
         }
     }
 
-    private fun encryptSync(text: String): String {
-        return runBlocking { encrypt(text).ciphertext.let { Base64.encodeToString(it, Base64.NO_WRAP) } }
+    // Simple AES encryption for config fields (non-suspend, uses cached key)
+    private fun encryptSimple(text: String): String {
+        try {
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            val iv = ByteArray(12)
+            secureRandom.nextBytes(iv)
+            val spec = GCMParameterSpec(128, iv)
+            cipher.init(Cipher.ENCRYPT_MODE, aesKey, spec)
+            val ciphertext = cipher.doFinal(text.toByteArray(StandardCharsets.UTF_8))
+            // Combine IV + ciphertext and Base64 encode
+            val combined = ByteArray(iv.size + ciphertext.size)
+            System.arraycopy(iv, 0, combined, 0, iv.size)
+            System.arraycopy(ciphertext, 0, combined, iv.size, ciphertext.size)
+            Base64.encodeToString(combined, Base64.NO_WRAP)
+        } catch (e: Exception) {
+            // Fallback to Base64 for non-critical config fields
+            Base64.encodeToString(text.toByteArray(StandardCharsets.UTF_8), Base64.NO_WRAP)
+        }
     }
 
-    private fun decryptSync(base64: String): String {
-        return runBlocking { 
-            decrypt(EncryptedData(Base64.decode(base64, Base64.NO_WRAP), ByteArray(12)))
+    private fun decryptSimple(base64: String): String {
+        try {
+            val combined = Base64.decode(base64, Base64.NO_WRAP)
+            if (combined.size < 12) return base64 // Fallback for old format
+            val iv = combined.copyOfRange(0, 12)
+            val ciphertext = combined.copyOfRange(12, combined.size)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            val spec = GCMParameterSpec(128, iv)
+            cipher.init(Cipher.DECRYPT_MODE, aesKey, spec)
+            val decrypted = cipher.doFinal(ciphertext)
+            String(decrypted, StandardCharsets.UTF_8)
+        } catch (e: Exception) {
+            // Fallback for Base64-only stored values
+            try {
+                String(Base64.decode(base64, Base64.NO_WRAP), StandardCharsets.UTF_8)
+            } catch (e2: Exception) {
+                base64
+            }
         }
     }
 

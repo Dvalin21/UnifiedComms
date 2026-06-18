@@ -3,8 +3,10 @@ package com.unifiedcomms.sync
 import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.model.UnifiedContact
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 
 interface ContactSyncEngine {
+    val syncProgress: StateFlow<Map<String, SyncProgress>>
     suspend fun syncAccount(account: Account): SyncResult
     suspend fun fetchContact(account: Account, serverId: String): UnifiedContact?
     suspend fun createContact(account: Account, contact: UnifiedContact): CreateResult

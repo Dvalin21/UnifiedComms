@@ -17,6 +17,7 @@ import com.unifiedcomms.data.model.ReminderMethod
 import com.unifiedcomms.data.repository.CalendarRepository
 import com.unifiedcomms.data.repository.CalendarRepositoryImpl
 import com.unifiedcomms.data.db.dao.CalendarEventDao
+import com.unifiedcomms.data.db.dao.CalendarDao
 import com.unifiedcomms.data.db.UnifiedCommsDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -78,7 +79,8 @@ class FullScreenReminderActivity : Activity() {
         // Initialize dependencies manually since Hilt is disabled
         val db = UnifiedCommsDatabase.getInstance(this)
         val calendarDao = db.calendarEventDao()
-        calendarRepo = CalendarRepositoryImpl(calendarDao)
+        val calDao = db.calendarDao()
+        calendarRepo = CalendarRepositoryImpl(calendarDao, calDao)
 
         // Full-screen, over lock screen
         window.addFlags(
