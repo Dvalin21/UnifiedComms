@@ -3,6 +3,7 @@ package com.unifiedcomms.ui.search
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Modifier
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Icon
@@ -22,7 +23,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -54,7 +54,7 @@ fun SearchScreen() {
     val context = LocalContext.current
 
     TopAppBar(
-        title = { SearchField(queryState, context) },
+        title = { SearchField(queryState) },
         navigationIcon = {
             IconButton(onClick = { (context as? android.app.Activity)?.finish() }) {
                 Icon(Icons.Default.ArrowBack, contentDescription = "Back")
@@ -64,23 +64,17 @@ fun SearchScreen() {
 }
 
 @Composable
-fun SearchField(queryState: androidx.compose.runtime.SnapshotState<String>, context: androidx.compose.ui.platform.LocalContext) {
-    var query by remember { mutableStateOf(queryState.value) }
-    queryState.value = query
+fun SearchField(queryState: androidx.compose.runtime.MutableState<String>) {
+    val query = mutableStateOf(queryState.value)
+    queryState.value = query.value
     TextField(
-        value = query,
-        onValueChange = { query = it },
+        value = query.value,
+        onValueChange = { newValue -> query.value = newValue },
         placeholder = { Text("Search emails, events, tasks, messages") },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp),
         singleLine = true,
-        leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
-        trailingIcon = {
-            if (query.isNotEmpty()) {
-                IconButton(onClick = { query = "" }) {
-                    Icon(Icons.Default.Close, contentDescription = "Clear")
-                }
-            }
-        },
         containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
     )
 }

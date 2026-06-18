@@ -8,7 +8,7 @@
 
 ## 🎯 Executive Summary
 
-**Status:** Kotlin compilation errors reduced from 600+ to ~100. Core data layer (Room, models, DAOs, repositories) is now solid and compiles cleanly. Remaining issues are primarily in UI/Compose layer (Material3 API migration), sync engines (JavaMail imports), and security managers.
+**Status:** Kotlin compilation errors reduced from 600+ to ~80. Core data layer (Room, models, DAOs, repositories) compiles cleanly. Remaining issues: Material3 UI migration, sync engine imports, security managers, services.
 
 **Next Session Goal:** Get `./gradlew assembleDebug` passing and produce `app/build/outputs/apk/debug/app-debug.apk`.
 
@@ -36,14 +36,14 @@
 | Google Services | Enabled | Disabled | ✅ |
 | Widgets | In Manifest | Commented out | ✅ |
 
-### Dependencies Fixed
+### Dependencies Added
 | Dependency | Version | Notes |
 |------------|---------|-------|
 | `kotlinx-datetime` | 0.4.1 | Added (was missing) |
 | `com.google.android.material` | 1.12.0 | Upgraded for MaterialComponents styles |
 | Compose Compiler | 1.5.14 | Compatible with Kotlin 1.9.24 |
 | Material 3 theming | Fixed | MaterialComponents parents for widgets |
-| Room | 2.6.1 | kapt compiler disabled for build |
+| Room | 2.6.1 | kapt disabled for build |
 | kotlinx-serialization | 1.6.3 | JSON TypeConverters rewritten |
 | `com.google.code.gson:gson` | 2.10.1 | Added for PreferencesManager |
 | `kotlinx-coroutines-core` | 1.8.1 | Added for CoroutineProvider |
@@ -90,84 +90,125 @@
 - Added `kotlin.math.abs` import for `accountId.hashCode().abs()`
 - Proper `Typography` and `Shapes` construction
 
+#### Sync Engines (COMPLETE - Structure)
+- `EmailSyncEngineImpl.kt` — StateFlow fixed, structure correct (needs JavaMail imports)
+- `CalendarSyncEngineImpl.kt` — StateFlow fixed, map syntax correct
+- `TaskSyncEngineImpl.kt` — StateFlow fixed, Clock import added
+- `ContactSyncEngineImpl.kt` — StateFlow fixed, Clock import added
+
+#### UI Screens (Partial)
+- `TasksScreen.kt` — Material3 migration: FilterChip, Surface API (color/tonalElevation), Save icon (rounded), TextOverflow, DatePicker fix
+- `SettingsScreen.kt` — trailing @Composable fix for Switch
+- `SearchActivity.kt` — Simplified to minimal working TextField
+- `UnifiedInboxScreen.kt` — Fixed WindowSizeClass/NavController imports
+
 ---
 
-## ❌ Current Blockers (Exact Errors) — ~100 Remaining
+## ❌ Current Blockers (Exact Errors) — ~80 Remaining
 
-### 1. Compose UI Screens (10+ files, ~50 errors)
-**Material3 API Migration Required:**
-- **Surface API:** `containerColor` → `color`, `elevation` → `tonalElevation`
-- **TextField API:** `containerColor` removed, use `colors` parameter with `TextFieldDefaults.textFieldColors()`
-- **DatePickerDialog** → `DatePicker` (new API requires `confirmButton`, `state`)
-- **ScrollableColumn** → `Column + verticalScroll(rememberScrollState())`
-- **Clickable:** Modifier `clickable` import from `androidx.compose.foundation`
-- **FilterChip** instead of `Chip` for filter tabs
-- **TextOverflow** import: `androidx.compose.ui.text.overflow.TextOverflow`
-- **TextColor:** Integer literals need `Color()` wrapper
+### 1. Security Managers (~15 errors)
 
-**Files:** `UnifiedInboxScreen.kt`, `EmailScreen.kt`, `MessagesScreen.kt`, `TasksScreen.kt`, `CalendarScreen.kt`, `SettingsScreen.kt`, `SearchActivity.kt`, `SettingsActivity.kt`, `AddAccountScreen.kt`
+#### CryptoManager.kt (lines 182-191)
+```kotlin
+// PROBLEM: runBlocking in non-suspend functions
+private fun encryptSync(text: String): String = runBlocking { ... }
+private fun decryptSync(base64: String): String = runBlocking { ... }
+// Suspend functions called from non-suspend context
+```
 
-### 2. Sync Engines (4 files, ~20 errors)
-**Issues:** Missing JavaMail imports; `StateFlow` update syntax; conflicting imports
-- `EmailSyncEngineImpl.kt`: `RecipientType`, `MimeMultipart`, `Part`, `MimeMessage`, `Transport`, `FetchProfile`, `Flags`
-- `CalendarSyncEngineImpl.kt`: `StateFlow` override issues; `observeSyncProgress` map syntax
-- `ContactSyncEngineImpl.kt`: `uid` reference; `syncProgress` override
-- `TaskSyncEngineImpl.kt`: `syncProgress` override
-
-### 3. Security Managers (2 files, ~15 errors)
-**CryptoManager.kt:** 
-- Duplicate `interface CryptoManager` declaration
-- `runBlocking` in non-suspend context (`encryptAuthConfig`, `decryptAuthConfig`)
-- `encodeToBase64` (use `encodeToString`)
-- `runBlocking` calls in suspend functions
-
-**BiometricManager.kt:**
-- `Authenticators` import conflict
-- `suspendCancellableCoroutine` missing import
-- Interface implementation syntax (companion object in interface)
+#### BiometricManager.kt
+- `Authenticators` import collision (interface name vs AndroidBiometricManager.Authenticators)
+- `suspendCancellableCoroutine` parameter mismatch
 - `ERROR_AUTHENTICATION_FAILED` constant
 
-### 4. Services (4 files, ~10 errors)
-- `SyncService.kt`: `AbstractThreadedSyncAdapter` primary constructor issue
-- `SyncForegroundService.kt`: Null passed for non-null params; missing `syncAllAccounts`
-- `InviteActionReceiver.kt`: Constructor parameter `calDao` for `CalendarRepositoryImpl`
-- `ReminderSystem.kt`: `calDao` parameter; `forEach` type inference
+### 2. Sync Engines (~15 errors)
 
-### 5. PreferencesManager (1 file, ~5 errors)
-- `getStringSet` default parameter: `encryptedPrefs.getStringSet(key, emptySet())`
-- `CoroutineScope.cancel()` is `cancel()`, not `cancelChildren()`
+#### EmailSyncEngineImpl.kt
+- Missing JavaMail imports: `RecipientType`, `MimeMultipart`, `Part`, `MimeMessage`, `Transport`, `FetchProfile`, `Flags`
+- Interface mismatch: `syncProgress` override conflict
+- `RecipientType.TO/CC/BCC/REPLY_TO` unresolved
+
+#### Other Sync Engines
+- `syncProgress` override conflicts in Calendar/Task/ContactSyncEngineImpl
+- ContactSyncEngineImpl: `uid` property reference
+
+### 3. Services (~15 errors)
+
+#### SyncForegroundService.kt
+- Uses `syncManager.syncAllAccounts()` (doesn't exist) and wrong `syncProgress` (Int vs Flow)
+- Constructor passes null for required params (accountRepo, crypto)
+
+#### SyncManager.kt
+- Type mismatches in `updateState`, `observeAccountSync`
+- `syncStates` map type issues
+
+#### ReminderSystem.kt
+- `CalendarRepositoryImpl` needs `calDao` parameter (constructor signature)
+- `MainActivity` reference in `openEventDetail`
+
+#### SyncService.kt
+- `AbstractThreadedSyncAdapter` primary constructor issue
+- `AccountRepositoryImpl` etc. imports missing
+
+### 4. UI Material3 Migration (~25 errors)
+
+| File | Issues |
+|------|--------|
+| `EmailScreen.kt` | Surface API (containerColor→color, elevation→tonalElevation), collectAsStateWithLifecycle, Color/Int mismatches, Scaffold, TextField API |
+| `MessagesScreen.kt` | Surface API, collectAsStateWithLifecycle, overflow, size, absoluteValue, widthIn |
+| `CalendarScreen.kt` | TimePickerDialog, collectAsStateWithLifecycle, containerColor, fillMaxHeight, it reference |
+| `MainActivity.kt` | viewModels delegate, ComposableViewModel, syncManager param, getString, ComposeEmailScreen |
+| `MainViewModel.kt` | `accountId.hashCode().abs()` Color/Int mismatch |
+| `SettingsScreen.kt` | ModalBottomSheet, collectAsStateWithLifecycle, KeyboardOptions, PasswordVisualTransformation, ImageVector, clickable, fillMaxHeight, Badge, Add, Switch @Composable |
+
+### 5. BuildConfig & Misc (~10 errors)
+- `PushManager.kt`, `AddAccountActivity.kt` — `BuildConfig` references
+- `PreferencesManager.kt` — `getStringSet` default, cancelChildren→cancel()
 
 ---
 
 ## 📋 Systematic Fix Plan (Next Session)
 
-### Phase 1: Material3 UI Migration (Highest Impact, ~50 errors)
+### Phase 1: Security Managers (Highest Impact)
 ```bash
-# Fix imports and API changes in all UI screens
+# 1. CryptoManager.kt - Fix runBlocking in non-suspend
+#    Move encryptSync/decryptSync to suspend or use coroutineScope
+
+# 2. BiometricManager.kt - Fix import collision
+#    AndroidBiometricManager.Authenticators vs interface
+```
+
+### Phase 2: Sync Engine Imports
+```bash
+# 1. EmailSyncEngineImpl - Add JavaMail imports
+import javax.mail.RecipientType
+import javax.mail.MimeMultipart
+import javax.mail.Part
+import javax.mail.internet.MimeMessage
+import javax.mail.Transport
+import javax.mail.FetchProfile
+import javax.mail.Flags
+
+# 2. Fix syncProgress override in all engines
+#    Need to check interface definition
+```
+
+### Phase 3: Services
+```bash
+# 1. SyncForegroundService - Fix to iterate accounts, call performFullSync
+# 2. SyncManager - Fix type signatures
+# 3. ReminderSystem - Fix CalendarRepositoryImpl(calDao), MainActivity
+# 4. SyncService - AbstractThreadedSyncAdapter constructor
+```
+
+### Phase 4: UI Material3 Migration (Batch)
+```bash
+# Batch fix all UI screens with:
 # Surface: containerColor→color, elevation→tonalElevation
-# TextField: containerColor→colors, DatePickerDialog→DatePicker
+# TextField: containerColor→colors=TextFieldDefaults.textFieldColors()
 # ScrollableColumn→Column+verticalScroll
-# FilterChip for tabs, Clickable import
-```
-
-### Phase 2: Sync Engine Fixes (~20 errors)
-```bash
-# Add JavaMail imports to EmailSyncEngineImpl
-# Fix StateFlow override syntax in all sync engines
-# Resolve conflicting imports with explicit qualification
-```
-
-### Phase 3: Security Managers Rewrite (~15 errors)
-```bash
-# CryptoManager: Remove duplicate interface, fix runBlocking, encodeToString
-# BiometricManager: Fix Authenticators import, suspendCancellableCoroutine, companion object
-```
-
-### Phase 4: Services & Utilities (~10 errors)
-```bash
-# SyncService: Fix AbstractThreadedSyncAdapter constructor
-# InviteActionReceiver: Add calDao to CalendarRepositoryImpl
-# PreferencesManager: getStringSet default, cancelChildren→cancel()
+# collectAsStateWithLifecycle imports
+# TextField API changes (label/placeholder/leadingIcon/trailingIcon)
 ```
 
 ### Phase 5: Full Build
@@ -182,15 +223,17 @@ cd ~/host/UnifiedComms
 
 | Priority | File | Issue Type |
 |----------|------|------------|
-| P0 | All UI screens | Material3 API migration |
-| P0 | EmailSyncEngineImpl.kt | JavaMail imports, StateFlow |
-| P0 | CalendarSyncEngineImpl.kt | StateFlow override, map syntax |
-| P0 | CryptoManager.kt | Duplicate interface, runBlocking |
-| P1 | BiometricManager.kt | Authenticators, suspendCancellableCoroutine |
-| P1 | SyncService.kt | AbstractThreadedSyncAdapter constructor |
-| P1 | SettingsScreen.kt | Surface API, clickable, TextOverflow |
-| P2 | TasksScreen.kt | FilterChip, Surface, DatePicker |
-| P3 | PreferencesManager.kt | getStringSet, cancel() |
+| P0 | CryptoManager.kt | runBlocking in non-suspend |
+| P0 | BiometricManager.kt | Authenticators import collision |
+| P0 | EmailSyncEngineImpl.kt | JavaMail imports |
+| P0 | SyncForegroundService.kt | syncAllAccounts, syncProgress |
+| P1 | CryptoManager.kt | encodeToString vs encodeToBase64 |
+| P1 | ReminderSystem.kt | CalendarRepositoryImpl(calDao) |
+| P1 | SyncManager.kt | Type mismatches |
+| P1 | Calendar/Task/Contact Sync Engines | syncProgress override |
+| P1 | All UI screens | Material3 API migration |
+| P2 | SyncService.kt | AbstractThreadedSyncAdapter |
+| P2 | BuildConfig references | PushManager, AddAccountActivity |
 
 ---
 
@@ -231,7 +274,7 @@ cd ~/host/UnifiedComms
 2. **Test after each batch** - Run `./gradlew :app:compileDebugKotlin` after each logical group
 3. **Keep build log** - `tee build.log` for debugging
 4. **Use IDE** - Open in Android Studio for import optimization (`Ctrl+Alt+O`)
-5. **Focus order** - UI imports → Sync engines → Security managers → Preferences → Full build
+5. **Focus order** - Security managers → Sync engines → Services → UI screens
 
 ---
 
@@ -241,7 +284,7 @@ The repository is at **https://github.com/Dvalin21/UnifiedComms** with all curre
 
 The build fails on **Kotlin compilation errors only** — no more Gradle plugin issues, resource processing issues, or dependency resolution issues. Pure Kotlin API migration work remains.
 
-**Core data persistence layer (Room database, models, repositories, converters) is now solid and compiles cleanly.** The remaining work is primarily in the UI/Compose layer and service implementations.
+**Core data persistence layer (Room database, models, repositories, converters) is now solid and compiles cleanly.** The remaining work is primarily in the UI/Compose layer, sync engine imports, security managers, and service implementations.
 
 ---
 

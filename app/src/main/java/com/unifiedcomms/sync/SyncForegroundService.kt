@@ -23,6 +23,8 @@ import com.unifiedcomms.sync.ContactSyncEngineImpl
 import com.unifiedcomms.data.repository.*
 import com.unifiedcomms.data.db.dao.*
 import com.unifiedcomms.data.db.UnifiedCommsDatabase
+import com.unifiedcomms.security.CryptoManager
+import com.unifiedcomms.security.CryptoManagerImpl
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -51,13 +53,15 @@ class SyncForegroundService : Service() {
         val calendarRepo = CalendarRepositoryImpl(calendarEventDao, calendarDao)
         val taskRepo = TaskRepositoryImpl(taskDao, taskListDao)
         val contactRepo = ContactRepositoryImpl(contactDao)
+        val accountRepo = AccountRepositoryImpl(db.accountDao())
+        val crypto = CryptoManagerImpl(this)
 
-        val emailSync = EmailSyncEngineImpl(emailRepo, null, null, CoroutineScope(Dispatchers.IO))
-        val calendarSync = CalendarSyncEngineImpl(calendarRepo, null, null, CoroutineScope(Dispatchers.IO))
-        val taskSync = TaskSyncEngineImpl(taskRepo, null, null, CoroutineScope(Dispatchers.IO))
-        val contactSync = ContactSyncEngineImpl(contactRepo, null, null, CoroutineScope(Dispatchers.IO))
+        val emailSync = EmailSyncEngineImpl(emailRepo, accountRepo, crypto, CoroutineScope(Dispatchers.IO))
+        val calendarSync = CalendarSyncEngineImpl(calendarRepo, accountRepo, crypto, CoroutineScope(Dispatchers.IO))
+        val taskSync = TaskSyncEngineImpl(taskRepo, accountRepo, crypto, CoroutineScope(Dispatchers.IO))
+        val contactSync = ContactSyncEngineImpl(contactRepo, accountRepo, crypto, CoroutineScope(Dispatchers.IO))
 
-        syncManager = SyncManager(emailSync, calendarSync, taskSync, contactSync)
+        syncManager = SyncManager(emailSync, calendarSync, taskSync, contactSync, accountRepo, CoroutineScope(Dispatchers.IO))
 
         NotificationHelper.createNotificationChannels(this)
     }
@@ -66,19 +70,25 @@ class SyncForegroundService : Service() {
         val notification = createNotification()
         startForeground(notificationId, notification)
 
-        // Perform sync for all accounts
+        // Perform sync for all active accounts
         CoroutineScope(Dispatchers.IO).launch {
             NotificationHelper.showSyncNotification(this@SyncForegroundService, "Starting sync...", 0)
-            syncManager.syncAllAccounts()
-            syncManager.syncProgress.onEach { progress ->
-                _syncProgress.value = progress
-                if (progress.progress == 100) {
-                    NotificationHelper.showSyncNotification(this@SyncForegroundService, "Sync completed", 100)
-                } else {
-                    NotificationHelper.showSyncNotification(this@SyncForegroundService, "Syncing... ${progress.progress}%", progress.progress)
-                }
-            }.launchIn(this@SyncForegroundService)
-
+            
+            // Get all active accounts and sync them
+            val accountRepo = AccountRepositoryImpl(UnifiedCommsDatabase.getInstance(this@SyncForegroundService).accountDao())
+            val accounts = accountRepo.getAllActive().first()
+            
+            var completed = 0
+            for (account in accounts) {
+                completed++
+                _syncProgress.value = (completed * 100 / accounts.size)
+                NotificationHelper.showSyncNotification(this@SyncForegroundService, "Syncing ${account.name}... ${completed}/${accounts.size}", _syncProgress.value)
+                syncManager.performFullSync(account)
+            }
+            
+            _syncProgress.value = 100
+            NotificationHelper.showSyncNotification(this@SyncForegroundService, "Sync completed", 100)
+            
             // Stop after a delay to show completion
             kotlinx.coroutines.delay(3000)
             NotificationHelper.dismissSyncNotification(this@SyncForegroundService)

@@ -354,7 +354,7 @@ fun SettingRow(
     subtitle: String,
     icon: androidx.compose.material.icons.filled.ImageVector,
     onClick: () -> Unit = {},
-    trailing: () -> Unit = { },
+    trailing: @Composable () -> Unit = { },
     textColor: Color = MaterialTheme.colorScheme.onSurface
 ) {
     Row(
