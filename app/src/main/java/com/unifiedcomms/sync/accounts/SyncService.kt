@@ -13,25 +13,15 @@ import com.unifiedcomms.sync.CalendarSyncEngine
 import com.unifiedcomms.sync.TaskSyncEngine
 import com.unifiedcomms.sync.ContactSyncEngine
 import com.unifiedcomms.data.repository.AccountRepository
-import com.unifiedcomms.data.repository.AccountRepositoryImpl
 import com.unifiedcomms.data.repository.EmailRepository
-import com.unifiedcomms.data.repository.EmailRepositoryImpl
 import com.unifiedcomms.data.repository.CalendarRepository
-import com.unifiedcomms.data.repository.CalendarRepositoryImpl
 import com.unifiedcomms.data.repository.TaskRepository
-import com.unifiedcomms.data.repository.TaskRepositoryImpl
 import com.unifiedcomms.data.repository.ContactRepository
-import com.unifiedcomms.data.repository.ContactRepositoryImpl
 import com.unifiedcomms.data.db.dao.*
 import com.unifiedcomms.data.db.UnifiedCommsDatabase
-import com.unifiedcomms.sync.SyncManager
-import com.unifiedcomms.sync.EmailSyncEngine
 import com.unifiedcomms.sync.EmailSyncEngineImpl
-import com.unifiedcomms.sync.CalendarSyncEngine
 import com.unifiedcomms.sync.CalendarSyncEngineImpl
-import com.unifiedcomms.sync.TaskSyncEngine
 import com.unifiedcomms.sync.TaskSyncEngineImpl
-import com.unifiedcomms.sync.ContactSyncEngine
 import com.unifiedcomms.sync.ContactSyncEngineImpl
 
 class UnifiedCommsSyncService : AbstractThreadedSyncAdapter() {
@@ -63,10 +53,10 @@ class UnifiedCommsSyncService : AbstractThreadedSyncAdapter() {
         val taskRepo = TaskRepositoryImpl(taskDao, taskListDao)
         val contactRepo = ContactRepositoryImpl(contactDao)
 
-        val emailSync = EmailSyncEngineImpl(emailRepo, accountRepo, null)
-        val calendarSync = CalendarSyncEngineImpl(calendarRepo, accountRepo, null)
-        val taskSync = TaskSyncEngineImpl(taskRepo, accountRepo, null)
-        val contactSync = ContactSyncEngineImpl(contactRepo, accountRepo, null)
+        val emailSync = EmailSyncEngineImpl(emailRepo, accountRepo, null, CoroutineScope(Dispatchers.IO))
+        val calendarSync = CalendarSyncEngineImpl(calendarRepo, accountRepo, null, CoroutineScope(Dispatchers.IO))
+        val taskSync = TaskSyncEngineImpl(taskRepo, accountRepo, null, CoroutineScope(Dispatchers.IO))
+        val contactSync = ContactSyncEngineImpl(contactRepo, accountRepo, null, CoroutineScope(Dispatchers.IO))
 
         syncManager = SyncManager(emailSync, calendarSync, taskSync, contactSync)
     }

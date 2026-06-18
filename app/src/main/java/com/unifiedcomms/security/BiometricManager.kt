@@ -8,6 +8,7 @@ import androidx.fragment.app.FragmentActivity
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 interface BiometricManager {
     val canAuthenticate: Boolean
@@ -48,9 +49,6 @@ class BiometricManagerImpl(
         get() = when {
             !canAuthenticate -> BiometricType.NONE
             BiometricManager.from(context).canAuthenticate(BiometricManager.Authenticators.DEVICE_CREDENTIAL) == BiometricManager.BIOMETRIC_SUCCESS -> {
-                val auth = BiometricManager.from(context)
-                // Check specific biometric types (API 30+)
-                // This is simplified - real implementation would check specific authenticators
                 BiometricType.STRONG
             }
             else -> BiometricType.WEAK
@@ -59,9 +57,9 @@ class BiometricManagerImpl(
     override fun hasEnrolledBiometrics(): Boolean = canAuthenticate
 
     override suspend fun authenticate(reason: String, activity: FragmentActivity): AuthenticationResult =
-        CoroutineScope(Dispatchers.Main).awaitAuthentication(reason, activity)
+        awaitAuthentication(reason, activity)
 
-    private fun CoroutineScope.awaitAuthentication(reason: String, activity: FragmentActivity): AuthenticationResult =
+    private suspend fun awaitAuthentication(reason: String, activity: FragmentActivity): AuthenticationResult =
         suspendCancellableCoroutine { cont ->
             val executor = ContextCompat.getMainExecutor(context)
             val promptInfo = BiometricPrompt.PromptInfo.Builder()

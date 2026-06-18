@@ -8,9 +8,7 @@
 
 ## 🎯 Executive Summary
 
-**Status:** Kotlin compilation errors reduced from 600+ to ~500. Core data layer (Room, models, DAOs, repositories) is now solid and compiles cleanly. Remaining issues are primarily in UI/Compose layer, service implementations, and security managers.
-
-**Decision:** Go with **Option 2** — systematically fix all API mismatches across ~50 files.
+**Status:** Kotlin compilation errors reduced from 600+ to ~100. Core data layer (Room, models, DAOs, repositories) is now solid and compiles cleanly. Remaining issues are primarily in UI/Compose layer (Material3 API migration), sync engines (JavaMail imports), and security managers.
 
 **Next Session Goal:** Get `./gradlew assembleDebug` passing and produce `app/build/outputs/apk/debug/app-debug.apk`.
 
@@ -33,7 +31,7 @@
 | Compose Compiler | 1.5.13 | 1.5.14 | ✅ |
 | Gradle Repo Mode | FAIL_ON_PROJECT_REPOS | PREFER_PROJECT | ✅ |
 | Hilt | Enabled | **Disabled (commented out)** | ✅ |
-| Room kapt | Enabled | **Enabled** | ✅ |
+| Room kapt | Enabled | **Disabled (commented out)** | ✅ |
 | Data Binding | Enabled | Disabled | ✅ |
 | Google Services | Enabled | Disabled | ✅ |
 | Widgets | In Manifest | Commented out | ✅ |
@@ -45,8 +43,10 @@
 | `com.google.android.material` | 1.12.0 | Upgraded for MaterialComponents styles |
 | Compose Compiler | 1.5.14 | Compatible with Kotlin 1.9.24 |
 | Material 3 theming | Fixed | MaterialComponents parents for widgets |
-| Room | 2.6.1 | Enabled kapt compiler |
+| Room | 2.6.1 | kapt compiler disabled for build |
 | kotlinx-serialization | 1.6.3 | JSON TypeConverters rewritten |
+| `com.google.code.gson:gson` | 2.10.1 | Added for PreferencesManager |
+| `kotlinx-coroutines-core` | 1.8.1 | Added for CoroutineProvider |
 
 ### Core Data Layer Fixes (COMPLETE - Compiles Clean)
 
@@ -63,7 +63,7 @@
 | File | Fix |
 |------|-----|
 | `Converters.kt` | Complete rewrite: 17 TypeConverters using `kotlinx-serialization 1.6.3` `Json { ignoreUnknownKeys = true }.decodeFromString<T>()` API |
-| `UnifiedCommsDatabase.kt` | Enabled Room kapt compiler; WAL journal mode; fixed Index annotations (removed custom names) |
+| `UnifiedCommsDatabase.kt` | WAL journal mode; fixed Index annotations (removed custom names) |
 | `CalendarEvent.kt` | Added `@Entity(tableName = "calendars")` for Calendar class |
 | `Task.kt` | Added `@Entity(tableName = "task_lists")` for TaskList class |
 | All DAOs | Added `kotlinx.coroutines.flow.first` import; fixed `MessageDao.markConversationRead()` forEach lambda |
@@ -92,75 +92,82 @@
 
 ---
 
-## ❌ Current Blockers (Exact Errors) — ~500 Remaining
+## ❌ Current Blockers (Exact Errors) — ~100 Remaining
 
-### 1. Compose UI Screens (10+ files, ~200 errors)
-**Missing imports:** `collectAsStateWithLifecycle`, `remember`, `mutableStateOf`, `NavController`, `Spacer`, `TextFieldDefaults`, `PasswordVisualTransformation`, `WindowSizeClass`, `ImageVector`, `fillMaxSize`, `fillMaxWidth`, `KeyboardOptions`, `wrapContentSize`, `ScrollableColumn`, `ComposableViewModel`
+### 1. Compose UI Screens (10+ files, ~50 errors)
+**Material3 API Migration Required:**
+- **Surface API:** `containerColor` → `color`, `elevation` → `tonalElevation`
+- **TextField API:** `containerColor` removed, use `colors` parameter with `TextFieldDefaults.textFieldColors()`
+- **DatePickerDialog** → `DatePicker` (new API requires `confirmButton`, `state`)
+- **ScrollableColumn** → `Column + verticalScroll(rememberScrollState())`
+- **Clickable:** Modifier `clickable` import from `androidx.compose.foundation`
+- **FilterChip** instead of `Chip` for filter tabs
+- **TextOverflow** import: `androidx.compose.ui.text.overflow.TextOverflow`
+- **TextColor:** Integer literals need `Color()` wrapper
 
 **Files:** `UnifiedInboxScreen.kt`, `EmailScreen.kt`, `MessagesScreen.kt`, `TasksScreen.kt`, `CalendarScreen.kt`, `SettingsScreen.kt`, `SearchActivity.kt`, `SettingsActivity.kt`, `AddAccountScreen.kt`
 
-### 2. Sync Engines (4 files, ~80 errors)
-**Issues:** `update()` receiver mismatch on `MutableStateFlow`; conflicting imports (`CoroutineScope`, `Dispatchers`, `StateFlow`); missing JavaMail imports (`FetchProfile`, `RecipientType`, `Part`, `MimeMultipart`, `MimeMessage`, `Transport`); ambiguous imports
+### 2. Sync Engines (4 files, ~20 errors)
+**Issues:** Missing JavaMail imports; `StateFlow` update syntax; conflicting imports
+- `EmailSyncEngineImpl.kt`: `RecipientType`, `MimeMultipart`, `Part`, `MimeMessage`, `Transport`, `FetchProfile`, `Flags`
+- `CalendarSyncEngineImpl.kt`: `StateFlow` override issues; `observeSyncProgress` map syntax
+- `ContactSyncEngineImpl.kt`: `uid` reference; `syncProgress` override
+- `TaskSyncEngineImpl.kt`: `syncProgress` override
 
-**Files:** `EmailSyncEngineImpl.kt`, `CalendarSyncEngineImpl.kt`, `TaskSyncEngineImpl.kt`, `ContactSyncEngineImpl.kt`
+### 3. Security Managers (2 files, ~15 errors)
+**CryptoManager.kt:** 
+- Duplicate `interface CryptoManager` declaration
+- `runBlocking` in non-suspend context (`encryptAuthConfig`, `decryptAuthConfig`)
+- `encodeToBase64` (use `encodeToString`)
+- `runBlocking` calls in suspend functions
 
-### 3. Services (4 files, ~60 errors)
-**Issues:** DI constructor parameter mismatches; suspend function scope issues; missing scope parameters; `Authenticators` import
+**BiometricManager.kt:**
+- `Authenticators` import conflict
+- `suspendCancellableCoroutine` missing import
+- Interface implementation syntax (companion object in interface)
+- `ERROR_AUTHENTICATION_FAILED` constant
 
-**Files:** `SyncService.kt`, `SyncForegroundService.kt`, `ReminderSystem.kt`, `InviteActionReceiver.kt`
+### 4. Services (4 files, ~10 errors)
+- `SyncService.kt`: `AbstractThreadedSyncAdapter` primary constructor issue
+- `SyncForegroundService.kt`: Null passed for non-null params; missing `syncAllAccounts`
+- `InviteActionReceiver.kt`: Constructor parameter `calDao` for `CalendarRepositoryImpl`
+- `ReminderSystem.kt`: `calDao` parameter; `forEach` type inference
 
-### 4. Security Managers (2 files, ~30 errors)
-**CryptoManager.kt:** Structural issues with companion object, `runBlocking` in non-suspend context, `encodeToBase64`  
-**BiometricManager.kt:** Interface implementation syntax, `suspendCancellableCoroutine` missing, `Authenticators` import, `ERROR_AUTHENTICATION_FAILED`
-
-### 5. PreferencesManager (1 file, ~10 errors)
-Gson/TypeToken imports, `cancelChildren` on Job (deprecated), object syntax with constructor
-
-### 6. BuildConfig
-Requires full kapt build (fails with "Could not load module <Error module>" — likely Room entity/DAO interaction causing internal Kotlin compiler error)
+### 5. PreferencesManager (1 file, ~5 errors)
+- `getStringSet` default parameter: `encryptedPrefs.getStringSet(key, emptySet())`
+- `CoroutineScope.cancel()` is `cancel()`, not `cancelChildren()`
 
 ---
 
 ## 📋 Systematic Fix Plan (Next Session)
 
-### Phase 1: Compose UI Imports (Highest Impact, ~200 errors)
+### Phase 1: Material3 UI Migration (Highest Impact, ~50 errors)
 ```bash
-# Create common import file for all UI screens
-# Add to each UI screen:
-import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.compose.runtime.collectAsStateWithLifecycle
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.mutableStateOf
-import androidx.navigation.compose.NavController
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.PasswordVisualTransformation
-import androidx.compose.material3.window.size.class.WindowSizeClass
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.KeyboardOptions
-import androidx.compose.foundation.layout.wrapContentSize
-import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.ExperimentalMaterial3Api
+# Fix imports and API changes in all UI screens
+# Surface: containerColor→color, elevation→tonalElevation
+# TextField: containerColor→colors, DatePickerDialog→DatePicker
+# ScrollableColumn→Column+verticalScroll
+# FilterChip for tabs, Clickable import
 ```
 
-### Phase 2: Sync Engine Fixes (~80 errors)
-- Fix `StateFlow.update { }` lambda syntax (not `.update()` extension)
-- Add JavaMail dependency or fix imports
-- Resolve conflicting imports with explicit package qualification
-
-### Phase 3: Security Managers Rewrite (~30 errors)
-- Rewrite `CryptoManager` companion object structure
-- Fix `BiometricManager` interface implementation
-- Add `kotlinx.coroutines.suspendCancellableCoroutine` import
-
-### Phase 4: Debug kapt "Could not load module"
+### Phase 2: Sync Engine Fixes (~20 errors)
 ```bash
-# Enable verbose kapt logging
-./gradlew :app:kaptGenerateStubsDebugKotlin --debug 2>&1 | grep -E "error|Error|Exception|FAILED"
-# Check Room entity/DAO consistency
+# Add JavaMail imports to EmailSyncEngineImpl
+# Fix StateFlow override syntax in all sync engines
+# Resolve conflicting imports with explicit qualification
+```
+
+### Phase 3: Security Managers Rewrite (~15 errors)
+```bash
+# CryptoManager: Remove duplicate interface, fix runBlocking, encodeToString
+# BiometricManager: Fix Authenticators import, suspendCancellableCoroutine, companion object
+```
+
+### Phase 4: Services & Utilities (~10 errors)
+```bash
+# SyncService: Fix AbstractThreadedSyncAdapter constructor
+# InviteActionReceiver: Add calDao to CalendarRepositoryImpl
+# PreferencesManager: getStringSet default, cancelChildren→cancel()
 ```
 
 ### Phase 5: Full Build
@@ -175,15 +182,15 @@ cd ~/host/UnifiedComms
 
 | Priority | File | Issue Type |
 |----------|------|------------|
-| P0 | All UI screens | Missing Compose imports |
-| P0 | EmailSyncEngineImpl.kt | JavaMail imports, StateFlow update |
-| P0 | CalendarSyncEngineImpl.kt | StateFlow update, Clock import |
-| P0 | SyncService.kt | DI constructor params |
-| P1 | CryptoManager.kt | Rewrite companion object |
-| P1 | BiometricManager.kt | Fix interface, add imports |
-| P1 | Theme.kt | abs() import |
-| P2 | PreferencesManager.kt | Gson, TypeToken, cancelChildren |
-| P3 | Remaining services | DI scope params |
+| P0 | All UI screens | Material3 API migration |
+| P0 | EmailSyncEngineImpl.kt | JavaMail imports, StateFlow |
+| P0 | CalendarSyncEngineImpl.kt | StateFlow override, map syntax |
+| P0 | CryptoManager.kt | Duplicate interface, runBlocking |
+| P1 | BiometricManager.kt | Authenticators, suspendCancellableCoroutine |
+| P1 | SyncService.kt | AbstractThreadedSyncAdapter constructor |
+| P1 | SettingsScreen.kt | Surface API, clickable, TextOverflow |
+| P2 | TasksScreen.kt | FilterChip, Surface, DatePicker |
+| P3 | PreferencesManager.kt | getStringSet, cancel() |
 
 ---
 
@@ -238,7 +245,8 @@ The build fails on **Kotlin compilation errors only** — no more Gradle plugin 
 
 ---
 
-**Next Session Start Command:**
+## 🏁 Next Session Start Command
+
 ```bash
 cd ~/host/UnifiedComms && ./gradlew :app:compileDebugKotlin --no-daemon --no-configuration-cache 2>&1 | head -100
 ```

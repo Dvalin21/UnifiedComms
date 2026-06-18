@@ -1,7 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.kapt")
+    // id("org.jetbrains.kotlin.kapt")
     // id("com.google.dagger.hilt.android")
 }
 
@@ -135,7 +135,7 @@ dependencies {
     // Room Database
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
-    kapt("androidx.room:room-compiler:2.6.1")
+    // kapt("androidx.room:room-compiler:2.6.1")
 
     // DataStore (Preferences)
     implementation("androidx.datastore:datastore-preferences:1.1.1")
@@ -146,6 +146,12 @@ dependencies {
 
     // Serialization
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+
+    // Gson for PreferencesManager
+    implementation("com.google.code.gson:gson:2.10.1")
+
+    // Coroutines core
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
 
     // Networking - OkHttp & Retrofit
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
@@ -204,13 +210,13 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling-data:1.6.7")
 }
 
-kapt {
-    correctErrorTypes = true
-    javacOptions {
-        option("-Xlint:unchecked")
-        option("-Xlint:deprecation")
-    }
-}
+// kapt {
+//     correctErrorTypes = true
+//     javacOptions {
+//         option("-Xlint:unchecked")
+//         option("-Xlint:deprecation")
+//     }
+// }
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
     kotlinOptions {

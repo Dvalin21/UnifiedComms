@@ -11,6 +11,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.datetime.Clock
 
 class ContactSyncEngineImpl(
     private val contactRepo: ContactRepository,
@@ -26,7 +27,7 @@ class ContactSyncEngineImpl(
         return withContext(Dispatchers.IO) {
             try {
                 updateProgress(account.id, null, SyncStage.CONNECTING, 0, 0)
-                
+
                 val contacts = fetchContactsFromServer(account)
                 updateProgress(account.id, null, SyncStage.FETCHING_HEADERS, 0, contacts.size)
 
@@ -35,7 +36,7 @@ class ContactSyncEngineImpl(
                 val updatedItems = mutableListOf<String>()
 
                 for (contact in contacts) {
-                    val existing = contactRepo.getByEmail(contact.emails.firstOrNull() ?: "") 
+                    val existing = contactRepo.getByEmail(contact.emails.firstOrNull() ?: "")
                         ?: contactRepo.getByPhone(contact.phoneNumbers.firstOrNull() ?: "")
                     if (existing == null) {
                         contactRepo.insert(contact.copy(
@@ -66,7 +67,7 @@ class ContactSyncEngineImpl(
 
                 updateProgress(account.id, null, SyncStage.COMPLETED, synced, synced)
                 SyncResult.success(synced, newItems, updatedItems)
-                
+
             } catch (e: Exception) {
                 updateProgress(account.id, null, SyncStage.ERROR, 0, 0)
                 SyncResult.failure(e.message ?: "Contact sync failed")
@@ -129,8 +130,6 @@ class ContactSyncEngineImpl(
     }
 
     private fun updateProgress(accountId: String, folder: String?, stage: SyncStage, current: Int, total: Int) {
-        _syncProgress.update { progress ->
-            progress + (accountId to SyncProgress(accountId, folder, stage, current, total))
-        }
+        _syncProgress.value = _syncProgress.value + (accountId to SyncProgress(accountId, folder, stage, current, total))
     }
 }

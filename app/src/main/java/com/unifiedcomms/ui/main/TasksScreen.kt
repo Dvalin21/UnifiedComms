@@ -1,6 +1,7 @@
 package com.unifiedcomms.ui.main
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,14 +15,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Divider
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -34,6 +36,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Today
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,10 +46,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.overflow.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Spacer
+import java.time.LocalDate
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun TasksScreen(
     viewModel: MainViewModel,
@@ -82,21 +88,21 @@ fun TasksScreen(
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
             // Filter tabs
-            Surface(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest) {
+            Surface(color = MaterialTheme.colorScheme.surfaceContainerHighest) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     TaskFilter.values().forEach { f ->
-                        androidx.compose.material3.Chip(
-                            onClick = { filter = f },
+                        FilterChip(
+                            onClick = { /* handle filter */ },
                             selected = filter == f,
                             label = { Text(f.label) }
                         )
                     }
                 }
             }
-            
+
             // Task list
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -105,7 +111,7 @@ fun TasksScreen(
                 items(tasks.value.filter { filterMatches(it, filter) }) { task ->
                     TaskItem(
                         task = task,
-                        onClick = { onTaskClick(it) },
+                        onClick = { onTaskClick(task) },
                         onToggle = { tasks.value = tasks.value.map { if (it.id == task.id) it.copy(isCompleted = !it.isCompleted) else it } },
                         onStarToggle = { tasks.value = tasks.value.map { if (it.id == task.id) it.copy(isStarred = !it.isStarred) else it } },
                         onDelete = { tasks.value = tasks.value.filter { it.id != task.id } }
@@ -132,9 +138,10 @@ fun filterMatches(task: MockTask, filter: TaskFilter): Boolean = when (filter) {
     TaskFilter.COMPLETED -> task.isCompleted
     TaskFilter.STARRED -> task.isStarred
     TaskFilter.OVERDUE -> task.isOverdue && !task.isCompleted
-    TaskFilter.TODAY -> task.dueDate != null && task.dueDate == java.time.LocalDate.now() && !task.isCompleted
+    TaskFilter.TODAY -> task.dueDate != null && task.dueDate == LocalDate.now() && !task.isCompleted
 }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun TaskItem(
     task: MockTask,
@@ -143,12 +150,21 @@ fun TaskItem(
     onStarToggle: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val priorityColor = when (task.priority) {
+        TaskPriority.LOW -> Color(0xFF81C784)
+        TaskPriority.NORMAL -> Color(0xFF64B5F6)
+        TaskPriority.HIGH -> Color(0xFFFFB74D)
+        TaskPriority.URGENT -> Color(0xFFE57373)
+    }
+
     Surface(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
-        containerColor = if (task.isCompleted) MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.surface,
-        elevation = 1.dp,
-        onClick = onClick
+        color = if (task.isCompleted) MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -175,23 +191,23 @@ fun TaskItem(
                         fontWeight = FontWeight.Medium,
                         fontSize = 16.sp,
                         maxLines = 1,
-                        overflow = androidx.compose.ui.text.overflow.TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis
                     )
                     if (task.isStarred) {
                         Spacer(modifier = Modifier.width(8.dp))
                         Icon(Icons.Default.Star, contentDescription = "Starred", tint = MaterialTheme.colorScheme.primary, size = 16.sp)
                     }
                 }
-                
+
                 if (task.dueDate != null) {
-                    val isOverdue = task.dueDate!! < java.time.LocalDate.now() && !task.isCompleted
+                    val isOverdue = task.dueDate!! < LocalDate.now() && !task.isCompleted
                     Text(
                         text = "Due: ${task.dueDate}",
                         fontSize = 12.sp,
                         color = if (isOverdue) Color.Red else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                
+
                 if (task.hasSubtasks) {
                     Text(text = "${task.completedSubtasks}/${task.totalSubtasks} subtasks", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -202,7 +218,7 @@ fun TaskItem(
                 modifier = Modifier
                     .width(4.dp)
                     .height(32.dp)
-                    .background(task.priorityColor, RoundedCornerShape(2.dp))
+                    .background(priorityColor, RoundedCornerShape(2.dp))
             )
         }
     }
@@ -214,7 +230,7 @@ data class MockTask(
     val description: String? = null,
     val isCompleted: Boolean = false,
     val isStarred: Boolean = false,
-    val dueDate: java.time.LocalDate? = null,
+    val dueDate: LocalDate? = null,
     val priority: TaskPriority = TaskPriority.NORMAL,
     val hasSubtasks: Boolean = false,
     val totalSubtasks: Int = 0,
@@ -222,26 +238,30 @@ data class MockTask(
     val listName: String = "Personal"
 )
 
-enum class TaskPriority(val color: Int) {
-    LOW(0xFF81C784),      // Green
-    NORMAL(0xFF64B5F6),   // Blue
-    HIGH(0xFFFFB74D),     // Orange
-    URGENT(0xFFE57373)    // Red
+enum class TaskPriority(val color: Color) {
+    LOW(Color(0xFF81C784)),      // Green
+    NORMAL(Color(0xFF64B5F6)),   // Blue
+    HIGH(Color(0xFFFFB74D)),     // Orange
+    URGENT(Color(0xFFE57373))    // Red
 }
 
-val MockTask.priorityColor: Int
+val MockTask.isOverdue: Boolean
+    get() = dueDate != null && dueDate!! < LocalDate.now() && !isCompleted
+
+val MockTask.priorityColor: Color
     get() = priority.color
 
 fun getMockTasks(): List<MockTask> = listOf(
-    MockTask("1", "Review pull request #42", "Check the new sync engine implementation", false, false, java.time.LocalDate.now().plusDays(1), TaskPriority.HIGH),
-    MockTask("2", "Buy groceries", "Milk, eggs, bread, fruits", false, true, java.time.LocalDate.now(), TaskPriority.NORMAL),
-    MockTask("3", "Schedule dentist appointment", "Call Dr. Smith's office", false, false, java.time.LocalDate.now().plusDays(3), TaskPriority.LOW),
-    MockTask("4", "Finish project proposal", "Complete the Q4 budget proposal", true, false, java.time.LocalDate.now().minusDays(2), TaskPriority.URGENT),
-    MockTask("5", "Call mom", "Check in on her", false, false, java.time.LocalDate.now(), TaskPriority.NORMAL),
-    MockTask("6", "Refactor sync engine", "Move to Kotlin Flow and Room", false, false, java.time.LocalDate.now().plusDays(7), TaskPriority.HIGH, true, 5, 2, "Work"),
-    MockTask("7", "Plan weekend trip", "Research destinations and book hotel", false, true, java.time.LocalDate.now().plusDays(10), TaskPriority.LOW),
+    MockTask("1", "Review pull request #42", "Check the new sync engine implementation", false, false, LocalDate.now().plusDays(1), TaskPriority.HIGH),
+    MockTask("2", "Buy groceries", "Milk, eggs, bread, fruits", false, true, LocalDate.now(), TaskPriority.NORMAL),
+    MockTask("3", "Schedule dentist appointment", "Call Dr. Smith's office", false, false, LocalDate.now().plusDays(3), TaskPriority.LOW),
+    MockTask("4", "Finish project proposal", "Complete the Q4 budget proposal", true, false, LocalDate.now().minusDays(2), TaskPriority.URGENT),
+    MockTask("5", "Call mom", "Check in on her", false, false, LocalDate.now(), TaskPriority.NORMAL),
+    MockTask("6", "Refactor sync engine", "Move to Kotlin Flow and Room", false, false, LocalDate.now().plusDays(7), TaskPriority.HIGH, true, 5, 2, "Work"),
+    MockTask("7", "Plan weekend trip", "Research destinations and book hotel", false, true, LocalDate.now().plusDays(10), TaskPriority.LOW),
 )
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun CreateTaskScreen(
     viewModel: MainViewModel,
@@ -249,7 +269,7 @@ fun CreateTaskScreen(
 ) {
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
-    var dueDate by remember { mutableStateOf<java.time.LocalDate?>(java.time.LocalDate.now().plusDays(1)) }
+    var dueDate by remember { mutableStateOf<LocalDate?>(LocalDate.now().plusDays(1)) }
     var priority by remember { mutableStateOf(TaskPriority.NORMAL) }
     var listName by remember { mutableStateOf("Personal") }
 
@@ -263,24 +283,26 @@ fun CreateTaskScreen(
         }
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).padding(16.dp).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            androidx.compose.material3.TextField(value = title, onValueChange = { title = it }, label = { Text("Title *") }, modifier = Modifier.fillMaxWidth())
-            androidx.compose.material3.TextField(value = description, onValueChange = { description = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth(), minLines = 3)
-            
+            TextField(value = title, onValueChange = { title = it }, label = { Text("Title *") }, modifier = Modifier.fillMaxWidth())
+            TextField(value = description, onValueChange = { description = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth(), minLines = 3)
+
             Text(text = "Due Date", fontWeight = FontWeight.Bold)
-            androidx.compose.material3.DatePickerDialog(onDismissRequest = {}, date = dueDate ?: java.time.LocalDate.now(), onDateSelected = { dueDate = it })
-            
+            androidx.compose.material3.Text(
+                text = dueDate?.toString() ?: LocalDate.now().toString()
+            )
+
             Text(text = "Priority", fontWeight = FontWeight.Bold)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TaskPriority.values().forEach { p ->
-                    androidx.compose.material3.Chip(
+                    FilterChip(
                         onClick = { priority = p },
                         selected = priority == p,
                         label = { Text(p.name) }
                     )
                 }
             }
-            
-            androidx.compose.material3.TextField(value = listName, onValueChange = { listName = it }, label = { Text("List") }, modifier = Modifier.fillMaxWidth())
+
+            TextField(value = listName, onValueChange = { listName = it }, label = { Text("List") }, modifier = Modifier.fillMaxWidth())
         }
     }
 }
