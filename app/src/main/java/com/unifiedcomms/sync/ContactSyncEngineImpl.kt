@@ -10,6 +10,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.transform
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 
@@ -87,7 +89,7 @@ class ContactSyncEngineImpl(
             try {
                 val serverId = java.util.UUID.randomUUID().toString()
                 val etag = "\"${System.currentTimeMillis()}\""
-                CreateResult.success(serverId, contact.uid, etag)
+                CreateResult.success(serverId, contact.id, etag)
             } catch (e: Exception) {
                 CreateResult.failure(e.message ?: "Create failed")
             }
@@ -115,7 +117,9 @@ class ContactSyncEngineImpl(
     }
 
     override fun observeSyncProgress(accountId: String): kotlinx.coroutines.flow.Flow<SyncProgress> {
-        return _syncProgress.map { it[accountId] ?: SyncProgress(accountId, null, SyncStage.COMPLETED, 0, 0) }.distinctUntilChanged()
+        return _syncProgress.transform { progressMap: Map<String, SyncProgress> ->
+            emit(progressMap[accountId] ?: SyncProgress(accountId, null, SyncStage.COMPLETED, 0, 0))
+        }.distinctUntilChanged()
     }
 
     override suspend fun testConnection(account: Account): ConnectionTestResult {

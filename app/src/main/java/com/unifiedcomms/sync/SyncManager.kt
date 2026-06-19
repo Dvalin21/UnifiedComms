@@ -12,6 +12,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.transform
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.combine
 
 class SyncManager(
@@ -57,7 +59,7 @@ class SyncManager(
         scope.launch(Dispatchers.IO) {
             while (true) {
                 delay(intervalMs)
-                if (!_syncStates.value[account.id]?.isSyncing == true) continue
+                if (_syncStates.value[account.id]?.isSyncing == true) continue
                 performFullSync(account)
             }
         }
@@ -133,13 +135,19 @@ class SyncManager(
     }
 
     private fun updateState(accountId: String, transform: (SyncState) -> SyncState) {
-        _syncStates.update { states ->
-            val current = states[accountId] ?: SyncState(accountId)
-            states + (accountId to transform(current))
+        var done = false
+        while (!done) {
+            val current = _syncStates.value
+            val updated = current + (accountId to transform(current[accountId] ?: SyncState(accountId)))
+            done = _syncStates.compareAndSet(current, updated)
         }
     }
 
-    fun observeAccountSync(accountId: String): StateFlow<SyncState?> = _syncStates.map { it[accountId] }.distinctUntilChanged()
+    fun observeAccountSync(accountId: String): kotlinx.coroutines.flow.Flow<SyncState?> {
+        return _syncStates.transform { states: Map<String, SyncState> ->
+            emit(states[accountId])
+        }.distinctUntilChanged()
+    }
 
     suspend fun testAllConnections(account: Account): Map<String, ConnectionTestResult> = mapOf(
         "email" to emailSync.testConnection(account),
