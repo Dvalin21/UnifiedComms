@@ -15,6 +15,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.transform
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import java.util.Properties
 import javax.mail.Session
@@ -23,13 +25,14 @@ import javax.mail.Folder
 import javax.mail.Message as JMailMessage
 import javax.mail.FetchProfile
 import javax.mail.Flags
-import javax.mail.RecipientType
+import javax.mail.Message.RecipientType
 import javax.mail.Part
 import javax.mail.Multipart
-import javax.mail.MimeMultipart
+import javax.mail.internet.MimeMultipart
 import javax.mail.internet.MimeMessage
 import javax.mail.Transport
 import javax.mail.internet.InternetAddress
+import javax.mail.internet.MimeBodyPart
 import kotlinx.datetime.Clock
 
 class EmailSyncEngineImpl(
@@ -55,6 +58,12 @@ class EmailSyncEngineImpl(
         val auth = crypto.decryptAuthConfig(account.authConfig)
 
         return withContext(Dispatchers.IO) {
+            var totalSynced = 0
+            var totalFailed = 0
+            val newItems = mutableListOf<String>()
+            val updatedItems = mutableListOf<String>()
+            val deletedItems = mutableListOf<String>()
+
             try {
                 updateProgress(account.id, folder = null, SyncStage.CONNECTING, 0, 0)
 
@@ -73,12 +82,6 @@ class EmailSyncEngineImpl(
                 updateProgress(account.id, folder = null, SyncStage.AUTHENTICATING, 0, 0)
 
                 store.connect(config.imapHost, auth.username!!, auth.passwordEncrypted!!)
-
-                var totalSynced = 0
-                var totalFailed = 0
-                val newItems = mutableListOf<String>()
-                val updatedItems = mutableListOf<String>()
-                val deletedItems = mutableListOf<String>()
 
                 for (folderName in folders) {
                     updateProgress(account.id, folderName, SyncStage.LISTING_FOLDERS, 0, 0)
@@ -160,7 +163,7 @@ class EmailSyncEngineImpl(
 
     private fun parseEmail(msg: JMailMessage, accountId: String, folder: String): Email? {
         try {
-            val messageId = msg.messageID ?: return null
+            val messageId = msg.getHeader("Message-ID").firstOrNull() ?: return null
             val uid = msg.getHeader("X-GM-LABELS").firstOrNull()?.let { msg.messageNumber.toString() } ?: msg.messageNumber.toString()
             val threadId = msg.getHeader("X-GM-THRID").firstOrNull() ?: messageId
             val inReplyTo = msg.getHeader("In-Reply-To").firstOrNull()
@@ -176,18 +179,16 @@ class EmailSyncEngineImpl(
                 to = parseAddresses(msg, RecipientType.TO),
                 cc = parseAddresses(msg, RecipientType.CC),
                 bcc = parseAddresses(msg, RecipientType.BCC),
-                replyTo = parseAddresses(msg, RecipientType.REPLY_TO)
+                replyTo = parseReplyToAddresses(msg)
             )
 
             val subject = msg.subject ?: ""
             val sentAt = msg.sentDate?.time ?: System.currentTimeMillis()
             val receivedAt = msg.receivedDate?.time ?: System.currentTimeMillis()
 
-            var bodyText: String? = null
-            var bodyHtml: String? = null
+            val (bodyText, bodyHtml) = extractContent(msg)
             val attachments = mutableListOf<com.unifiedcomms.data.model.Attachment>()
-
-            extractContent(msg, bodyText, bodyHtml, attachments)
+            extractAttachments(msg, attachments)
 
             val preview = bodyText?.take(200) ?: subject
             val flags = EmailFlags(
@@ -247,19 +248,60 @@ class EmailSyncEngineImpl(
         }
     }
 
-    private fun extractContent(part: Part, bodyText: String?, bodyHtml: String?, attachments: MutableList<com.unifiedcomms.data.model.Attachment>) {
-        try {
+    private fun parseReplyToAddresses(msg: JMailMessage): List<EmailAddress> {
+        return try {
+            msg.getHeader("Reply-To").firstOrNull()?.let { header ->
+                header.split(",").map { addr ->
+                    EmailAddress(
+                        name = addr.takeIf { it.contains("<") }?.substringBefore("<")?.trim(),
+                        email = addr.takeIf { it.contains("<") }?.substringAfter("<")?.substringBefore(">")?.trim()
+                            ?: addr.trim()
+                    )
+                }
+            } ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun extractContent(part: Part): Pair<String?, String?> {
+        return try {
             when {
                 part.isMimeType("text/plain") -> {
-                    bodyText = part.content as String?
+                    part.content as? String to null
                 }
                 part.isMimeType("text/html") -> {
-                    bodyHtml = part.content as String?
+                    null to (part.content as? String)
                 }
                 part.isMimeType("multipart/*") -> {
                     val mp = part.content as MimeMultipart
+                    var text: String? = null
+                    var html: String? = null
                     for (i in 0 until mp.count) {
-                        extractContent(mp.getBodyPart(i), bodyText, bodyHtml, attachments)
+                        val bp = mp.getBodyPart(i) as Part
+                        val (t, h) = extractContent(bp)
+                        if (t != null) text = t
+                        if (h != null) html = h
+                    }
+                    text to html
+                }
+                Part.ATTACHMENT == part.disposition || part.fileName != null -> {
+                    null to null
+                }
+                else -> null to null
+            }
+        } catch (e: Exception) {
+            null to null
+        }
+    }
+
+    private fun extractAttachments(part: Part, attachments: MutableList<com.unifiedcomms.data.model.Attachment>) {
+        try {
+            when {
+                part.isMimeType("multipart/*") -> {
+                    val mp = part.content as MimeMultipart
+                    for (i in 0 until mp.count) {
+                        extractAttachments(mp.getBodyPart(i) as Part, attachments)
                     }
                 }
                 Part.ATTACHMENT == part.disposition || part.fileName != null -> {
@@ -267,7 +309,7 @@ class EmailSyncEngineImpl(
                         fileName = part.fileName ?: "attachment",
                         mimeType = part.contentType,
                         sizeBytes = part.size.toLong(),
-                        contentId = part.contentId,
+                        contentId = "",
                         isInline = Part.INLINE == part.disposition
                     )
                     attachments.add(attachment)
@@ -308,7 +350,9 @@ class EmailSyncEngineImpl(
                 email.recipients.to.forEach { mimeMessage.addRecipient(RecipientType.TO, InternetAddress(it.email, it.name)) }
                 email.recipients.cc.forEach { mimeMessage.addRecipient(RecipientType.CC, InternetAddress(it.email, it.name)) }
                 email.recipients.bcc.forEach { mimeMessage.addRecipient(RecipientType.BCC, InternetAddress(it.email, it.name)) }
-                email.recipients.replyTo.forEach { mimeMessage.addRecipient(RecipientType.REPLY_TO, InternetAddress(it.email, it.name)) }
+                if (email.recipients.replyTo.isNotEmpty()) {
+                    mimeMessage.setReplyTo(email.recipients.replyTo.map { InternetAddress(it.email, it.name) }.toTypedArray())
+                }
 
                 mimeMessage.subject = email.subject
 
@@ -319,7 +363,7 @@ class EmailSyncEngineImpl(
                 }
 
                 Transport.send(mimeMessage)
-                SendResult.success(mimeMessage.messageID ?: java.util.UUID.randomUUID().toString())
+                SendResult.success(mimeMessage.getHeader("Message-ID").firstOrNull() ?: java.util.UUID.randomUUID().toString())
             } catch (e: Exception) {
                 SendResult.failure(e.message ?: "Send failed")
             }
@@ -337,7 +381,9 @@ class EmailSyncEngineImpl(
     }
 
     override fun observeSyncProgress(accountId: String): kotlinx.coroutines.flow.Flow<SyncProgress> {
-        return _syncProgress.map { it[accountId] ?: SyncProgress(accountId, null, SyncStage.COMPLETED, 0, 0) }.distinctUntilChanged()
+        return _syncProgress.transform { progressMap: Map<String, SyncProgress> ->
+            emit(progressMap[accountId] ?: SyncProgress(accountId, null, SyncStage.COMPLETED, 0, 0))
+        }.distinctUntilChanged()
     }
 
     override suspend fun testConnection(account: Account): ConnectionTestResult {
