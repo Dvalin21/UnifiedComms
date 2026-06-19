@@ -29,6 +29,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 
 class SyncForegroundService : Service() {
 
@@ -71,11 +72,11 @@ class SyncForegroundService : Service() {
         // Perform sync for all active accounts
         CoroutineScope(Dispatchers.IO).launch {
             NotificationHelper.showSyncNotification(this@SyncForegroundService, "Starting sync...", 0)
-            
+
             // Get all active accounts and sync them
             val accountRepo = AccountRepositoryImpl(UnifiedCommsDatabase.getInstance(this@SyncForegroundService).accountDao())
             val accounts = accountRepo.getAllActive().first()
-            
+
             var completed = 0
             for (account in accounts) {
                 completed++
@@ -84,10 +85,10 @@ class SyncForegroundService : Service() {
                 NotificationHelper.showSyncNotification(this@SyncForegroundService, "Syncing ${account.name}... ${completed}/${accounts.size}", progress)
                 syncManager.performFullSync(account)
             }
-            
+
             _syncProgress.value = 100
             NotificationHelper.showSyncNotification(this@SyncForegroundService, "Sync completed", 100)
-            
+
             // Stop after a delay to show completion
             kotlinx.coroutines.delay(3000)
             NotificationHelper.dismissSyncNotification(this@SyncForegroundService)

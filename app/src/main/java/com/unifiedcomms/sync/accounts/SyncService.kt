@@ -23,17 +23,25 @@ import com.unifiedcomms.sync.EmailSyncEngineImpl
 import com.unifiedcomms.sync.CalendarSyncEngineImpl
 import com.unifiedcomms.sync.TaskSyncEngineImpl
 import com.unifiedcomms.sync.ContactSyncEngineImpl
+import com.unifiedcomms.data.repository.AccountRepositoryImpl
+import com.unifiedcomms.data.repository.EmailRepositoryImpl
+import com.unifiedcomms.data.repository.CalendarRepositoryImpl
+import com.unifiedcomms.data.repository.TaskRepositoryImpl
+import com.unifiedcomms.data.repository.ContactRepositoryImpl
+import com.unifiedcomms.security.CryptoManager
+import com.unifiedcomms.security.CryptoManagerImpl
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 
-class UnifiedCommsSyncService : AbstractThreadedSyncAdapter() {
+class UnifiedCommsSyncService(context: Context, autoInitialize: Boolean) : AbstractThreadedSyncAdapter(context, autoInitialize) {
 
     private lateinit var syncManager: SyncManager
     private lateinit var accountRepo: AccountRepository
 
-    constructor(context: Context) : super(context, true) {
-        initDependencies(context)
-    }
+    constructor(context: Context) : this(context, true)
 
-    constructor(context: Context, autoInitialize: Boolean) : super(context, autoInitialize) {
+    init {
         initDependencies(context)
     }
 
@@ -52,13 +60,14 @@ class UnifiedCommsSyncService : AbstractThreadedSyncAdapter() {
         val calendarRepo = CalendarRepositoryImpl(calendarEventDao, calendarDao)
         val taskRepo = TaskRepositoryImpl(taskDao, taskListDao)
         val contactRepo = ContactRepositoryImpl(contactDao)
+        val crypto = CryptoManagerImpl(context)
 
-        val emailSync = EmailSyncEngineImpl(emailRepo, accountRepo, null, CoroutineScope(Dispatchers.IO))
-        val calendarSync = CalendarSyncEngineImpl(calendarRepo, accountRepo, null, CoroutineScope(Dispatchers.IO))
-        val taskSync = TaskSyncEngineImpl(taskRepo, accountRepo, null, CoroutineScope(Dispatchers.IO))
-        val contactSync = ContactSyncEngineImpl(contactRepo, accountRepo, null, CoroutineScope(Dispatchers.IO))
+        val emailSync = EmailSyncEngineImpl(emailRepo, accountRepo, crypto, CoroutineScope(Dispatchers.IO))
+        val calendarSync = CalendarSyncEngineImpl(calendarRepo, accountRepo, crypto, CoroutineScope(Dispatchers.IO))
+        val taskSync = TaskSyncEngineImpl(taskRepo, accountRepo, crypto, CoroutineScope(Dispatchers.IO))
+        val contactSync = ContactSyncEngineImpl(contactRepo, accountRepo, crypto, CoroutineScope(Dispatchers.IO))
 
-        syncManager = SyncManager(emailSync, calendarSync, taskSync, contactSync)
+        syncManager = SyncManager(emailSync, calendarSync, taskSync, contactSync, accountRepo, CoroutineScope(Dispatchers.IO))
     }
 
     override fun onPerformSync(
@@ -68,16 +77,18 @@ class UnifiedCommsSyncService : AbstractThreadedSyncAdapter() {
         provider: ContentProviderClient,
         syncResult: SyncResult
     ) {
-        // Find our internal account by email
-        val unifiedAccount = accountRepo.getByEmailAndType(account.name, getAccountType(authority))
-            ?: return
+        // Find our internal account by email - run in blocking coroutine since onPerformSync is synchronous
+        runBlocking {
+            val unifiedAccount = accountRepo.getByEmailAndType(account.name, getAccountType(authority))
+                ?: return@runBlocking
 
-        // Run sync
-        val result = syncManager.performFullSync(unifiedAccount)
+            // Run sync
+            val result = syncManager.performFullSync(unifiedAccount)
 
-        result.errorMessage?.let { error ->
-            syncResult.stats.numIoExceptions++
-            // Log error
+            result.errorMessage?.let { error ->
+                syncResult.stats.numIoExceptions++
+                // Log error
+            }
         }
     }
 

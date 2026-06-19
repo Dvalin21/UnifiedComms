@@ -30,6 +30,14 @@ class AddAccountActivity : AppCompatActivity() {
     private var accountType: AccountType? = null
     private var pendingIntent: android.app.PendingIntent? = null
 
+    private fun getBuildConfigField(fieldName: String): String {
+        return try {
+            Class.forName("com.unifiedcomms.BuildConfig").getField(fieldName).get(null) as String
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -55,8 +63,9 @@ class AddAccountActivity : AppCompatActivity() {
     }
 
     private fun startGoogleAuth() {
+        val clientId = getBuildConfigField("GOOGLE_CLIENT_ID")
         val authUrl = "https://accounts.google.com/o/oauth2/v2/auth?" +
-            "client_id=${BuildConfig.GOOGLE_CLIENT_ID}&" +
+            "client_id=$clientId&" +
             "redirect_uri=${Uri.encode("unifiedcomms://oauth2redirect/google")}&" +
             "response_type=code&" +
             "scope=${Uri.encode("https://mail.google.com/ https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/contacts https://www.googleapis.com/auth/tasks")}&" +
@@ -69,8 +78,9 @@ class AddAccountActivity : AppCompatActivity() {
     }
 
     private fun startOutlookAuth() {
+        val clientId = getBuildConfigField("MICROSOFT_CLIENT_ID")
         val authUrl = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?" +
-            "client_id=${BuildConfig.MICROSOFT_CLIENT_ID}&" +
+            "client_id=$clientId&" +
             "redirect_uri=${Uri.encode("unifiedcomms://oauth2redirect/outlook")}&" +
             "response_type=code&" +
             "scope=${Uri.encode("https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send https://outlook.office.com/Calendars.ReadWrite https://outlook.office.com/Contacts.ReadWrite https://outlook.office.com/Tasks.ReadWrite")}"
@@ -81,8 +91,9 @@ class AddAccountActivity : AppCompatActivity() {
     }
 
     private fun startYahooAuth() {
+        val clientId = getBuildConfigField("YAHOO_CLIENT_ID")
         val authUrl = "https://api.login.yahoo.com/oauth2/request_auth?" +
-            "client_id=${BuildConfig.YAHOO_CLIENT_ID}&" +
+            "client_id=$clientId&" +
             "redirect_uri=${Uri.encode("unifiedcomms://oauth2redirect/yahoo")}&" +
             "response_type=code&" +
             "scope=mail-r%20mail-w%20cal-r%20cal-w%20contacts-r%20contacts-w"
@@ -93,8 +104,9 @@ class AddAccountActivity : AppCompatActivity() {
     }
 
     private fun startIcloudAuth() {
+        val clientId = getBuildConfigField("APPLE_CLIENT_ID")
         val authUrl = "https://appleid.apple.com/auth/authorize?" +
-            "client_id=${BuildConfig.APPLE_CLIENT_ID}&" +
+            "client_id=$clientId&" +
             "redirect_uri=${Uri.encode("unifiedcomms://oauth2redirect/icloud")}&" +
             "response_type=code&" +
             "scope=name%20email%20icloud.calendars%20icloud.contacts%20icloud.tasks&" +
