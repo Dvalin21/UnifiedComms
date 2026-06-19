@@ -86,8 +86,8 @@ class MainViewModel(
         _isSyncing.value = false
     }
 
-    fun getAccountColor(accountId: String): Int {
-        return com.unifiedcomms.ui.theme.AccountColors.getColorForAccount(accountId).container
+    fun getAccountColor(accountId: String): com.unifiedcomms.ui.theme.AccountColor {
+        return com.unifiedcomms.ui.theme.AccountColors.getColorForAccount(accountId)
     }
 
     // Repository accessors for screens

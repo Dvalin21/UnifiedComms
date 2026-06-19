@@ -1,39 +1,48 @@
 package com.unifiedcomms.ui.main
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Divider
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,13 +52,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.style.TextAlign
-import kotlinx.coroutines.flow.collectAsStateWithLifecycle
+import androidx.compose.foundation.Canvas
+import kotlin.math.abs
 
 @Composable
 fun MessagesScreen(
@@ -71,7 +79,7 @@ fun MessagesScreen(
             )
         },
         floatingActionButton = {
-            androidx.compose.material3.FloatingActionButton(
+            FloatingActionButton(
                 onClick = onNewMessage,
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary
@@ -82,13 +90,13 @@ fun MessagesScreen(
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier.padding(innerPadding).fillMaxSize(),
+            contentPadding = PaddingValues(vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(1.dp)
         ) {
             items(conversations.value) { conversation ->
                 ConversationListItem(
                     conversation = conversation,
-                    onClick = { onConversationClick(it) },
-                    onLongClick = { /* Show options */ }
+                    onClick = { onConversationClick(conversation) }
                 )
                 Divider()
             }
@@ -104,7 +112,7 @@ fun ConversationScreen(
 ) {
     val conversation = getMockConversations().find { it.id == conversationId }
         ?: MockConversation("1", "John Doe", "john@example.com", "Hey! How are you?", "10:30 AM", false, 0, com.unifiedcomms.data.model.ConversationType.DIRECT)
-    
+
     var messageText by remember { mutableStateOf("") }
     val messages = remember { mutableStateOf<List<MockMessage>>(getMockMessages(conversationId)) }
 
@@ -127,8 +135,7 @@ fun ConversationScreen(
         }
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
-            // Messages
-            androidx.compose.foundation.layout.Column(
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .weight(1f)
@@ -140,10 +147,10 @@ fun ConversationScreen(
                 }
             }
 
-            // Input
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHighest
             ) {
                 Row(
                     modifier = Modifier.padding(16.dp).fillMaxWidth(),
@@ -161,7 +168,7 @@ fun ConversationScreen(
                     IconButton(onClick = { /* Share email */ }) {
                         Icon(Icons.Default.Email, contentDescription = "Share email")
                     }
-                    
+
                     androidx.compose.material3.TextField(
                         value = messageText,
                         onValueChange = { messageText = it },
@@ -169,11 +176,11 @@ fun ConversationScreen(
                         placeholder = { Text("Message") },
                         singleLine = true
                     )
-                    
+
                     IconButton(onClick = { /* Voice message */ }) {
                         Icon(Icons.Default.Mic, contentDescription = "Voice message")
                     }
-                    
+
                     IconButton(
                         onClick = {
                             if (messageText.isNotBlank()) {
@@ -232,32 +239,34 @@ fun getMockMessages(conversationId: String): List<MockMessage> = listOf(
     MockMessage("2", conversationId, "me", "I'm doing great! Thanks for asking.", true, "10:26 AM"),
     MockMessage("3", conversationId, "them", "That's awesome. Did you see the new calendar feature?", false, "10:27 AM"),
     MockMessage("4", conversationId, "me", "Yes! The color coding is really nice.", true, "10:28 AM"),
-    MockMessage("5", conversationId, "them", "I agree. Want to test the messaging integration?", false, "10:29 AM"),
+    MockMessage("5", conversationId, "them", "I agree. Want to test the messaging integration?", false, "10:29 AM")
 )
 
 @Composable
 fun ConversationListItem(
     conversation: MockConversation,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    modifier: Modifier = Modifier
 ) {
     Surface(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-        onClick = onClick,
-        onLongClick = onLongClick
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow
     ) {
         Row(
             modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Avatar
             Box(
                 modifier = Modifier.size(56.dp),
                 contentAlignment = Alignment.Center
             ) {
-                androidx.compose.foundation.Canvas(modifier = Modifier.size(56.dp)) {
+                Canvas(modifier = Modifier.size(56.dp)) {
                     drawCircle(
-                        color = Color(conversation.id.hashCode().absoluteValue % 0xFFFFFF + 0xFF000000),
+                        color = Color(abs(conversation.id.hashCode() % 0xFFFFFF) + 0xFF000000),
                         radius = 28.dp.toPx()
                     )
                 }
@@ -266,7 +275,6 @@ fun ConversationListItem(
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            // Conversation info
             Column(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -278,20 +286,19 @@ fun ConversationListItem(
                             fontWeight = if (conversation.isUnread) FontWeight.Bold else FontWeight.Normal,
                             fontSize = 16.sp,
                             maxLines = 1,
-                            overflow = androidx.compose.ui.text.overflow.TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = conversation.lastMessage,
                             fontSize = 14.sp,
                             color = if (conversation.isUnread) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
-                            overflow = androidx.compose.ui.text.overflow.TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
             }
 
-            // Time and unread badge
             Column(horizontalAlignment = Alignment.End) {
                 Text(text = conversation.time, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (conversation.unreadCount > 0) {
@@ -307,8 +314,7 @@ fun ConversationListItem(
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onPrimary,
-                            textAlign = TextAlign.Center,
-                            style = SpanStyle(color = MaterialTheme.colorScheme.onPrimary)
+                            textAlign = TextAlign.Center
                         )
                     }
                 }
@@ -328,7 +334,7 @@ fun MessageBubble(message: MockMessage, isCurrentUser: Boolean) {
                 modifier = Modifier.size(32.dp),
                 contentAlignment = Alignment.Center
             ) {
-                androidx.compose.foundation.Canvas(modifier = Modifier.size(32.dp)) {
+                Canvas(modifier = Modifier.size(32.dp)) {
                     drawCircle(color = MaterialTheme.colorScheme.primary, radius = 16.dp.toPx())
                 }
                 Text(text = "J", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
@@ -337,13 +343,13 @@ fun MessageBubble(message: MockMessage, isCurrentUser: Boolean) {
         }
 
         Surface(
-            modifier = Modifier.padding(horizontal = 8.dp).widthIn(max = androidx.compose.ui.unit.Constraints.FixedConstraints(300.dp).maxWidth),
+            modifier = Modifier.padding(horizontal = 8.dp).widthIn(max = 300.dp),
             shape = if (isCurrentUser) {
                 RoundedCornerShape(topStart = 20.dp, topEnd = 4.dp, bottomStart = 20.dp, bottomEnd = 20.dp)
             } else {
                 RoundedCornerShape(topStart = 4.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 20.dp)
             },
-            containerColor = if (isCurrentUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest
+            color = if (isCurrentUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
                 Text(
@@ -361,8 +367,8 @@ fun MessageBubble(message: MockMessage, isCurrentUser: Boolean) {
                 modifier = Modifier.size(32.dp),
                 contentAlignment = Alignment.Center
             ) {
-                androidx.compose.foundation.Canvas(modifier = Modifier.size(32.dp)) {
-                    drawCircle(color = MaterialTheme.colorScheme.secondary, radius = 16.dp.toPx())
+                Canvas(modifier = Modifier.size(32.dp)) {
+                    drawCircle(color = Color(MaterialTheme.colorScheme.secondary.value), radius = 16.dp.toPx())
                 }
                 Text(text = "Me", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
             }

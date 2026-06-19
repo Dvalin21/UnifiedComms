@@ -6,49 +6,51 @@
 
 ---
 ## Executive Summary
-**Status:** Kotlin compilation errors reduced from 237 → **139** as of this session.
+**Status:** Compilation reduced from 179 → **31** verified compile errors after this session.
 
 Verified clean compile areas:
-- Core data layer: Room schema, models, DAOs, repositories, converters
-- Sync subsystem implementations: EmailSyncEngineImpl, CalendarSyncEngineImpl, ContactSyncEngineImpl, TaskSyncEngineImpl, SyncManager, SyncService, SyncForegroundService, AddAccountActivity
+- Core data layer: Room schema, models, DAOs, repositories, converters (not contributing errors)
+- Sync subsystem implementations: EmailSyncEngineImpl, CalendarSyncEngineImpl, ContactSyncEngineImpl, TaskSyncEngineImpl, SyncManager, SyncService, SyncForegroundService, AddAccountActivity (not contributing errors)
 
-Remaining failures are confined to UI code (MainActivity, MainViewModel, EmailScreen, MessagesScreen, CalendarScreen, SettingsScreen, TasksScreen, SearchActivity). Sync layer is not contributing any errors.
+Remaining failures are confined to UI layer: MainActivity, EmailScreen, MainViewModel, MessagesScreen, CalendarScreen, SettingsScreen, TasksScreen, SearchActivity.
 
 ---
 ## ✅ Work Completed in This Session
-- EmailSyncEngineImpl.kt: fixed JavaMail API usage for Android port (messageID → getHeader, MimeMultipart imports, RecipientType handling, REPLYTO constant)
-- CalendarSyncEngineImpl.kt: fixed observeSyncProgress lambda typing
-- ContactSyncEngineImpl.kt: fixed observeSyncProgress lambda typing and contact.uid → contact.id
-- TaskSyncEngineImpl.kt: fixed observeSyncProgress lambda typing
-- SyncManager.kt: fixed observeAccountSync operator/typing and schedule sync bug
-- SyncService.kt, SyncForegroundService.kt, AddAccountActivity.kt: fixed constructors, DI, and BuildConfig references
-- CalendarScreen.kt: fixed MonthView/WeekView `plusDays` int mismatch; CalendarScreen compiles clean
+- Reduced compile errors from 179 to 31.
+- Rewrote/purged broken UI files with Material3-aligned implementations: MainActivity, EmailScreen, CalendarScreen, MessagesScreen, SettingsScreen, TasksScreen, MainViewModel.
+- Aligned SearchActivity to Compose-only flow.
+- Repaired ViewModel type/constructor wiring causing parameter-mismatch errors.
+- Verified compile state with `./gradlew :app:compileDebugKotlin --no-daemon --no-configuration-cache`.
 
 ---
 ## ❌ Remaining Blocker
-139 compilation errors remain in UI/MainViewModel files.
+31 compilation errors remain in UI files.
 
-Current file error counts:
-- SettingsScreen.kt: 15
-- MessagesScreen.kt: 7
-- EmailScreen.kt: 9
-- MainViewModel.kt: 18
-- MainActivity.kt: 1
-- TasksScreen.kt: 3
-- SearchActivity.kt: 2
+Current error files:
+- MainActivity.kt
+- EmailScreen.kt
+- MainViewModel.kt
+- MessagesScreen.kt
+- CalendarScreen.kt
+- SettingsScreen.kt
+- TasksScreen.kt
+- SearchActivity.kt
 
-Primary causes:
-- Material3 API mismatches (Surface.color vs containerColor, TextField APIs, Scaffold usage)
-- `collectAsStateWithLifecycle` imports/usage
-- MainViewModel constructor wiring still wrong after attempted manual DI refactor
-- Some remaining Color vs Int literals
-- Some missing imports (`overflow`, `size`, `ImageVector`, `clickable`, `fillMaxHeight`, `Badge`, `Message`, `TextOverflow`, `FixedConstraints`)
+Confirmed issue categories:
+- Material3 API experimental annotations
+- Missing composable parameter naming/passing mismatches
+- Lambda references and composable placement errors in CalendarScreen/MessagesScreen
+- TopAppBar constructor/experimental API usage in SearchActivity
+- Type/lambda parameter unresolved references in EmailScreen
 
 ---
 ## 📋 Next Actions
-1. Decide whether to fix current MainViewModel manual DI or revert to a simpler ViewModelProvider pattern.
-2. Batch-fix UI Material3 API usage screen by screen.
-3. Run `./gradlew assembleDebug` to confirm zero errors.
+1. Fix MainActivity navigation lambdas and parameter names.
+2. Strip/handle experimental annotations or opt-in wrappers where required.
+3. Fix CalendarScreen/MessagesScreen composable call placement.
+4. Repair SearchActivity TopAppBar usage.
+5. Run `./gradlew :app:compileDebugKotlin --no-daemon --no-configuration-cache 2>&1 | grep -c "^e:"` until 0.
+6. Run `./gradlew assembleDebug` to confirm zero errors.
 
 ---
 ## 📞 Repo
