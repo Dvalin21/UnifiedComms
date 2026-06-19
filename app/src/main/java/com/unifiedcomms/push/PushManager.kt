@@ -1,6 +1,7 @@
 package com.unifiedcomms.push
 
 import android.content.Context
+import android.content.pm.PackageManager
 import com.unifiedcomms.data.model.Message
 import com.unifiedcomms.security.CryptoManager
 import kotlinx.coroutines.CoroutineScope
@@ -52,10 +53,24 @@ class PushManagerImpl(
 ) : PushManager {
 
     private val serverUrl = "https://push.unifiedcomms.app"
-    private val apiKey = try { BuildConfig.PUSH_API_KEY } catch (e: NoClassDefFoundError) { "" }
+    private val apiKey: String = try { 
+        Class.forName("com.unifiedcomms.BuildConfig").getField("PUSH_API_KEY").get(null) as String 
+    } catch (e: Exception) { "" }
 
     private var deviceToken: String? = null
     private var deviceId: String? = null
+
+    private fun getAppVersion(): String {
+        return try { 
+            Class.forName("com.unifiedcomms.BuildConfig").getField("VERSION_NAME").get(null) as String 
+        } catch (e: Exception) { 
+            try {
+                context.packageManager.getPackageInfo(context.packageName, 0).versionName
+            } catch (e2: PackageManager.NameNotFoundException) {
+                "1.0.0"
+            }
+        }
+    }
 
     override suspend fun registerDevice(token: String): RegistrationResult = withContext(Dispatchers.IO) {
         deviceToken = token
@@ -63,7 +78,7 @@ class PushManagerImpl(
         val json = JSONObject().apply {
             put("fcm_token", token)
             put("platform", "android")
-            put("app_version", try { BuildConfig.VERSION_NAME } catch (e: NoClassDefFoundError) { "1.0.0" })
+            put("app_version", getAppVersion())
         }
         val mediaType = "application/json".toMediaType()
         val requestBody = RequestBody.create(mediaType, json.toString())
