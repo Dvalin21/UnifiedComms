@@ -1,10 +1,13 @@
 package com.unifiedcomms.ui.main
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -17,19 +20,25 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
+import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TimePickerDialog
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
@@ -41,29 +50,32 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Spacer
-import kotlinx.datetime.Clock
+import kotlin.math.abs
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CalendarScreen(
     viewModel: MainViewModel,
     onCreateEvent: () -> Unit,
     onEventClick: (MockEvent) -> Unit
 ) {
-    val selectedView by remember { mutableStateOf(CalendarView.MONTH) }
+    var selectedView by remember { mutableStateOf(CalendarView.MONTH) }
     val currentDate = remember { mutableStateOf(java.time.LocalDate.now()) }
 
     Scaffold(
@@ -103,9 +115,9 @@ fun CalendarScreen(
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
             when (selectedView) {
-                CalendarView.DAY -> DayView(currentDate.value, onEventClick)
-                CalendarView.WEEK -> WeekView(currentDate.value, onEventClick)
-                CalendarView.MONTH -> MonthView(currentDate.value, onEventClick)
+                CalendarView.DAY -> DayView(date = currentDate.value, onEventClick = onEventClick)
+                CalendarView.WEEK -> WeekView(date = currentDate.value, onEventClick = onEventClick)
+                CalendarView.MONTH -> MonthView(date = currentDate.value, onEventClick = onEventClick)
             }
         }
     }
@@ -113,25 +125,22 @@ fun CalendarScreen(
 
 enum class CalendarView { DAY, WEEK, MONTH }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DayView(date: java.time.LocalDate, onEventClick: (MockEvent) -> Unit) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text(text = "Day View: ${date.dayOfWeek}, ${date.month} ${date.dayOfMonth}", fontSize = 18.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(16.dp))
-        
-        // Time slots
+
         (6..22).forEach { hour ->
             val events = getMockEventsForDate(date).filter { it.startHour == hour }
             if (events.isNotEmpty()) {
                 Surface(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                     shape = RoundedCornerShape(8.dp),
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest
                 ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row {
                             Text(text = String.format("%02d:00", hour), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(modifier = Modifier.width(16.dp))
@@ -146,10 +155,11 @@ fun DayView(date: java.time.LocalDate, onEventClick: (MockEvent) -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WeekView(date: java.time.LocalDate, onEventClick: (MockEvent) -> Unit) {
     val weekStart = date.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
-    
+
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -165,7 +175,7 @@ fun WeekView(date: java.time.LocalDate, onEventClick: (MockEvent) -> Unit) {
                     Text(text = day.dayOfWeek.name.take(3), fontWeight = FontWeight.Bold, fontSize = 12.sp)
                     Text(text = day.dayOfMonth.toString(), fontSize = 16.sp)
                     Spacer(modifier = Modifier.height(8.dp))
-                    
+
                     val dayEvents = getMockEventsForDate(day)
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         dayEvents.take(3).forEach { event ->
@@ -181,25 +191,24 @@ fun WeekView(date: java.time.LocalDate, onEventClick: (MockEvent) -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MonthView(date: java.time.LocalDate, onEventClick: (MockEvent) -> Unit) {
     val firstOfMonth = date.withDayOfMonth(1)
     val dayOfWeekOffset = firstOfMonth.dayOfWeek.value - 1 // Monday = 0
     val daysInMonth = firstOfMonth.lengthOfMonth()
-    
+
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        // Week headers
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun").forEach { day ->
-                Text(text = day, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f).fillMaxWidth())
+                Text(text = day, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
-        
-        // Calendar grid
+
         Column {
             var day = 1
             for (week in 0..5) {
@@ -216,9 +225,9 @@ fun MonthView(date: java.time.LocalDate, onEventClick: (MockEvent) -> Unit) {
                         } else {
                             null
                         }
-                        
+
                         val events = cellDate?.let { getMockEventsForDate(it) } ?: emptyList()
-                        
+
                         Surface(
                             modifier = Modifier
                                 .weight(1f)
@@ -231,11 +240,8 @@ fun MonthView(date: java.time.LocalDate, onEventClick: (MockEvent) -> Unit) {
                             shape = RoundedCornerShape(8.dp),
                             onClick = { events.firstOrNull()?.let { onEventClick(it) } }
                         ) {
-                            Column(
-                                modifier = Modifier.padding(4.dp).fillMaxSize(),
-                                verticalArrangement = Arrangement.Top
-                            ) {
-                                Text(text = cellDate?.dayOfMonth.toString() ?: "", fontSize = 12.sp, fontWeight = if (cellDate == java.time.LocalDate.now()) FontWeight.Bold else FontWeight.Normal)
+                            Column(modifier = Modifier.fillMaxSize().padding(4.dp), verticalArrangement = Arrangement.Top) {
+                                Text(text = cellDate?.dayOfMonth?.toString() ?: "", fontSize = 12.sp, fontWeight = if (cellDate == java.time.LocalDate.now()) FontWeight.Bold else FontWeight.Normal)
                                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     events.take(3).forEach { event ->
                                         EventChip(event = event, compact = true, onClick = { onEventClick(it) })
@@ -258,16 +264,16 @@ data class MockEvent(
     val title: String,
     val startHour: Int,
     val endHour: Int,
-    val color: Int,
+    val color: Long,
     val calendarName: String,
     val isAllDay: Boolean = false
 )
 
 fun getMockEventsForDate(date: java.time.LocalDate): List<MockEvent> {
-    val hash = date.toString().hashCode().absoluteValue
+    val hash = abs(date.toString().hashCode())
     val count = (hash % 4) + 1
+    val colors = listOf(0xFFE57373, 0xFF64B5F6, 0xFF81C784, 0xFFFFB74D, 0xFFBA68C8)
     return (0 until count).map { i ->
-        val colors = listOf(0xFFE57373, 0xFF64B5F6, 0xFF81C784, 0xFFFFB74D, 0xFFBA68C8)
         MockEvent(
             id = "${date}-$i",
             title = "Event ${i + 1} for ${date.month}",
@@ -280,11 +286,7 @@ fun getMockEventsForDate(date: java.time.LocalDate): List<MockEvent> {
 }
 
 @Composable
-fun EventChip(
-    event: MockEvent,
-    compact: Boolean = false,
-    onClick: () -> Unit
-) {
+fun EventChip(event: MockEvent, compact: Boolean = false, onClick: () -> Unit) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -299,7 +301,7 @@ fun EventChip(
                 fontSize = if (compact) 10.sp else 12.sp,
                 color = Color.White,
                 maxLines = 1,
-                overflow = androidx.compose.ui.text.overflow.TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis
             )
             if (!compact) {
                 Text(text = event.calendarName, fontSize = 10.sp, color = Color.White.copy(alpha = 0.8f))
@@ -308,11 +310,9 @@ fun EventChip(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CreateEventScreen(
-    viewModel: MainViewModel,
-    onSave: () -> Unit
-) {
+fun CreateEventScreen(viewModel: MainViewModel, onSave: () -> Unit) {
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var location by remember { mutableStateOf("") }
@@ -321,8 +321,14 @@ fun CreateEventScreen(
     var endTime by remember { mutableStateOf(java.time.LocalTime.of(11, 0)) }
     var isAllDay by remember { mutableStateOf(false) }
     var selectedColor by remember { mutableStateOf(0xFFE57373) }
-    var attendees by remember { mutableStateOf("") }
-    var reminderMinutes by remember { mutableStateOf(60) }
+    val reminderMinutes = remember { mutableStateOf(60) }
+    var showDatePicker by remember { mutableStateOf(false) }
+    var showStartTimePicker by remember { mutableStateOf(false) }
+    var showEndTimePicker by remember { mutableStateOf(false) }
+
+    val dateState = rememberDatePickerState(initialSelectedDateMillis = selectedDate.toEpochDay() * 86400000)
+    val startTimeState = rememberTimePickerState(initialHour = startTime.hour, initialMinute = startTime.minute)
+    val endTimeState = rememberTimePickerState(initialHour = endTime.hour, initialMinute = endTime.minute)
 
     Scaffold(
         topBar = {
@@ -343,61 +349,94 @@ fun CreateEventScreen(
                 .padding(innerPadding)
                 .padding(16.dp)
                 .fillMaxSize()
-                .verticalScroll(scrollState)
+                .verticalScroll(scrollState),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            androidx.compose.material3.TextField(value = title, onValueChange = { title = it }, label = { Text("Title *") }, modifier = Modifier.fillMaxWidth())
-            androidx.compose.material3.TextField(value = description, onValueChange = { description = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth(), minLines = 3)
-            androidx.compose.material3.TextField(value = location, onValueChange = { location = it }, label = { Text("Location") }, modifier = Modifier.fillMaxWidth())
-            
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                androidx.compose.material3.DatePickerDialog(onDismissRequest = {}, date = selectedDate, onDateSelected = { selectedDate = it })
-                androidx.compose.material3.TimePickerDialog(onDismissRequest = {}, time = startTime, onTimeSelected = { startTime = it })
-                androidx.compose.material3.TimePickerDialog(onDismissRequest = {}, time = endTime, onTimeSelected = { endTime = it })
+            TextField(value = title, onValueChange = { title = it }, label = { Text("Title *") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            TextField(value = description, onValueChange = { description = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth(), minLines = 3)
+            TextField(value = location, onValueChange = { location = it }, label = { Text("Location") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+
+            if (showDatePicker) {
+                DatePickerDialog(onDismissRequest = { showDatePicker = false }, confirmButton = {
+                    TextButton(onClick = {
+                        dateState.selectedDateMillis?.let { selectedDate = java.time.LocalDate.ofEpochDay(it / 86400000) }
+                        showDatePicker = false
+                    }) { Text("OK") }
+                }, dismissButton = {
+                    TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
+                }) {
+                    DatePicker(state = dateState)
+                }
             }
-            
+            if (showStartTimePicker) {
+                TimePickerDialog(onDismissRequest = { showStartTimePicker = false }, confirmButton = {
+                    TextButton(onClick = {
+                        startTime = java.time.LocalTime.of(startTimeState.hour, startTimeState.minute)
+                        showStartTimePicker = false
+                    }) { Text("OK") }
+                }, dismissButton = {
+                    TextButton(onClick = { showStartTimePicker = false }) { Text("Cancel") }
+                }) {
+                    TimePicker(state = startTimeState)
+                }
+            }
+            if (showEndTimePicker) {
+                TimePickerDialog(onDismissRequest = { showEndTimePicker = false }, confirmButton = {
+                    TextButton(onClick = {
+                        endTime = java.time.LocalTime.of(endTimeState.hour, endTimeState.minute)
+                        showEndTimePicker = false
+                    }) { Text("OK") }
+                }, dismissButton = {
+                    TextButton(onClick = { showEndTimePicker = false }) { Text("Cancel") }
+                }) {
+                    TimePicker(state = endTimeState)
+                }
+            }
+
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                androidx.compose.material3.Checkbox(checked = isAllDay, onCheckedChange = { isAllDay = it })
+                Checkbox(checked = isAllDay, onCheckedChange = { isAllDay = it })
                 Text("All day")
             }
-            
-            // Color picker
-            Text(text = "Calendar Color", fontWeight = FontWeight.Bold)
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text(text = "Start", fontWeight = FontWeight.Bold)
+                TextButton(onClick = { showStartTimePicker = true }) { Text(startTime.toString()) }
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(text = "End", fontWeight = FontWeight.Bold)
+                TextButton(onClick = { showEndTimePicker = true }) { Text(endTime.toString()) }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text(text = "Date", fontWeight = FontWeight.Bold)
+                TextButton(onClick = { showDatePicker = true }) { Text(selectedDate.toString()) }
+            }
+
+            androidx.compose.material3.Text(text = "Calendar Color", fontWeight = FontWeight.Bold)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(0xFFE57373, 0xFF64B5F6, 0xFF81C784, 0xFFFFB74D, 0xFFBA68C8, 0xFF4FC3F7, 0xFF4DB6AC, 0xFFAED581).forEach { color ->
                     Surface(
                         modifier = Modifier.size(32.dp).background(if (selectedColor == color) MaterialTheme.colorScheme.onSurface else Color.Transparent, RoundedCornerShape(16.dp)).padding(4.dp),
                         shape = RoundedCornerShape(16.dp),
-                        containerColor = Color(color),
+                        color = Color(color),
                         onClick = { selectedColor = color }
                     ) { Spacer(modifier = Modifier.fillMaxSize()) }
                 }
             }
-            
-            // Attendees
-            androidx.compose.material3.TextField(value = attendees, onValueChange = { attendees = it }, label = { Text("Attendees (comma-separated emails)") }, modifier = Modifier.fillMaxWidth())
-            
-            // Reminder
-            androidx.compose.material3.DropdownMenu(
-                expanded = true,
-                onDismissRequest = {}
-            ) {
-                androidx.compose.material3.DropdownMenuItem(onClick = { reminderMinutes = 0 }) { Text("At time of event") }
-                androidx.compose.material3.DropdownMenuItem(onClick = { reminderMinutes = 5 }) { Text("5 minutes before") }
-                androidx.compose.material3.DropdownMenuItem(onClick = { reminderMinutes = 15 }) { Text("15 minutes before") }
-                androidx.compose.material3.DropdownMenuItem(onClick = { reminderMinutes = 30 }) { Text("30 minutes before") }
-                androidx.compose.material3.DropdownMenuItem(onClick = { reminderMinutes = 60 }) { Text("1 hour before") }
-                androidx.compose.material3.DropdownMenuItem(onClick = { reminderMinutes = 1440 }) { Text("1 day before") }
+
+            TextField(value = "", onValueChange = { }, label = { Text("Attendees (comma-separated emails") }, modifier = Modifier.fillMaxWidth())
+
+            DropdownMenu(expanded = true, onDismissRequest = { reminderMinutes.value = 0 }) {
+                listOf(0 to "At time of event", 5 to "5 minutes before", 15 to "15 minutes before", 30 to "30 minutes before", 60 to "1 hour before", 1440 to "1 day before").forEach { pair ->
+                    val minutes = pair.first
+                    DropdownMenuItem(onClick = { reminderMinutes.value = minutes }, text = { Text(pair.second) })
+                }
+                Text(text = "Reminder: ${reminderMinutes.value}")
             }
         }
     }
 }
 
 @Composable
-fun EventDetailScreen(
-    viewModel: MainViewModel,
-    eventId: String,
-    onEdit: () -> Unit
-) {
+fun EventDetailScreen(viewModel: MainViewModel, eventId: String, onEdit: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -417,7 +456,7 @@ fun EventDetailScreen(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                color = MaterialTheme.colorScheme.surfaceContainerHighest
             ) {
                 Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(text = "Team Meeting", fontSize = 24.sp, fontWeight = FontWeight.Bold)
@@ -426,7 +465,7 @@ fun EventDetailScreen(
                     Divider()
                     Text(text = "Attendees:", fontWeight = FontWeight.Bold)
                     listOf("alice@company.com", "bob@company.com", "charlie@company.com").forEach { email ->
-                        Text(text = "• $email")
+                        Text(text = "• " + email)
                     }
                     Divider()
                     Text(text = "Description:", fontWeight = FontWeight.Bold)
