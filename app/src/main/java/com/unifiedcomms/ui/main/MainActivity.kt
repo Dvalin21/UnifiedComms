@@ -3,51 +3,21 @@ package com.unifiedcomms.ui.main
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.unifiedcomms.R
 import com.unifiedcomms.ui.theme.UnifiedCommsTheme
-import com.unifiedcomms.ui.theme.AccountColors
-import com.unifiedcomms.data.db.UnifiedCommsDatabase
-import com.unifiedcomms.data.repository.*
-import com.unifiedcomms.data.db.dao.*
-import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
-
-    private val viewModel: MainViewModel by viewModels(factoryProducer = {
-        ComposableViewModel {
-            val db = UnifiedCommsDatabase.getInstance(this@MainActivity)
-            val accountDao = db.accountDao()
-            val emailDao = db.emailDao()
-            val calendarEventDao = db.calendarEventDao()
-            val calendarDao = db.calendarDao()
-            val taskDao = db.taskDao()
-            val taskListDao = db.taskListDao()
-            val messageDao = db.messageDao()
-            val conversationDao = db.conversationDao()
-            val contactDao = db.contactDao()
-
-            val accountRepo = AccountRepositoryImpl(accountDao)
-            val emailRepo = EmailRepositoryImpl(emailDao)
-            val calendarRepo = CalendarRepositoryImpl(calendarEventDao, calendarDao)
-            val taskRepo = TaskRepositoryImpl(taskDao, taskListDao)
-            val messagingRepo = MessagingRepositoryImpl(messageDao, conversationDao)
-            val contactRepo = ContactRepositoryImpl(contactDao)
-
-            MainViewModel(accountRepo, emailRepo, calendarRepo, taskRepo, messagingRepo, contactRepo)
-        }
-    })
-
-    private val navController = rememberNavController()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             UnifiedCommsTheme {
+                val navController = rememberNavController()
+                val viewModel: MainViewModel = viewModel()
+
                 NavHost(navController, startDestination = "unified_inbox") {
                     composable("unified_inbox") {
                         UnifiedInboxScreen(
@@ -67,18 +37,18 @@ class MainActivity : ComponentActivity() {
                             androidx.navigation.navArgument("folder") { type = androidx.navigation.NavType.StringType }
                         )
                     ) { backStackEntry ->
-                        val accountId = backStackEntry.getString()!!
-                        val folder = backStackEntry.getString()!!
+                        val accountId = backStackEntry.arguments?.getString("accountId").orEmpty()
+                        val folder = backStackEntry.arguments?.getString("folder").orEmpty()
                         EmailScreen(
                             viewModel = viewModel,
                             accountId = accountId,
                             folder = folder,
                             onNavigateBack = { navController.popBackStack() },
-                            onComposeEmail = { navController.navigate("compose_email/$accountId") }
+                            onCompose = { navController.navigate("compose_email/$accountId") }
                         )
                     }
                     composable("compose_email/{accountId}") { backStackEntry ->
-                        val accountId = backStackEntry.getString()!!
+                        val accountId = backStackEntry.arguments?.getString("accountId").orEmpty()
                         ComposeEmailScreen(
                             viewModel = viewModel,
                             accountId = accountId,
@@ -99,7 +69,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     composable("event_detail/{eventId}") { backStackEntry ->
-                        val eventId = backStackEntry.getString()!!
+                        val eventId = backStackEntry.arguments?.getString("eventId").orEmpty()
                         EventDetailScreen(
                             viewModel = viewModel,
                             eventId = eventId,
@@ -127,7 +97,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     composable("conversation/{conversationId}") { backStackEntry ->
-                        val conversationId = backStackEntry.getString()!!
+                        val conversationId = backStackEntry.arguments?.getString("conversationId").orEmpty()
                         ConversationScreen(
                             viewModel = viewModel,
                             conversationId = conversationId,
@@ -148,7 +118,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     composable("account_settings/{accountId}") { backStackEntry ->
-                        val accountId = backStackEntry.getString()!!
+                        val accountId = backStackEntry.arguments?.getString("accountId").orEmpty()
                         AccountSettingsScreen(
                             viewModel = viewModel,
                             accountId = accountId,
