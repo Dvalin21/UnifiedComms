@@ -6,6 +6,7 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
 import com.unifiedcomms.data.model.AuthConfig
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.security.KeyStore
 import java.security.SecureRandom
@@ -221,7 +222,7 @@ class CryptoManagerImpl(
         return result
     }
 
-    private fun getOrCreateAesKey(): SecretKey = withContext(Dispatchers.IO) {
+    private fun getOrCreateAesKey(): SecretKey = runBlocking(Dispatchers.IO) {
         val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         if (!keyStore.containsAlias(masterKeyAlias)) {
             val generator = KeyGenerator.getInstance("AES", "AndroidKeyStore")
