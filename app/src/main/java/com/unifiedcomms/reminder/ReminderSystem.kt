@@ -22,6 +22,7 @@ import com.unifiedcomms.data.db.UnifiedCommsDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 
 class ReminderAlarmReceiver : BroadcastReceiver() {
 
@@ -157,7 +158,7 @@ class FullScreenReminderActivity : Activity() {
     }
 
     private fun openEventDetail(event: CalendarEvent) {
-        val intent = Intent(this, MainActivity::class.java).apply {
+        val intent = Intent(this, FullScreenReminderActivity::class.java).apply {
             putExtra("navigate_to", "event_detail/${event.id}")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
@@ -173,11 +174,9 @@ class ReminderScheduler(
 
     fun scheduleReminders(accountId: String) {
         CoroutineScope(Dispatchers.IO).launch {
-            val upcomingEvents = calendarRepo.getUpcomingEvents(accountId, System.currentTimeMillis(), 50)
-            upcomingEvents.forEach { events ->
-                events.forEach { event ->
-                    scheduleEventReminder(event)
-                }
+            val upcomingEvents = calendarRepo.getUpcomingEvents(accountId, System.currentTimeMillis(), 50).first()
+            upcomingEvents.forEach { event ->
+                scheduleEventReminder(event)
             }
         }
     }

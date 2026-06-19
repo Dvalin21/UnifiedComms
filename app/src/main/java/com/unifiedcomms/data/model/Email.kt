@@ -21,7 +21,6 @@ import kotlinx.serialization.Serializable
         Index(value = ["accountId", "receivedAt"]),
         Index(value = ["threadId"]),
         Index(value = ["isRead"]),
-        Index(value = ["isFlagged"]),
         Index(value = ["subject", "sender", "body_text"])
     ],
     foreignKeys = [
@@ -62,7 +61,10 @@ data class Email(
     val isSigned: Boolean = false,
     val encryptionKeyId: String? = null,
     val sizeBytes: Long = 0,
-    val mimeType: String = "text/plain"
+    val mimeType: String = "text/plain",
+    val etag: String? = null,
+    @TypeConverters(DateTimeConverter::class) val updatedAt: Instant = Clock.System.now(),
+    val needsSync: Boolean = false
 ) {
     fun isUnread(): Boolean = !flags.isRead
     fun isStarred(): Boolean = flags.isFlagged
