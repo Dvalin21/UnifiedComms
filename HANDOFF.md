@@ -6,67 +6,55 @@
 
 ---
 ## Executive Summary
-**Status:** Compilation fixed. Zero Kotlin compile errors. Debug APK assembles successfully.
+**Status:** Compilation verified clean on current tree. Zero Kotlin compile errors. Debug APK assembles successfully.
 
 Verified clean build:
-- `./gradlew :app:compileDebugKotlin --no-daemon --no-configuration-cache` -> BUILD SUCCESSFUL
-- `./gradlew assembleDebug --no-daemon --no-configuration-cache` -> BUILD SUCCESSFUL
+- `./gradlew :app:compileDebugKotlin --no-daemon --no-configuration-cache --rerun-tasks 2>&1 | tail -5` shows `BUILD SUCCESSFUL`
+- `./gradlew assembleDebug --no-daemon --no-configuration-cache` remains green
 
-Remaining output is warnings only (deprecated `Divider` -> `HorizontalDivider`, deprecated icon variants, unused parameters).
+Warnings only (deprecated APIs, unused params, null-safety calls).
 
 ---
 ## ✅ Work Completed in This Session
-1. Removed duplicate hand-written `BuildConfig.java` colliding with Gradle-generated class.
-2. Added missing screens:
-   - `AddAccountScreen.kt`
-   - `AccountSettingsScreen.kt`
-3. Fixed `CalendarScreen.kt`:
-   - Replaced broken `lambda = onEventClick(event)` with correct `onClick = onClick`
-   - Fixed `background` symbol resolution via corrected imports
-   - Fixed malformed `Spacer` import
-   - Full rewrite preserving Material 3 usage
-4. Fixed `EmailScreen.kt`:
-   - Removed duplicate `@OptIn(ExperimentalMaterial3Api::class)`
-   - Kept Material 3 imports and parameter wiring
-5. Fixed `MainActivity.kt`:
-   - Removed invalid `accountId` argument passed to `ComposeEmailScreen`
-6. Updated `app/build.gradle.kts` with global Compose/Material 3 opt-in flags.
-7. Verified compile and assemble both succeed.
+1. Confirmed prior compile-fix work carried forward into `3b71a5b`.
+2. Verified compile on actual current tree (fresh rerun tasks): zero errors.
+3. Confirmed all primary UI screens present and referenced from `MainActivity.kt`:
+   - `UnifiedInboxScreen`, `EmailOverviewScreen`, `EmailScreen`, `ComposeEmailScreen`, `EmailDetailScreen`
+   - `CalendarScreen`, `CreateEventScreen`, `EventDetailScreen`
+   - `TasksScreen`, `CreateTaskScreen`
+   - `MessagesScreen`, `ConversationScreen`
+   - `AddAccountScreen`, `AccountSettingsScreen`
+4. Confirmed ViewModel, repositories, models, DI, theme, sync managers in place.
 
 ---
 ## ❌ Remaining Blocker
-None. Build succeeds.
+None for compile/assemble. Runtime/instrumented tests are next step.
 
 ---
 ## 📋 Next Actions
-1. Replace stub screens (`AddAccountScreen`, `AccountSettingsScreen`) with real implementations.
-2. Address deprecation warnings (`Divider` -> `HorizontalDiviver`, `Icons.AutoMirrored.Filled.*`).
-3. Implement actual ViewModel logic and navigation flows.
-4. Run instrumented UI tests (`./gradlew connectedDebugAndroidTest`) on device/emulator.
+1. Address deprecation warnings:
+   - `Divider` -> `HorizontalDivider`
+   - `Icons.AutoMirrored.Filled.*` mirrorable icons
+   - Unused params (`viewModel`, `eventId`, `accountId` in stubbed screens)
+   - `OnLifecycleEvent`, `FLAG_FULLSCREEN`, `MasterKeys` -> `EncryptedSharedKeys`/`EncryptedFile`/BiometricManager
+2. Wire ViewModel state into screens (replace mock state and mock lists with Flow/collect).
+3. Run instrumented UI tests (`./gradlew connectedDebugAndroidTest`) on device.
+4. Replace any remaining `remember { mutableStateOf<List<...>>(getMock...) }` with repository-backed flows.
 
 ---
 ## 📞 Repo
 https://github.com/Dvalin21/UnifiedComms
 
 ## 📝 Commit / Push Summary
-Files committed and pushed:
-- HANDOFF.md: updated compile status
-- app/build.gradle.kts: global Compose/Material 3 opt-in flags
-- CalendarScreen.kt: full Material 3 rewrite, lambda/background fixes
-- EmailScreen.kt: remove duplicate opt-in
-- MainActivity.kt: fix ComposeEmailScreen argument mismatch
-- MessagesScreen.kt: Material 3 migration (earlier)
-- AddAccountScreen.kt: new stub
-- AccountSettingsScreen.kt: new stub
-- D app/src/main/java/com/unifiedcomms/BuildConfig.java: remove duplicate
-
 Latest remote commit on master:
-6ab34a9 feat: Replace AddAccountScreen + AccountSettingsScreen stubs with working feature flows
+3b71a5b chore: refresh HANDOFF timeline, dotenv resolution, and feature push status
+
+Handoff reflects authenticated-account-driven status preserved in repo front matter.
 
 ---
 ## 🚀 Resume
 ```bash
 cd ~/host/UnifiedComms
-./gradlew :app:compileDebugKotlin --no-daemon --no-configuration-cache 2>&1 | grep -c "^e:"
+./gradlew :app:compileDebugKotlin --no-daemon --no-configuration-cache --rerun-tasks 2>&1 | tail -8
 ./gradlew assembleDebug --no-daemon --no-configuration-cache
 ```
