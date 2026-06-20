@@ -1,4 +1,5 @@
 package com.unifiedcomms.ui.main
+import androidx.compose.material.icons.filled.ArrowBack
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,7 +21,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -33,7 +34,6 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Call
@@ -111,7 +111,7 @@ fun EmailScreen(
                         }
                     }
                 }
-                Divider()
+                HorizontalDivider()
             }
         }
     }
@@ -183,7 +183,7 @@ fun EmailDetailScreen(viewModel: MainViewModel, emailId: String, onBack: () -> U
                     androidx.compose.material3.Text(text = "to me", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Divider()
+            HorizontalDivider()
             androidx.compose.material3.Text(text = email.body)
         }
     }
