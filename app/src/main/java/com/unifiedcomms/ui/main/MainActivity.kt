@@ -39,19 +39,18 @@ class MainActivity : ComponentActivity() {
                     ) { backStackEntry ->
                         val accountId = backStackEntry.arguments?.getString("accountId").orEmpty()
                         val folder = backStackEntry.arguments?.getString("folder").orEmpty()
-                        EmailScreen(
-                            viewModel = viewModel,
-                            accountId = accountId,
-                            folder = folder,
-                            onNavigateBack = { navController.popBackStack() },
-                            onCompose = { navController.navigate("compose_email/$accountId") }
-                        )
+                            EmailScreen(
+                                viewModel = viewModel,
+                                accountId = accountId,
+                                folder = folder,
+                                onNavigateBack = { navController.popBackStack() },
+                                onCompose = { navController.navigate("compose_email/$accountId") }
+                            )
                     }
                     composable("compose_email/{accountId}") { backStackEntry ->
                         val accountId = backStackEntry.arguments?.getString("accountId").orEmpty()
                         ComposeEmailScreen(
                             viewModel = viewModel,
-                            accountId = accountId,
                             onSend = { navController.popBackStack() }
                         )
                     }
