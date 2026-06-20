@@ -38,7 +38,7 @@ class SearchActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    SearchScreen()
+                    SearchScreen(onClose = { finish() })
                 }
             }
         }
@@ -46,13 +46,17 @@ class SearchActivity : ComponentActivity() {
 }
 
 @Composable
-fun SearchScreen() {
+fun SearchScreen(onClose: () -> Unit) {
     var query by remember { mutableStateOf("") }
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text("Search") },
-            navigationIcon = { IconButton(onClick = { }) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") } }
+            navigationIcon = {
+                IconButton(onClick = onClose) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                }
+            }
         )
         Column(
             modifier = Modifier

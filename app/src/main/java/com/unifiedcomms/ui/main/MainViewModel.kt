@@ -49,6 +49,8 @@ class MainViewModel(
 
     fun getDefaultAccount(): Account? = _accounts.value.find { it.isDefault }
 
+    fun getAccountById(accountId: String): Account? = _accounts.value.find { it.id == accountId }
+
     suspend fun addAccount(account: Account) {
         accountRepo.insert(account)
         loadAccounts()
