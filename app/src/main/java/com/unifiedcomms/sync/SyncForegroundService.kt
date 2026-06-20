@@ -92,7 +92,7 @@ class SyncForegroundService : Service() {
             // Stop after a delay to show completion
             kotlinx.coroutines.delay(3000)
             NotificationHelper.dismissSyncNotification(this@SyncForegroundService)
-            stopForeground(true)
+            stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
 
