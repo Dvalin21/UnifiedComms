@@ -25,6 +25,9 @@ Warnings only (AndroidManifest deprecations, deprecation flags for non-migrated 
    - `MessagesScreen`, `ConversationScreen`
    - `AddAccountScreen`, `AccountSettingsScreen`
 4. Confirmed ViewModel, repositories, models, DI, theme, sync managers in place.
+5. Introduced `MiniMessagingViewModel` as a compile-safe messaging state holder with `conversations`, `currentMessages`, `isPulling`, `pullError`, `pullMessages`, and `sendMessage`.
+6. Removed the dead `viewModel` constructor parameter from `MessagesScreen` and `ConversationScreen`.
+7. Updated `MainActivity` and `UnifiedInboxScreen` messaging navigation routes to match the new messaging screen API.
 
 ---
 ## ❌ Remaining Blocker
@@ -47,9 +50,10 @@ https://github.com/Dvalin21/UnifiedComms
 
 ## 📝 Commit / Push Summary
 Latest remote commit on master:
-4a91beb chore(ui): migrate deprecated Material 3 widget usages in main screens
+c045cc7 feat(messaging): introduce MiniMessagingViewModel and remove dead messaging viewModel args from screens
 
 Full repo log:
+- c045cc7 feat(messaging): introduce MiniMessagingViewModel and remove dead messaging viewModel args from screens
 - 4a91beb chore(ui): migrate deprecated Material 3 widget usages in main screens
 - 3b71a5b chore: refresh HANDOFF timeline, dotenv resolution, and feature push status
 - 6ab34a9 feat: Replace AddAccountScreen + AccountSettingsScreen stubs with working feature flows
