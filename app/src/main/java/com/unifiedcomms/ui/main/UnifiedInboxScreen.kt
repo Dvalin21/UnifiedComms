@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Divider
+
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -34,7 +34,7 @@ import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Message
+import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -103,12 +103,12 @@ fun UnifiedInboxScreen(
         bottomBar = {
             NavigationBar {
                 val items = listOf(
-                    NavigationItem("Inbox", Icons.Default.Inbox, 0),
-                    NavigationItem("Email", Icons.Default.Email, 1),
-                    NavigationItem("Calendar", Icons.Default.CalendarMonth, 2),
-                    NavigationItem("Tasks", Icons.Default.Checklist, 3),
-                    NavigationItem("Messages", Icons.Default.Message, 4)
-                )
+     NavigationItem("Inbox", Icons.Default.Inbox, 0),
+     NavigationItem("Email", Icons.Default.Email, 1),
+     NavigationItem("Calendar", Icons.Default.CalendarMonth, 2),
+     NavigationItem("Tasks", Icons.Default.Checklist, 3),
+     NavigationItem("Messages", Icons.AutoMirrored.Default.Message, 4)
+ )
                 items.forEach { item ->
                     NavigationBarItem(
                         selected = selectedTab == item.index,
@@ -145,7 +145,7 @@ fun UnifiedInboxContent(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        accounts.forEachIndexed { index, account ->
+        accounts.forEachIndexed { _, account ->
             val color = AccountColors.getColorForAccount(account.id)
             AccountInboxCard(
                 account = account,
@@ -253,7 +253,7 @@ fun EmailOverviewScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FolderChip(label: String, folder: String, count: Int, color: Color, onClick: () -> Unit) {
+fun FolderChip(label: String, _folder: String, count: Int, color: Color, onClick: () -> Unit) {
     Surface(
         modifier = Modifier
             .fillMaxWidth(0.25f)

@@ -1,5 +1,6 @@
 package com.unifiedcomms.ui.main
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -272,7 +273,7 @@ fun CreateTaskScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Create Task") },
-                navigationIcon = { IconButton(onClick = onSave) { Icon(Icons.Default.ArrowBack, contentDescription = "Cancel") } },
+                navigationIcon = { IconButton(onClick = onSave) { Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Cancel") } },
                 actions = { IconButton(onClick = onSave) { Icon(Icons.Default.Save, contentDescription = "Save") } }
             )
         }

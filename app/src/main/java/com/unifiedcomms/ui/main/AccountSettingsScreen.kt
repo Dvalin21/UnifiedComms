@@ -1,6 +1,6 @@
 package com.unifiedcomms.ui.main
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -88,7 +88,7 @@ fun AccountSettingsScreen(
                     title = { Text("Account Settings") },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Back")
                         }
                     }
                 )

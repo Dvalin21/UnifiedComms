@@ -3,7 +3,7 @@ package com.unifiedcomms.util
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKeys
+import androidx.security.crypto.MasterKey
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CoroutineScope
@@ -23,11 +23,11 @@ class PreferencesManager private constructor(
             if (instance == null) {
                 synchronized(this) {
                     if (instance == null) {
-                        val masterKey = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
+                        val masterKey = MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
                         val encryptedPrefs = EncryptedSharedPreferences.create(
+                            context,
                             PREFS_NAME,
                             masterKey,
-                            context,
                             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
                         )
