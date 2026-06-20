@@ -131,8 +131,7 @@ object NotificationHelper {
         eventId: String,
         title: String,
         time: String,
-        location: String?,
-        minutesBefore: Int
+        location: String?
     ) {
         val intent = Intent(context, MainActivity::class.java).apply {
             putExtra("navigate_to", "event_detail/$eventId")
@@ -202,8 +201,7 @@ object NotificationHelper {
         context: Context,
         conversationId: String,
         senderName: String,
-        message: String,
-        messageType: Int
+        message: String
     ) {
         val intent = Intent(context, MainActivity::class.java).apply {
             putExtra("navigate_to", "conversation/$conversationId")
