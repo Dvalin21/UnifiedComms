@@ -29,6 +29,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.model.AccountType
+import com.unifiedcomms.data.model.AuthConfig
+import com.unifiedcomms.data.model.ServerConfig
+import com.unifiedcomms.data.model.SyncConfig
+import com.unifiedcomms.data.model.UIConfig
 import com.unifiedcomms.ui.theme.UnifiedCommsTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -87,57 +91,42 @@ fun AddAccountScreen(
                 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Button(
-                    onClick = {
-                        saving = true
-                        val account = when (selectedType) {
-                            AccountType.GOOGLE -> Account.createGoogle(email = email.trim())
-                            AccountType.MAILCOW -> Account.createMailcow(
-                                email = email.trim(),
-                                serverUrl = serverUrl.trim()
-                            )
-                            AccountType.OUTLOOK -> Account.createExchange(
-                                email = email.trim(),
-                                serverUrl = serverUrl.trim()
-                            )
-                            AccountType.YAHOO -> Account(
-                                name = email,
-                                email = email.trim(),
-                                accountType = AccountType.YAHOO,
-                                serverConfig = com.unifiedcomms.data.model.ServerConfig.YahooDefaults(),
-                                authConfig = com.unifiedcomms.data.model.AuthConfig.OAuth2(),
-                                syncConfig = com.unifiedcomms.data.model.SyncConfig.Defaults(),
-                                uiConfig = com.unifiedcomms.data.model.UIConfig.Defaults()
-                            )
-                            AccountType.ICLOUD -> Account(
-                                name = email,
-                                email = email.trim(),
-                                accountType = AccountType.ICLOUD,
-                                serverConfig = com.unifiedcomms.data.model.ServerConfig.ICantDefaults(),
-                                authConfig = com.unifiedcomms.data.model.AuthConfig.OAuth2(),
-                                syncConfig = com.unifiedcomms.data.model.SyncConfig.Defaults(),
-                                uiConfig = com.unifiedcomms.data.model.UIConfig.Defaults()
-                            )
-                            else -> Account.createGeneric(
-                                email = email.trim(),
-                                serverConfig = com.unifiedcomms.data.model.ServerConfig(
-                                    imapHost = serverUrl.trim().ifBlank { null },
-                                    smtpHost = serverUrl.trim().ifBlank { null }
-                                )
-                            )
+                        Button(
+                            onClick = {
+                                if (saving) return@Button
+                                saving = true
+                                val trimmed = email.trim()
+                                val account = when (selectedType) {
+                                    AccountType.GOOGLE -> Account.createGoogle(email = trimmed)
+                                    AccountType.MAILCOW -> Account.createMailcow(
+                                        email = trimmed,
+                                        serverUrl = serverUrl.trim()
+                                    )
+                                    AccountType.OUTLOOK -> Account.createExchange(
+                                        email = trimmed,
+                                        serverUrl = serverUrl.trim()
+                                    )
+                                    else -> Account(
+                                        name = trimmed,
+                                        email = trimmed,
+                                        accountType = selectedType,
+                                        serverConfig = ServerConfig.Defaults(),
+                                        authConfig = AuthConfig.OAuth2(),
+                                        syncConfig = SyncConfig.Defaults(),
+                                        uiConfig = UIConfig.Defaults()
+                                    )
+                                }
+                                coroutineScope.launch {
+                                    viewModel.addAccount(account)
+                                    saving = false
+                                    onComplete()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !saving && email.isNotBlank()
+                        ) {
+                            Text(if (saving) "Saving..." else "Save")
                         }
-
-                        coroutineScope.launch {
-                            viewModel.addAccount(account)
-                            saving = false
-                            onComplete()
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !saving && email.isNotBlank()
-                ) {
-                    Text(if (saving) "Saving..." else "Save")
-                }
             }
         }
     }
