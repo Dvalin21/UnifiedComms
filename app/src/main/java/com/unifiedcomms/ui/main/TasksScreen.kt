@@ -1,4 +1,5 @@
 package com.unifiedcomms.ui.main
+import androidx.compose.material.icons.filled.ArrowBack
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -16,7 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -29,7 +30,6 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
@@ -115,7 +115,7 @@ fun TasksScreen(
                         onStarToggle = { tasks.value = tasks.value.map { if (it.id == task.id) it.copy(isStarred = !it.isStarred) else it } },
                         onDelete = { tasks.value = tasks.value.filter { it.id != task.id } }
                     )
-                    Divider()
+                    HorizontalDivider()
                 }
             }
         }
