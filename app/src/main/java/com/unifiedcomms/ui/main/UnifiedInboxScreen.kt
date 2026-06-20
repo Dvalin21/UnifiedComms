@@ -126,7 +126,7 @@ fun UnifiedInboxScreen(
                 1 -> EmailOverviewScreen(activeAccounts, onNavigateToEmail)
                 2 -> CalendarScreen(viewModel, onNavigateToCalendar, { })
                 3 -> TasksScreen(viewModel, { }, { })
-                4 -> MessagesScreen(viewModel, { }, { })
+                4 -> MessagesScreen(onConversationClick = { }, onNewMessage = { })
             }
         }
     }
