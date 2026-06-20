@@ -68,7 +68,6 @@ fun AddAccountScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(text = "Add Account", style = MaterialTheme.typography.headlineSmall)
-                HorizontalDivider()
                 
                 Text(text = "Email", style = MaterialTheme.typography.bodyLarge)
                 OutlinedTextField(
