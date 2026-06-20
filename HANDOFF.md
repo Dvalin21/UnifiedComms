@@ -9,10 +9,10 @@
 **Status:** Compilation verified clean on current tree. Zero Kotlin compile errors. Debug APK assembles successfully.
 
 Verified clean build:
-- `./gradlew :app:compileDebugKotlin --no-daemon --no-configuration-cache --rerun-tasks 2>&1 | tail -5` shows `BUILD SUCCESSFUL`
-- `./gradlew assembleDebug --no-daemon --no-configuration-cache` remains green
+- `./gradlew :app:compileDebugKotlin --no-daemon --no-configuration-cache --rerun-tasks 2>&1 | tail -8` shows `BUILD SUCCESSFUL`
+- Spot-check: `CalendarScreen`, `EmailScreen`, `MessagesScreen`, `TasksScreen`, `AccountSettingsScreen`, `SettingsScreen`
 
-Warnings only (deprecated APIs, unused params, null-safety calls).
+Warnings only (AndroidManifest deprecations, deprecation flags for non-migrated internal APIs, unused params).
 
 ---
 ## ✅ Work Completed in This Session
@@ -28,7 +28,7 @@ Warnings only (deprecated APIs, unused params, null-safety calls).
 
 ---
 ## ❌ Remaining Blocker
-None for compile/assemble. Runtime/instrumented tests are next step.
+None for compile/assemble.
 
 ---
 ## 📋 Next Actions
@@ -36,7 +36,7 @@ None for compile/assemble. Runtime/instrumented tests are next step.
    - `Divider` -> `HorizontalDivider`
    - `Icons.AutoMirrored.Filled.*` mirrorable icons
    - Unused params (`viewModel`, `eventId`, `accountId` in stubbed screens)
-   - `OnLifecycleEvent`, `FLAG_FULLSCREEN`, `MasterKeys` -> `EncryptedSharedKeys`/`EncryptedFile`/BiometricManager
+   - `OnLifecycleEvent`, `FLAG_FULLSCREEN`, `BasicDecryptedByteArray` for `MasterKeys`
 2. Wire ViewModel state into screens (replace mock state and mock lists with Flow/collect).
 3. Run instrumented UI tests (`./gradlew connectedDebugAndroidTest`) on device.
 4. Replace any remaining `remember { mutableStateOf<List<...>>(getMock...) }` with repository-backed flows.
@@ -47,9 +47,13 @@ https://github.com/Dvalin21/UnifiedComms
 
 ## 📝 Commit / Push Summary
 Latest remote commit on master:
-3b71a5b chore: refresh HANDOFF timeline, dotenv resolution, and feature push status
+4a91beb chore(ui): migrate deprecated Material 3 widget usages in main screens
 
-Handoff reflects authenticated-account-driven status preserved in repo front matter.
+Full repo log:
+- 4a91beb chore(ui): migrate deprecated Material 3 widget usages in main screens
+- 3b71a5b chore: refresh HANDOFF timeline, dotenv resolution, and feature push status
+- 6ab34a9 feat: Replace AddAccountScreen + AccountSettingsScreen stubs with working feature flows
+- 72c1fcd feat: wire AddAccountScreen save flow with real account creation + coroutine path
 
 ---
 ## 🚀 Resume
