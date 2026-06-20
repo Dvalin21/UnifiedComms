@@ -69,7 +69,8 @@ android {
         freeCompilerArgs += listOf(
             "-opt-in=kotlin.RequiresOptIn",
             "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
-            "-opt-in=androidx.lifecycle.ExperimentalLifecycleApi"
+            "-opt-in=androidx.lifecycle.ExperimentalLifecycleApi",
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api"
         )
     }
 

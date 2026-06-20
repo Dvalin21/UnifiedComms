@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,9 +38,12 @@ import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Reply
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.runtime.Composable
@@ -54,12 +58,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.Canvas
 import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EmailScreen(viewModel: MainViewModel, onCompose: () -> Unit) {
+fun EmailScreen(
+    viewModel: MainViewModel,
+    accountId: String,
+    folder: String,
+    onNavigateBack: () -> Unit,
+    onCompose: () -> Unit
+) {
     var messages by remember { mutableStateOf<List<EmailMessage>>(getMockEmails()) }
 
     Scaffold(
@@ -67,7 +76,7 @@ fun EmailScreen(viewModel: MainViewModel, onCompose: () -> Unit) {
             TopAppBar(
                 title = { androidx.compose.material3.Text("Unified Inbox", fontWeight = FontWeight.Bold) },
                 actions = {
-                    IconButton(onClick = { }) { Icon(Icons.Default.Search, contentDescription = "Search") }
+                    IconButton(onClick = onNavigateBack) { Icon(Icons.Default.Search, contentDescription = "Search") }
                     IconButton(onClick = onCompose) { Icon(Icons.Default.Add, contentDescription = "Compose") }
                 }
             )
@@ -156,9 +165,9 @@ fun EmailDetailScreen(viewModel: MainViewModel, emailId: String, onBack: () -> U
                 title = { Text("") },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") } },
                 actions = {
-                    IconButton(onClick = { }) { Icon(Icons.Default.Reply, contentDescription = "Reply") }
-                    IconButton(onClick = { }) { Icon(Icons.Default.Delete, contentDescription = "Delete") }
-                    IconButton(onClick = { }) { Icon(Icons.Default.MoreVert, contentDescription = "More") }
+                    IconButton(onClick = onBack) { Icon(Icons.Default.Reply, contentDescription = "Reply") }
+                    IconButton(onClick = onBack) { Icon(Icons.Default.Delete, contentDescription = "Delete") }
+                    IconButton(onClick = onBack) { Icon(Icons.Default.MoreVert, contentDescription = "More") }
                 }
             )
         }
