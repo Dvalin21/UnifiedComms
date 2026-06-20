@@ -90,7 +90,7 @@ class MainActivity : ComponentActivity() {
                     }
                     composable("messages") {
                         MessagesScreen(
-                            onConversationClick = { conv -> navController.navigate("conversation/${conv.id}") },
+                            onConversationClick = { conversation -> navController.navigate("conversation/${conversation.id}") },
                             onNewMessage = { navController.navigate("new_message") }
                         )
                     }

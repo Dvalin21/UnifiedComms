@@ -1,6 +1,7 @@
 package com.unifiedcomms.ui.main
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Sync
@@ -71,7 +73,7 @@ fun SettingsScreen(
                 title = { Text("Settings", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = { /* TODO: back */ }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -212,7 +214,7 @@ private fun SettingItem(
     subtitle: String = "",
     icon: ImageVector,
     onClick: () -> Unit = { },
-    trailing: @Composable () -> Unit = { },
+    trailing: @Composable () -> Unit = {},
     textColor: Color = MaterialTheme.colorScheme.onSurface
 ) {
     Row(

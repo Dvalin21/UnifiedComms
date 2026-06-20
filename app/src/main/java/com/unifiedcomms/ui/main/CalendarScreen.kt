@@ -1,5 +1,7 @@
 package com.unifiedcomms.ui.main
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Search
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
@@ -321,7 +323,7 @@ fun CreateEventScreen(viewModel: MainViewModel, onSave: () -> Unit) {
         topBar = {
             TopAppBar(
                 title = { Text("Create Event") },
-                navigationIcon = { IconButton(onClick = onSave) { Icon(Icons.Default.ArrowBack, contentDescription = "Cancel") } },
+                navigationIcon = { IconButton(onClick = onSave) { Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Cancel") } },
                 actions = {
                     IconButton(onClick = { onSave() }) {
                         Icon(Icons.Default.Save, contentDescription = "Save")
@@ -392,7 +394,7 @@ fun EventDetailScreen(viewModel: MainViewModel, eventId: String, onEdit: () -> U
         topBar = {
             TopAppBar(
                 title = { Text("Event Details") },
-                navigationIcon = { IconButton(onClick = onEdit) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") } },
+                navigationIcon = { IconButton(onClick = onEdit) { Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Back") } },
                 actions = {
                     IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, contentDescription = "Edit") }
                     IconButton(onClick = { /* Share */ }) { Icon(Icons.Default.Share, contentDescription = "Share") }

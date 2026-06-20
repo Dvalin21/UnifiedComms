@@ -1,5 +1,4 @@
 package com.unifiedcomms.ui.main
-import androidx.compose.material.icons.filled.ArrowBack
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -33,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -76,15 +76,6 @@ fun MessagesScreen(
                 }
             )
         },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = onNewMessage,
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "New message")
-            }
-        }
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier.padding(innerPadding).fillMaxSize(),
@@ -122,7 +113,11 @@ fun ConversationScreen(
                         Text(text = "Online", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                     }
                 },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") } },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Back")
+                    }
+                },
                 actions = {
                     IconButton(onClick = { }) { Icon(Icons.Default.Call, contentDescription = "Call") }
                     IconButton(onClick = { }) { Icon(Icons.Default.Videocam, contentDescription = "Video call") }
@@ -195,7 +190,7 @@ fun ConversationScreen(
                         },
                         enabled = messageText.isNotBlank()
                     ) {
-                        Icon(Icons.Default.Send, contentDescription = "Send", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.AutoMirrored.Default.Send, contentDescription = "Send", tint = MaterialTheme.colorScheme.primary)
                     }
                 }
             }
