@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -93,7 +93,7 @@ fun SettingsScreen(
 
             SettingsGroup(title = "Appearance", icon = Icons.Default.DarkMode) {
                 SettingItem(title = "Theme", subtitle = "System default", icon = Icons.Default.DarkMode, onClick = { })
-                Divider()
+                HorizontalDivider()
                 SettingItem(title = "App Language", subtitle = "English (US)", icon = Icons.Default.Language, onClick = { })
             }
 
@@ -106,37 +106,37 @@ fun SettingsScreen(
                     trailing = { Switch(checked = autoSync, onCheckedChange = { autoSync = it }) },
                     onClick = { }
                 )
-                Divider()
+                HorizontalDivider()
                 SettingItem(title = "Sync on Wi-Fi only", subtitle = "Save mobile data", icon = Icons.Default.Wifi, onClick = { })
             }
 
             SettingsGroup(title = "Notifications", icon = Icons.Default.Notifications) {
                 SettingItem(title = "Email notifications", icon = Icons.Default.Email, trailing = { Switch(checked = true, onCheckedChange = { }) }, onClick = { })
-                Divider()
+                HorizontalDivider()
                 SettingItem(title = "Calendar reminders", icon = Icons.Default.CalendarMonth, trailing = { Switch(checked = true, onCheckedChange = { }) }, onClick = { })
-                Divider()
+                HorizontalDivider()
                 SettingItem(title = "Task reminders", icon = Icons.Default.Checklist, trailing = { Switch(checked = true, onCheckedChange = { }) }, onClick = { })
-                Divider()
+                HorizontalDivider()
                 SettingItem(title = "Message notifications", icon = Icons.Default.Email, trailing = { Switch(checked = true, onCheckedChange = { }) }, onClick = { })
-                Divider()
+                HorizontalDivider()
                 SettingItem(title = "Full-screen reminders", icon = Icons.Default.Fullscreen, trailing = { Switch(checked = true, onCheckedChange = { }) }, onClick = { })
             }
 
             SettingsGroup(title = "Security", icon = Icons.Default.Lock) {
                 SettingItem(title = "Biometric Lock", subtitle = "Require biometrics", icon = Icons.Default.Lock, trailing = { Switch(checked = true, onCheckedChange = { }) }, onClick = { })
-                Divider()
+                HorizontalDivider()
                 SettingItem(title = "Encryption", icon = Icons.Default.Security, onClick = { })
-                Divider()
+                HorizontalDivider()
                 SettingItem(title = "No Telemetry", icon = Icons.Default.Block, onClick = { })
             }
 
             SettingsGroup(title = "Advanced", icon = Icons.Default.Alarm) {
                 SettingItem(title = "Default reminder time", subtitle = "1 hour before events", icon = Icons.Default.Alarm, onClick = { })
-                Divider()
+                HorizontalDivider()
                 SettingItem(title = "Debug logging", subtitle = "Enable for troubleshooting", icon = Icons.Default.BugReport, trailing = { Switch(checked = false, onCheckedChange = { }) }, onClick = { })
-                Divider()
+                HorizontalDivider()
                 SettingItem(title = "About", subtitle = "Version 1.0.0", icon = Icons.Default.Info, onClick = { })
-                Divider()
+                HorizontalDivider()
                 SettingItem(title = "Clear All Data", icon = Icons.Default.Delete, textColor = Color.Red, onClick = { })
             }
         }
@@ -160,7 +160,7 @@ private fun AccountBlock(
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(text = "Accounts", fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
-            Divider()
+            HorizontalDivider()
             accounts.forEach { account ->
                 Row(
                     modifier = Modifier
@@ -174,7 +174,7 @@ private fun AccountBlock(
                         Text(text = account.email, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                Divider()
+                HorizontalDivider()
             }
             TextButton(onClick = onAddAccount) {
                 Text("Add Account")
@@ -200,7 +200,7 @@ private fun SettingsGroup(
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(text = title, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
-            Divider()
+            HorizontalDivider()
             content()
         }
     }

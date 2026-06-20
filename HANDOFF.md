@@ -6,72 +6,67 @@
 
 ---
 ## Executive Summary
-**Status:** Compilation reduced from 179 → **31** verified compile errors after this session.
+**Status:** Compilation fixed. Zero Kotlin compile errors. Debug APK assembles successfully.
 
-Verified clean compile areas:
-- Core data layer: Room schema, models, DAOs, repositories, converters (not contributing errors)
-- Sync subsystem implementations: EmailSyncEngineImpl, CalendarSyncEngineImpl, ContactSyncEngineImpl, TaskSyncEngineImpl, SyncManager, SyncService, SyncForegroundService, AddAccountActivity (not contributing errors)
+Verified clean build:
+- `./gradlew :app:compileDebugKotlin --no-daemon --no-configuration-cache` -> BUILD SUCCESSFUL
+- `./gradlew assembleDebug --no-daemon --no-configuration-cache` -> BUILD SUCCESSFUL
 
-Remaining failures are confined to UI layer: MainActivity, EmailScreen, MainViewModel, MessagesScreen, CalendarScreen, SettingsScreen, TasksScreen, SearchActivity.
+Remaining output is warnings only (deprecated `Divider` -> `HorizontalDivider`, deprecated icon variants, unused parameters).
 
 ---
 ## ✅ Work Completed in This Session
-- Reduced compile errors from 179 to 31.
-- Rewrote/purged broken UI files with Material3-aligned implementations: MainActivity, EmailScreen, CalendarScreen, MessagesScreen, SettingsScreen, TasksScreen, MainViewModel.
-- Aligned SearchActivity to Compose-only flow.
-- Repaired ViewModel type/constructor wiring causing parameter-mismatch errors.
-- Verified compile state with `./gradlew :app:compileDebugKotlin --no-daemon --no-configuration-cache`.
+1. Removed duplicate hand-written `BuildConfig.java` colliding with Gradle-generated class.
+2. Added missing screens:
+   - `AddAccountScreen.kt`
+   - `AccountSettingsScreen.kt`
+3. Fixed `CalendarScreen.kt`:
+   - Replaced broken `lambda = onEventClick(event)` with correct `onClick = onClick`
+   - Fixed `background` symbol resolution via corrected imports
+   - Fixed malformed `Spacer` import
+   - Full rewrite preserving Material 3 usage
+4. Fixed `EmailScreen.kt`:
+   - Removed duplicate `@OptIn(ExperimentalMaterial3Api::class)`
+   - Kept Material 3 imports and parameter wiring
+5. Fixed `MainActivity.kt`:
+   - Removed invalid `accountId` argument passed to `ComposeEmailScreen`
+6. Updated `app/build.gradle.kts` with global Compose/Material 3 opt-in flags.
+7. Verified compile and assemble both succeed.
 
 ---
 ## ❌ Remaining Blocker
-31 compilation errors remain in UI files.
-
-Current error files:
-- MainActivity.kt
-- EmailScreen.kt
-- MainViewModel.kt
-- MessagesScreen.kt
-- CalendarScreen.kt
-- SettingsScreen.kt
-- TasksScreen.kt
-- SearchActivity.kt
-
-Confirmed issue categories:
-- Material3 API experimental annotations
-- Missing composable parameter naming/passing mismatches
-- Lambda references and composable placement errors in CalendarScreen/MessagesScreen
-- TopAppBar constructor/experimental API usage in SearchActivity
-- Type/lambda parameter unresolved references in EmailScreen
+None. Build succeeds.
 
 ---
 ## 📋 Next Actions
-1. Fix MainActivity navigation lambdas and parameter names.
-2. Strip/handle experimental annotations or opt-in wrappers where required.
-3. Fix CalendarScreen/MessagesScreen composable call placement.
-4. Repair SearchActivity TopAppBar usage.
-5. Run `./gradlew :app:compileDebugKotlin --no-daemon --no-configuration-cache 2>&1 | grep -c "^e:"` until 0.
-6. Run `./gradlew assembleDebug` to confirm zero errors.
+1. Replace stub screens (`AddAccountScreen`, `AccountSettingsScreen`) with real implementations.
+2. Address deprecation warnings (`Divider` -> `HorizontalDiviver`, `Icons.AutoMirrored.Filled.*`).
+3. Implement actual ViewModel logic and navigation flows.
+4. Run instrumented UI tests (`./gradlew connectedDebugAndroidTest`) on device/emulator.
 
 ---
 ## 📞 Repo
 https://github.com/Dvalin21/UnifiedComms
 
 ## 📝 Commit / Push Summary
-Files committed and pushed in this handoff:
-- HANDOFF.md: updated compile status and remaining work
-- .hermes-kb/: added Android/Compose/Linus project knowledge base docs
-- docs/: added project-local Linus rules reference
-- UI rewrites: CalendarScreen.kt, EmailScreen.kt, MainActivity.kt, MainViewModel.kt, MessagesScreen.kt, SettingsScreen.kt, TasksScreen.kt
-- SearchActivity.kt: migrated to Compose-only search surface
+Files committed and pushed:
+- HANDOFF.md: updated compile status
+- app/build.gradle.kts: global Compose/Material 3 opt-in flags
+- CalendarScreen.kt: full Material 3 rewrite, lambda/background fixes
+- EmailScreen.kt: remove duplicate opt-in
+- MainActivity.kt: fix ComposeEmailScreen argument mismatch
+- MessagesScreen.kt: Material 3 migration (earlier)
+- AddAccountScreen.kt: new stub
+- AccountSettingsScreen.kt: new stub
+- D app/src/main/java/com/unifiedcomms/BuildConfig.java: remove duplicate
 
-Latest local commit:
-1ba9ad2 fix: reduce compile errors from 179 to 31 via Material3 UI rewrites and ViewModel repair
-
-Remote origin/master updated successfully.
+Latest remote commit on master:
+f6adaba fix: resolve remaining compile errors, add missing screens, restore clean build
 
 ---
 ## 🚀 Resume
 ```bash
 cd ~/host/UnifiedComms
 ./gradlew :app:compileDebugKotlin --no-daemon --no-configuration-cache 2>&1 | grep -c "^e:"
+./gradlew assembleDebug --no-daemon --no-configuration-cache
 ```
