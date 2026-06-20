@@ -69,7 +69,6 @@ fun AccountSettingsScreen(
             }
         }
         return
-        return
     }
 
     val color: AccountColor = viewModel.getAccountColor(account.id)
