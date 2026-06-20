@@ -110,7 +110,7 @@ fun AddAccountScreen(
                                         name = trimmed,
                                         email = trimmed,
                                         accountType = selectedType,
-                                        serverConfig = ServerConfig.Defaults(),
+                                        serverConfig = ServerConfig(),
                                         authConfig = AuthConfig.OAuth2(),
                                         syncConfig = SyncConfig.Defaults(),
                                         uiConfig = UIConfig.Defaults()
