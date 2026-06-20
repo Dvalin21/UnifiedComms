@@ -1,4 +1,5 @@
 package com.unifiedcomms.ui.main
+import androidx.compose.material.icons.filled.ArrowBack
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
@@ -23,7 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -39,7 +40,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CalendarViewDay
 import androidx.compose.material.icons.filled.CalendarViewMonth
@@ -413,12 +413,12 @@ fun EventDetailScreen(viewModel: MainViewModel, eventId: String, onEdit: () -> U
                     Text(text = "Team Meeting", fontSize = 24.sp, fontWeight = FontWeight.Bold)
                     Text(text = "Tomorrow, 10:00 AM - 11:00 AM", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(text = "Conference Room A", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Divider()
+                    HorizontalDivider()
                     Text(text = "Attendees:", fontWeight = FontWeight.Bold)
                     listOf("alice@company.com", "bob@company.com", "charlie@company.com").forEach { email ->
                         Text(text = "• " + email)
                     }
-                    Divider()
+                    HorizontalDivider()
                     Text(text = "Description:", fontWeight = FontWeight.Bold)
                     Text(text = "Weekly team sync to discuss project progress and blockers.")
                 }
