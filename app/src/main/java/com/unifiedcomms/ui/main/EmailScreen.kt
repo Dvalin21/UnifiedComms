@@ -1,5 +1,7 @@
 package com.unifiedcomms.ui.main
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Search
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -43,8 +45,10 @@ import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Reply
+import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -138,9 +142,9 @@ fun ComposeEmailScreen(viewModel: MainViewModel, onSend: () -> Unit) {
         topBar = {
             TopAppBar(
                 title = { androidx.compose.material3.Text("New Message") },
-                navigationIcon = { IconButton(onClick = onSend) { Icon(Icons.Default.ArrowBack, contentDescription = "Cancel") } },
+                navigationIcon = { IconButton(onClick = onSend) { Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Cancel") } },
                 actions = {
-                    IconButton(onClick = onSend) { Icon(Icons.Default.Send, contentDescription = "Send") }
+                    IconButton(onClick = onSend) { Icon(Icons.AutoMirrored.Default.Send, contentDescription = "Send") }
                 }
             )
         }
@@ -163,9 +167,9 @@ fun EmailDetailScreen(viewModel: MainViewModel, emailId: String, onBack: () -> U
         topBar = {
             TopAppBar(
                 title = { Text("") },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") } },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Back") } },
                 actions = {
-                    IconButton(onClick = onBack) { Icon(Icons.Default.Reply, contentDescription = "Reply") }
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Default.Reply, contentDescription = "Reply") }
                     IconButton(onClick = onBack) { Icon(Icons.Default.Delete, contentDescription = "Delete") }
                     IconButton(onClick = onBack) { Icon(Icons.Default.MoreVert, contentDescription = "More") }
                 }
@@ -202,9 +206,9 @@ fun ComposeMessageScreen(
         topBar = {
             TopAppBar(
                 title = { Text("New Message") },
-                navigationIcon = { IconButton(onClick = onSend) { Icon(Icons.Default.ArrowBack, contentDescription = "Cancel") } },
+                navigationIcon = { IconButton(onClick = onSend) { Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Cancel") } },
                 actions = {
-                    IconButton(onClick = onSend) { Icon(Icons.Default.Send, contentDescription = "Send") }
+                    IconButton(onClick = onSend) { Icon(Icons.AutoMirrored.Default.Send, contentDescription = "Send") }
                 }
             )
         }
