@@ -56,6 +56,19 @@ Confirmed issue categories:
 ## 📞 Repo
 https://github.com/Dvalin21/UnifiedComms
 
+## 📝 Commit / Push Summary
+Files committed and pushed in this handoff:
+- HANDOFF.md: updated compile status and remaining work
+- .hermes-kb/: added Android/Compose/Linus project knowledge base docs
+- docs/: added project-local Linus rules reference
+- UI rewrites: CalendarScreen.kt, EmailScreen.kt, MainActivity.kt, MainViewModel.kt, MessagesScreen.kt, SettingsScreen.kt, TasksScreen.kt
+- SearchActivity.kt: migrated to Compose-only search surface
+
+Latest local commit:
+1ba9ad2 fix: reduce compile errors from 179 to 31 via Material3 UI rewrites and ViewModel repair
+
+Remote origin/master updated successfully.
+
 ---
 ## 🚀 Resume
 ```bash

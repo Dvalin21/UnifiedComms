@@ -1,7 +1,7 @@
 package com.unifiedcomms.ui.main
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -34,11 +35,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
-import androidx.compose.material3.TimePicker
-import androidx.compose.material3.TimePickerDialog
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDatePickerState
-import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
@@ -65,7 +63,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.layout.Spacer
 import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -132,22 +129,16 @@ fun DayView(date: java.time.LocalDate, onEventClick: (MockEvent) -> Unit) {
         Text(text = "Day View: ${date.dayOfWeek}, ${date.month} ${date.dayOfMonth}", fontSize = 18.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(16.dp))
 
-        (6..22).forEach { hour ->
-            val events = getMockEventsForDate(date).filter { it.startHour == hour }
-            if (events.isNotEmpty()) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest
-                ) {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row {
-                            Text(text = String.format("%02d:00", hour), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(modifier = Modifier.width(16.dp))
-                        }
-                        events.forEach { event ->
-                            EventChip(event = event, onClick = { onEventClick(it) })
-                        }
+        val events = getMockEventsForDate(date)
+        if (events.isNotEmpty()) {
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHighest
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    events.forEach { event ->
+                        EventChip(event = event, onClick = { onEventClick(event) })
                     }
                 }
             }
@@ -166,7 +157,7 @@ fun WeekView(date: java.time.LocalDate, onEventClick: (MockEvent) -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             (0..6).forEach { dayOffset ->
-                val day = weekStart.plusDays(dayOffset)
+                val day = weekStart.plusDays(dayOffset.toLong())
                 Column(
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -179,7 +170,7 @@ fun WeekView(date: java.time.LocalDate, onEventClick: (MockEvent) -> Unit) {
                     val dayEvents = getMockEventsForDate(day)
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         dayEvents.take(3).forEach { event ->
-                            EventChip(event = event, onClick = { onEventClick(it) })
+                            EventChip(event = event, onClick = { onEventClick(event) })
                         }
                         if (dayEvents.size > 3) {
                             Text(text = "+${dayEvents.size - 3} more", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -221,7 +212,7 @@ fun MonthView(date: java.time.LocalDate, onEventClick: (MockEvent) -> Unit) {
                         val cellDate = if (week == 0 && weekDay < dayOfWeekOffset) {
                             null
                         } else if (day <= daysInMonth) {
-                            firstOfMonth.plusDays(day - 1).also { day++ }
+                            firstOfMonth.plusDays((day - 1).toLong()).also { day++ }
                         } else {
                             null
                         }
@@ -238,13 +229,13 @@ fun MonthView(date: java.time.LocalDate, onEventClick: (MockEvent) -> Unit) {
                                 )
                                 .padding(4.dp),
                             shape = RoundedCornerShape(8.dp),
-                            onClick = { events.firstOrNull()?.let { onEventClick(it) } }
+                            onClick = { val first = events.firstOrNull(); if (first != null) onEventClick(first) }
                         ) {
                             Column(modifier = Modifier.fillMaxSize().padding(4.dp), verticalArrangement = Arrangement.Top) {
                                 Text(text = cellDate?.dayOfMonth?.toString() ?: "", fontSize = 12.sp, fontWeight = if (cellDate == java.time.LocalDate.now()) FontWeight.Bold else FontWeight.Normal)
                                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     events.take(3).forEach { event ->
-                                        EventChip(event = event, compact = true, onClick = { onEventClick(it) })
+                                        EventChip(event = event, compact = true, onClick = { onEventClick(event) })
                                     }
                                     if (events.size > 3) {
                                         Text(text = "+${events.size - 3}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -291,7 +282,10 @@ fun EventChip(event: MockEvent, compact: Boolean = false, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = if (compact) 2.dp else 4.dp)
-            .background(Color(event.color), RoundedCornerShape(6.dp)),
+            .background(
+                Color(event.color),
+                RoundedCornerShape(6.dp)
+            ),
         shape = RoundedCornerShape(6.dp),
         onClick = onClick
     ) {
@@ -317,18 +311,11 @@ fun CreateEventScreen(viewModel: MainViewModel, onSave: () -> Unit) {
     var description by remember { mutableStateOf("") }
     var location by remember { mutableStateOf("") }
     var selectedDate by remember { mutableStateOf(java.time.LocalDate.now()) }
-    var startTime by remember { mutableStateOf(java.time.LocalTime.of(10, 0)) }
-    var endTime by remember { mutableStateOf(java.time.LocalTime.of(11, 0)) }
     var isAllDay by remember { mutableStateOf(false) }
     var selectedColor by remember { mutableStateOf(0xFFE57373) }
-    val reminderMinutes = remember { mutableStateOf(60) }
     var showDatePicker by remember { mutableStateOf(false) }
-    var showStartTimePicker by remember { mutableStateOf(false) }
-    var showEndTimePicker by remember { mutableStateOf(false) }
 
     val dateState = rememberDatePickerState(initialSelectedDateMillis = selectedDate.toEpochDay() * 86400000)
-    val startTimeState = rememberTimePickerState(initialHour = startTime.hour, initialMinute = startTime.minute)
-    val endTimeState = rememberTimePickerState(initialHour = endTime.hour, initialMinute = endTime.minute)
 
     Scaffold(
         topBar = {
@@ -336,7 +323,7 @@ fun CreateEventScreen(viewModel: MainViewModel, onSave: () -> Unit) {
                 title = { Text("Create Event") },
                 navigationIcon = { IconButton(onClick = onSave) { Icon(Icons.Default.ArrowBack, contentDescription = "Cancel") } },
                 actions = {
-                    IconButton(onClick = { /* Save event */ onSave() }) {
+                    IconButton(onClick = { onSave() }) {
                         Icon(Icons.Default.Save, contentDescription = "Save")
                     }
                 }
@@ -368,53 +355,25 @@ fun CreateEventScreen(viewModel: MainViewModel, onSave: () -> Unit) {
                     DatePicker(state = dateState)
                 }
             }
-            if (showStartTimePicker) {
-                TimePickerDialog(onDismissRequest = { showStartTimePicker = false }, confirmButton = {
-                    TextButton(onClick = {
-                        startTime = java.time.LocalTime.of(startTimeState.hour, startTimeState.minute)
-                        showStartTimePicker = false
-                    }) { Text("OK") }
-                }, dismissButton = {
-                    TextButton(onClick = { showStartTimePicker = false }) { Text("Cancel") }
-                }) {
-                    TimePicker(state = startTimeState)
-                }
-            }
-            if (showEndTimePicker) {
-                TimePickerDialog(onDismissRequest = { showEndTimePicker = false }, confirmButton = {
-                    TextButton(onClick = {
-                        endTime = java.time.LocalTime.of(endTimeState.hour, endTimeState.minute)
-                        showEndTimePicker = false
-                    }) { Text("OK") }
-                }, dismissButton = {
-                    TextButton(onClick = { showEndTimePicker = false }) { Text("Cancel") }
-                }) {
-                    TimePicker(state = endTimeState)
-                }
-            }
 
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Checkbox(checked = isAllDay, onCheckedChange = { isAllDay = it })
                 Text("All day")
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Text(text = "Start", fontWeight = FontWeight.Bold)
-                TextButton(onClick = { showStartTimePicker = true }) { Text(startTime.toString()) }
-                Spacer(modifier = Modifier.width(16.dp))
-                Text(text = "End", fontWeight = FontWeight.Bold)
-                TextButton(onClick = { showEndTimePicker = true }) { Text(endTime.toString()) }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(text = "Date", fontWeight = FontWeight.Bold)
                 TextButton(onClick = { showDatePicker = true }) { Text(selectedDate.toString()) }
             }
 
-            androidx.compose.material3.Text(text = "Calendar Color", fontWeight = FontWeight.Bold)
+            Text(text = "Calendar Color", fontWeight = FontWeight.Bold)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(0xFFE57373, 0xFF64B5F6, 0xFF81C784, 0xFFFFB74D, 0xFFBA68C8, 0xFF4FC3F7, 0xFF4DB6AC, 0xFFAED581).forEach { color ->
                     Surface(
-                        modifier = Modifier.size(32.dp).background(if (selectedColor == color) MaterialTheme.colorScheme.onSurface else Color.Transparent, RoundedCornerShape(16.dp)).padding(4.dp),
+                        modifier = Modifier.size(32.dp).background(
+                            if (selectedColor == color) MaterialTheme.colorScheme.onSurface else Color.Transparent,
+                            RoundedCornerShape(16.dp)
+                        ).padding(4.dp),
                         shape = RoundedCornerShape(16.dp),
                         color = Color(color),
                         onClick = { selectedColor = color }
@@ -422,15 +381,7 @@ fun CreateEventScreen(viewModel: MainViewModel, onSave: () -> Unit) {
                 }
             }
 
-            TextField(value = "", onValueChange = { }, label = { Text("Attendees (comma-separated emails") }, modifier = Modifier.fillMaxWidth())
-
-            DropdownMenu(expanded = true, onDismissRequest = { reminderMinutes.value = 0 }) {
-                listOf(0 to "At time of event", 5 to "5 minutes before", 15 to "15 minutes before", 30 to "30 minutes before", 60 to "1 hour before", 1440 to "1 day before").forEach { pair ->
-                    val minutes = pair.first
-                    DropdownMenuItem(onClick = { reminderMinutes.value = minutes }, text = { Text(pair.second) })
-                }
-                Text(text = "Reminder: ${reminderMinutes.value}")
-            }
+            TextField(value = "", onValueChange = {}, label = { Text("Attendees (comma-separated emails)") }, modifier = Modifier.fillMaxWidth())
         }
     }
 }

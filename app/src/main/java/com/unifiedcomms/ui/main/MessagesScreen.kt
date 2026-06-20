@@ -56,7 +56,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.Canvas
 import kotlin.math.abs
 
 @Composable
@@ -127,9 +126,9 @@ fun ConversationScreen(
                 },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") } },
                 actions = {
-                    IconButton(onClick = { /* Call */ }) { Icon(Icons.Default.Call, contentDescription = "Call") }
-                    IconButton(onClick = { /* Video call */ }) { Icon(Icons.Default.Videocam, contentDescription = "Video call") }
-                    IconButton(onClick = { /* Menu */ }) { Icon(Icons.Default.MoreVert, contentDescription = "Menu") }
+                    IconButton(onClick = { }) { Icon(Icons.Default.Call, contentDescription = "Call") }
+                    IconButton(onClick = { }) { Icon(Icons.Default.Videocam, contentDescription = "Video call") }
+                    IconButton(onClick = { }) { Icon(Icons.Default.MoreVert, contentDescription = "Menu") }
                 }
             )
         }
@@ -156,16 +155,16 @@ fun ConversationScreen(
                     modifier = Modifier.padding(16.dp).fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { /* Attach */ }) {
+                    IconButton(onClick = { }) {
                         Icon(Icons.Default.AttachFile, contentDescription = "Attach")
                     }
-                    IconButton(onClick = { /* Calendar invite */ }) {
+                    IconButton(onClick = { }) {
                         Icon(Icons.Default.CalendarMonth, contentDescription = "Calendar invite")
                     }
-                    IconButton(onClick = { /* Share task */ }) {
+                    IconButton(onClick = { }) {
                         Icon(Icons.Default.Checklist, contentDescription = "Share task")
                     }
-                    IconButton(onClick = { /* Share email */ }) {
+                    IconButton(onClick = { }) {
                         Icon(Icons.Default.Email, contentDescription = "Share email")
                     }
 
@@ -177,7 +176,7 @@ fun ConversationScreen(
                         singleLine = true
                     )
 
-                    IconButton(onClick = { /* Voice message */ }) {
+                    IconButton(onClick = { }) {
                         Icon(Icons.Default.Mic, contentDescription = "Voice message")
                     }
 
@@ -206,42 +205,6 @@ fun ConversationScreen(
     }
 }
 
-data class MockConversation(
-    val id: String,
-    val name: String,
-    val email: String,
-    val lastMessage: String,
-    val time: String,
-    val isUnread: Boolean,
-    val unreadCount: Int,
-    val type: com.unifiedcomms.data.model.ConversationType
-)
-
-data class MockMessage(
-    val id: String,
-    val conversationId: String,
-    val senderId: String,
-    val content: String,
-    val isOutgoing: Boolean,
-    val timestamp: String
-)
-
-fun getMockConversations(): List<MockConversation> = listOf(
-    MockConversation("1", "John Doe", "john@example.com", "Hey! How are you?", "10:30 AM", true, 2, com.unifiedcomms.data.model.ConversationType.DIRECT),
-    MockConversation("2", "Jane Smith", "jane@company.com", "Meeting moved to 3pm", "9:15 AM", false, 0, com.unifiedcomms.data.model.ConversationType.DIRECT),
-    MockConversation("3", "Team UnifiedComms", "team@unifiedcomms.app", "Release v1.0 is live!", "Yesterday", false, 0, com.unifiedcomms.data.model.ConversationType.GROUP),
-    MockConversation("4", "Alice Chen", "alice@startup.io", "Can you review the PR?", "2 days ago", true, 1, com.unifiedcomms.data.model.ConversationType.DIRECT),
-    MockConversation("5", "Support", "support@unifiedcomms.app", "Welcome to UnifiedComms!", "3 days ago", false, 0, com.unifiedcomms.data.model.ConversationType.BROADCAST)
-)
-
-fun getMockMessages(conversationId: String): List<MockMessage> = listOf(
-    MockMessage("1", conversationId, "them", "Hey! How are you doing?", false, "10:25 AM"),
-    MockMessage("2", conversationId, "me", "I'm doing great! Thanks for asking.", true, "10:26 AM"),
-    MockMessage("3", conversationId, "them", "That's awesome. Did you see the new calendar feature?", false, "10:27 AM"),
-    MockMessage("4", conversationId, "me", "Yes! The color coding is really nice.", true, "10:28 AM"),
-    MockMessage("5", conversationId, "them", "I agree. Want to test the messaging integration?", false, "10:29 AM")
-)
-
 @Composable
 fun ConversationListItem(
     conversation: MockConversation,
@@ -264,13 +227,19 @@ fun ConversationListItem(
                 modifier = Modifier.size(56.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Canvas(modifier = Modifier.size(56.dp)) {
-                    drawCircle(
-                        color = Color(abs(conversation.id.hashCode() % 0xFFFFFF) + 0xFF000000),
-                        radius = 28.dp.toPx()
-                    )
-                }
-                Text(text = conversation.name.first().uppercase(), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                androidx.compose.material3.Text(
+                    text = conversation.name.first().uppercase(),
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            color = Color(abs(conversation.id.hashCode() % 0xFFFFFF) + 0xFF000000),
+                            shape = CircleShape
+                        ),
+                    textAlign = TextAlign.Center
+                )
             }
 
             Spacer(modifier = Modifier.width(12.dp))
@@ -334,10 +303,19 @@ fun MessageBubble(message: MockMessage, isCurrentUser: Boolean) {
                 modifier = Modifier.size(32.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Canvas(modifier = Modifier.size(32.dp)) {
-                    drawCircle(color = MaterialTheme.colorScheme.primary, radius = 16.dp.toPx())
-                }
-                Text(text = "J", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                androidx.compose.material3.Text(
+                    text = "J",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            color = MaterialTheme.colorScheme.primary,
+                            shape = CircleShape
+                        ),
+                    textAlign = TextAlign.Center
+                )
             }
             Spacer(modifier = Modifier.width(8.dp))
         }
@@ -367,11 +345,56 @@ fun MessageBubble(message: MockMessage, isCurrentUser: Boolean) {
                 modifier = Modifier.size(32.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Canvas(modifier = Modifier.size(32.dp)) {
-                    drawCircle(color = Color(MaterialTheme.colorScheme.secondary.value), radius = 16.dp.toPx())
-                }
-                Text(text = "Me", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                androidx.compose.material3.Text(
+                    text = "Me",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            color = MaterialTheme.colorScheme.secondary,
+                            shape = CircleShape
+                        ),
+                    textAlign = TextAlign.Center
+                )
             }
         }
     }
 }
+
+data class MockConversation(
+    val id: String,
+    val name: String,
+    val email: String,
+    val lastMessage: String,
+    val time: String,
+    val isUnread: Boolean,
+    val unreadCount: Int,
+    val type: com.unifiedcomms.data.model.ConversationType
+)
+
+data class MockMessage(
+    val id: String,
+    val conversationId: String,
+    val senderId: String,
+    val content: String,
+    val isOutgoing: Boolean,
+    val timestamp: String
+)
+
+fun getMockConversations(): List<MockConversation> = listOf(
+    MockConversation("1", "John Doe", "john@example.com", "Hey! How are you?", "10:30 AM", true, 2, com.unifiedcomms.data.model.ConversationType.DIRECT),
+    MockConversation("2", "Jane Smith", "jane@company.com", "Meeting moved to 3pm", "9:15 AM", false, 0, com.unifiedcomms.data.model.ConversationType.DIRECT),
+    MockConversation("3", "Team UnifiedComms", "team@unifiedcomms.app", "Release v1.0 is live!", "Yesterday", false, 0, com.unifiedcomms.data.model.ConversationType.GROUP),
+    MockConversation("4", "Alice Chen", "alice@startup.io", "Can you review the PR?", "2 days ago", true, 1, com.unifiedcomms.data.model.ConversationType.DIRECT),
+    MockConversation("5", "Support", "support@unifiedcomms.app", "Welcome to UnifiedComms!", "3 days ago", false, 0, com.unifiedcomms.data.model.ConversationType.BROADCAST)
+)
+
+fun getMockMessages(conversationId: String): List<MockMessage> = listOf(
+    MockMessage("1", conversationId, "them", "Hey! How are you doing?", false, "10:25 AM"),
+    MockMessage("2", conversationId, "me", "I'm doing great! Thanks for asking.", true, "10:26 AM"),
+    MockMessage("3", conversationId, "them", "That's awesome. Did you see the new calendar feature?", false, "10:27 AM"),
+    MockMessage("4", conversationId, "me", "Yes! The color coding is really nice.", true, "10:28 AM"),
+    MockMessage("5", conversationId, "them", "I agree. Want to test the messaging integration?", false, "10:29 AM")
+)
