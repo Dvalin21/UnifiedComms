@@ -60,7 +60,6 @@ import kotlin.math.abs
 
 @Composable
 fun MessagesScreen(
-    viewModel: MainViewModel,
     onConversationClick: (MockConversation) -> Unit,
     onNewMessage: () -> Unit
 ) {
@@ -105,7 +104,6 @@ fun MessagesScreen(
 
 @Composable
 fun ConversationScreen(
-    viewModel: MainViewModel,
     conversationId: String,
     onBack: () -> Unit
 ) {

@@ -90,7 +90,6 @@ class MainActivity : ComponentActivity() {
                     }
                     composable("messages") {
                         MessagesScreen(
-                            viewModel = viewModel,
                             onConversationClick = { conv -> navController.navigate("conversation/${conv.id}") },
                             onNewMessage = { navController.navigate("new_message") }
                         )
@@ -98,7 +97,6 @@ class MainActivity : ComponentActivity() {
                     composable("conversation/{conversationId}") { backStackEntry ->
                         val conversationId = backStackEntry.arguments?.getString("conversationId").orEmpty()
                         ConversationScreen(
-                            viewModel = viewModel,
                             conversationId = conversationId,
                             onBack = { navController.popBackStack() }
                         )
