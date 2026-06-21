@@ -64,16 +64,22 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.abs
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.unifiedcomms.data.model.Email
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EmailScreen(
-    @Suppress("UNUSED_PARAMETER") viewModel: MainViewModel,
-    @Suppress("UNUSED_PARAMETER") accountId: String,
-    @Suppress("UNUSED_PARAMETER") folder: String,
+    viewModel: MainViewModel,
+    accountId: String,
+    folder: String,
     onNavigateBack: () -> Unit,
     onCompose: () -> Unit
 ) {
-    var messages by remember { mutableStateOf<List<EmailMessage>>(getMockEmails()) }
+    val emails by viewModel.emailRepository
+        .getByAccountAndFolder(accountId, folder, 100, 0)
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val messages = emails.map { it.toEmailMessage() }
 
     Scaffold(
         topBar = {
@@ -227,3 +233,20 @@ fun getMockEmails(): List<EmailMessage> = listOf(
     EmailMessage("4", "Diana Prince", "Bug Fix Deployed", "The fix for the authentication issue has been deployed to production...", "2 days ago", true, Color(0xFF9C27B0)),
     EmailMessage("5", "UnifiedComms Team", "Welcome to UnifiedComms!", "Welcome to your new unified communication platform...", "3 days ago", false, Color(0xFFB00020))
 )
+
+private fun Email.toEmailMessage(): EmailMessage {
+    val formatter = java.time.format.DateTimeFormatter.ofPattern("h:mm a")
+    val ldt = java.time.LocalDateTime.ofInstant(
+        java.time.Instant.ofEpochMilli(receivedAt.toEpochMilliseconds()),
+        java.time.ZoneId.systemDefault()
+    )
+    return EmailMessage(
+        id = id,
+        from = sender.name ?: sender.email,
+        subject = subject,
+        body = bodyText.orEmpty().take(120),
+        time = formatter.format(ldt),
+        isUnread = isUnread(),
+        accountColor = androidx.compose.ui.graphics.Color.Unspecified
+    )
+}

@@ -85,9 +85,18 @@ class FullScreenReminderActivity : Activity() {
 
         // Full-screen, over lock screen (API 27+ flags; deprecated flags suppressed on older paths)
         window.addFlags(
-            WindowManager.LayoutParams.FLAG_FULLSCREEN or
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
         )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.setDecorFitsSystemWindows(false)
+            window.insetsController?.hide(android.view.WindowInsets.Type.statusBars())
+            window.insetsController?.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_FULLSCREEN
+            )
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
@@ -103,6 +112,7 @@ class FullScreenReminderActivity : Activity() {
         setContentView(R.layout.activity_fullscreen_reminder)
 
         val eventId = intent.getStringExtra("event_id") ?: return
+        @Suppress("UNUSED_VARIABLE")
         val accountId = intent.getStringExtra("account_id") ?: return
 
         // Load event and populate UI
@@ -219,7 +229,8 @@ class ReminderScheduler(
         }
     }
 
-    fun cancelReminders(eventId: String) {
+    fun cancelReminders(@Suppress("UNUSED_PARAMETER") eventId: String) {
+        @Suppress("UNUSED_VARIABLE")
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         // Cancel all reminders for this event
         // Would need to track pending intent IDs

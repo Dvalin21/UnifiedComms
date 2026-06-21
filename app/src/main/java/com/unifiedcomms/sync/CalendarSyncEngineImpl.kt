@@ -62,12 +62,12 @@ class CalendarSyncEngineImpl(
         }
     }
 
-    override suspend fun syncCalendar(account: Account, cal: Calendar): SyncResult {
+    override suspend fun syncCalendar(account: Account, calendar: Calendar): SyncResult {
         return withContext(Dispatchers.IO) {
             try {
-                updateProgress(account.id, cal.name, SyncStage.FETCHING_HEADERS, 0, 0)
+                updateProgress(account.id, calendar.name, SyncStage.FETCHING_HEADERS, 0, 0)
 
-                val events = fetchEventsFromServer(account, cal.serverId)
+                val events = fetchEventsFromServer(account, calendar.serverId)
                 var synced = 0
                 val newItems = mutableListOf<String>()
                 val updatedItems = mutableListOf<String>()
@@ -99,11 +99,11 @@ class CalendarSyncEngineImpl(
                 }
 
                 calendarRepo.updateLastSynced(account.id, System.currentTimeMillis())
-                updateProgress(account.id, cal.name, SyncStage.COMPLETED, synced, synced)
+                updateProgress(account.id, calendar.name, SyncStage.COMPLETED, synced, synced)
                 SyncResult.success(synced, newItems, updatedItems)
 
             } catch (e: Exception) {
-                updateProgress(account.id, cal.name, SyncStage.ERROR, 0, 0)
+                updateProgress(account.id, calendar.name, SyncStage.ERROR, 0, 0)
                 SyncResult.failure(e.message ?: "Calendar sync failed")
             }
         }
