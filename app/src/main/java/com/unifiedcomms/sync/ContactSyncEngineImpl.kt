@@ -77,7 +77,7 @@ class ContactSyncEngineImpl(
         }
     }
 
-    private fun fetchContactsFromServer(_account: Account): List<UnifiedContact> {
+    private fun fetchContactsFromServer(account: Account): List<UnifiedContact> {
         // CardDAV, Google People API, Exchange
         return emptyList()
     }

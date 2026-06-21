@@ -98,12 +98,12 @@ class TaskSyncEngineImpl(
         }
     }
 
-    private fun getTaskListsFromServer(_account: Account): List<TaskList> {
+    private fun getTaskListsFromServer(account: Account): List<TaskList> {
         // CalDAV VTODO or Google Tasks API
         return emptyList()
     }
 
-    private fun fetchTasksFromServer(_account: Account, _listId: String): List<Task> {
+    private fun fetchTasksFromServer(account: Account, listId: String): List<Task> {
         // Fetch tasks from server
         return emptyList()
     }
