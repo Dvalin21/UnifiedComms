@@ -70,7 +70,7 @@ import kotlin.math.abs
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CalendarScreen(
-    viewModel: MainViewModel,
+    @Suppress("UNUSED_PARAMETER") viewModel: MainViewModel,
     onCreateEvent: () -> Unit,
     onEventClick: (MockEvent) -> Unit
 ) {
@@ -308,7 +308,7 @@ fun EventChip(event: MockEvent, compact: Boolean = false, onClick: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CreateEventScreen(viewModel: MainViewModel, onSave: () -> Unit) {
+fun CreateEventScreen(@Suppress("UNUSED_PARAMETER") viewModel: MainViewModel, onSave: () -> Unit) {
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var location by remember { mutableStateOf("") }
@@ -389,7 +389,7 @@ fun CreateEventScreen(viewModel: MainViewModel, onSave: () -> Unit) {
 }
 
 @Composable
-fun EventDetailScreen(viewModel: MainViewModel, eventId: String, onEdit: () -> Unit) {
+fun EventDetailScreen(@Suppress("UNUSED_PARAMETER") viewModel: MainViewModel, @Suppress("UNUSED_PARAMETER") eventId: String, onEdit: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(

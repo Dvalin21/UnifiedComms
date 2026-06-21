@@ -65,8 +65,8 @@ fun UnifiedInboxScreen(
     viewModel: MainViewModel,
     onNavigateToEmail: (String, String) -> Unit,
     onNavigateToCalendar: () -> Unit,
-    onNavigateToTasks: () -> Unit,
-    onNavigateToMessages: () -> Unit,
+    @Suppress("UNUSED_PARAMETER") onNavigateToTasks: () -> Unit,
+    @Suppress("UNUSED_PARAMETER") onNavigateToMessages: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToAddAccount: () -> Unit
 ) {
@@ -253,7 +253,7 @@ fun EmailOverviewScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FolderChip(label: String, _folder: String, count: Int, color: Color, onClick: () -> Unit) {
+fun FolderChip(label: String, @Suppress("UNUSED_PARAMETER") _folder: String, count: Int, color: Color, onClick: () -> Unit) {
     Surface(
         modifier = Modifier
             .fillMaxWidth(0.25f)

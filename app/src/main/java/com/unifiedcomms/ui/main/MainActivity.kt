@@ -1,3 +1,5 @@
+@file:Suppress("UNUSED_PARAMETER")
+
 package com.unifiedcomms.ui.main
 
 import android.os.Bundle
