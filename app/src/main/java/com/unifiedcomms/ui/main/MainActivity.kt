@@ -48,7 +48,6 @@ class MainActivity : ComponentActivity() {
                             )
                     }
                     composable("compose_email/{accountId}") { backStackEntry ->
-                        val _accountId = backStackEntry.arguments?.getString("accountId").orEmpty()
                         ComposeEmailScreen(
                             viewModel = viewModel,
                             onSend = { navController.popBackStack() }

@@ -49,6 +49,7 @@ class AddAccountActivity : AppCompatActivity() {
 
         val intent = intent
         accountType = AccountType.valueOf(intent.getStringExtra("accountType") ?: "")
+        @Suppress("DEPRECATION")
         pendingIntent = intent.getParcelableExtra(android.accounts.AccountManager.KEY_ACCOUNT_AUTHENTICATOR_RESPONSE)
 
         when (accountType) {
@@ -142,7 +143,7 @@ class AddAccountActivity : AppCompatActivity() {
 
             scope.launch {
                 val account = createManualAccount(accountType!!, email, password, server, name)
-                val id = accountRepo.insert(account)
+                accountRepo.insert(account)
                 accountRepo.setDefault(account.id)
                 finishWithResult(account)
             }
@@ -203,6 +204,7 @@ class AddAccountActivity : AppCompatActivity() {
         }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     private suspend fun exchangeGoogleCode(code: String) {
         // Exchange code for tokens via Google OAuth2 token endpoint
         // Then create account with authConfig = AuthConfig.OAuth2(accessToken, refreshToken)
@@ -216,11 +218,12 @@ class AddAccountActivity : AppCompatActivity() {
             syncConfig = com.unifiedcomms.data.model.SyncConfig.Defaults(),
             uiConfig = com.unifiedcomms.data.model.UIConfig.Defaults()
         )
-        val id = accountRepo.insert(account)
+        accountRepo.insert(account)
         accountRepo.setDefault(account.id)
         finishWithResult(account)
     }
 
+    @Suppress("UNUSED_PARAMETER")
     private suspend fun exchangeOutlookCode(code: String) {
         // Placeholder
         val account = Account(
@@ -232,11 +235,12 @@ class AddAccountActivity : AppCompatActivity() {
             syncConfig = com.unifiedcomms.data.model.SyncConfig.Defaults(),
             uiConfig = com.unifiedcomms.data.model.UIConfig.Defaults()
         )
-        val id = accountRepo.insert(account)
+        accountRepo.insert(account)
         accountRepo.setDefault(account.id)
         finishWithResult(account)
     }
 
+    @Suppress("UNUSED_PARAMETER")
     private suspend fun exchangeYahooCode(code: String) {
         // Placeholder
         val account = Account(
@@ -248,11 +252,12 @@ class AddAccountActivity : AppCompatActivity() {
             syncConfig = com.unifiedcomms.data.model.SyncConfig.Defaults(),
             uiConfig = com.unifiedcomms.data.model.UIConfig.Defaults()
         )
-        val id = accountRepo.insert(account)
+        accountRepo.insert(account)
         accountRepo.setDefault(account.id)
         finishWithResult(account)
     }
 
+    @Suppress("UNUSED_PARAMETER")
     private suspend fun exchangeIcloudCode(code: String) {
         // Placeholder
         val account = Account(
@@ -264,7 +269,7 @@ class AddAccountActivity : AppCompatActivity() {
             syncConfig = com.unifiedcomms.data.model.SyncConfig.Defaults(),
             uiConfig = com.unifiedcomms.data.model.UIConfig.Defaults()
         )
-        val id = accountRepo.insert(account)
+        accountRepo.insert(account)
         accountRepo.setDefault(account.id)
         finishWithResult(account)
     }
