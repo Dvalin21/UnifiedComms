@@ -42,6 +42,7 @@ class CryptoManagerImpl(private val context: android.content.Context) : CryptoMa
         )
     }
 
+    @Suppress("PARAMETER_NAME_CHANGED_ON_OVERRIDE")
     override fun decryptAuthConfig(config: com.unifiedcomms.data.model.AuthConfig): com.unifiedcomms.data.model.AuthConfig {
         return config.copy(
             passwordEncrypted = decryptField(config.passwordEncrypted),

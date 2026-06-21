@@ -60,7 +60,7 @@ import com.unifiedcomms.data.model.Account
 
 @Composable
 fun SettingsScreen(
-    viewModel: MainViewModel,
+    @Suppress("UNUSED_PARAMETER") viewModel: MainViewModel,
     onAddAccount: () -> Unit,
     onAccountClick: (Account) -> Unit
 ) {
