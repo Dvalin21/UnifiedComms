@@ -73,7 +73,7 @@ class MainViewModel(
         var completed = 0
 
         for (account in accounts) {
-            val result = syncManager.performFullSync(account)
+            syncManager.performFullSync(account)
             completed++
             _syncProgress.value = (completed * 100 / accounts.size)
         }

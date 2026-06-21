@@ -13,19 +13,58 @@ class CryptoManagerImpl(private val context: android.content.Context) : CryptoMa
 
     override fun encrypt(data: ByteArray): ByteArray {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
-        return cipher.doFinal(data)
+        val secretKey = getOrCreateKey()
+        val iv = ByteArray(12).also { java.security.SecureRandom().nextBytes(it) }
+        val spec = javax.crypto.spec.GCMParameterSpec(128, iv)
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey, spec)
+        val ciphertext = cipher.doFinal(data)
+        return iv + ciphertext
     }
 
     override fun decrypt(encrypted: ByteArray): ByteArray {
+        if (encrypted.size < 12) throw IllegalArgumentException("Ciphertext too short for AES/GCM")
+        val iv = encrypted.copyOfRange(0, 12)
+        val ciphertext = encrypted.copyOfRange(12, encrypted.size)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey())
-        return cipher.doFinal(encrypted)
+        val secretKey = getOrCreateKey()
+        val spec = javax.crypto.spec.GCMParameterSpec(128, iv)
+        cipher.init(Cipher.DECRYPT_MODE, secretKey, spec)
+        return cipher.doFinal(ciphertext)
     }
 
-    @Throws(java.security.UnrecoverableKeyException::class)
-    override fun decryptAuthConfig(encrypted: com.unifiedcomms.data.model.AuthConfig): com.unifiedcomms.data.model.AuthConfig {
-        return encrypted
+    override fun encryptAuthConfig(config: com.unifiedcomms.data.model.AuthConfig): com.unifiedcomms.data.model.AuthConfig {
+        return config.copy(
+            passwordEncrypted = config.passwordEncrypted?.let { encryptField(it) },
+            clientKey = config.clientKey?.let { encryptField(it) },
+            clientCertificate = config.clientCertificate?.let { encryptField(it) },
+            oauthAccessToken = config.oauthAccessToken?.let { encryptField(it) },
+            oauthRefreshToken = config.oauthRefreshToken?.let { encryptField(it) }
+        )
+    }
+
+    override fun decryptAuthConfig(config: com.unifiedcomms.data.model.AuthConfig): com.unifiedcomms.data.model.AuthConfig {
+        return config.copy(
+            passwordEncrypted = decryptField(config.passwordEncrypted),
+            clientKey = decryptField(config.clientKey),
+            clientCertificate = decryptField(config.clientCertificate),
+            oauthAccessToken = decryptField(config.oauthAccessToken),
+            oauthRefreshToken = decryptField(config.oauthRefreshToken)
+        )
+    }
+
+    private fun decryptField(value: String?): String? {
+        if (value == null) return null
+        return try {
+            val bytes = android.util.Base64.decode(value, android.util.Base64.DEFAULT)
+            String(decrypt(bytes), Charsets.UTF_8)
+        } catch (e: Exception) {
+            value
+        }
+    }
+
+    private fun encryptField(value: String): String {
+        val bytes = value.toByteArray(Charsets.UTF_8)
+        return android.util.Base64.encodeToString(encrypt(bytes), android.util.Base64.NO_WRAP)
     }
 
     @Throws(java.security.UnrecoverableKeyException::class)
@@ -53,6 +92,7 @@ class CryptoManagerImpl(private val context: android.content.Context) : CryptoMa
 interface CryptoManager {
     fun encrypt(data: ByteArray): ByteArray
     fun decrypt(encrypted: ByteArray): ByteArray
+    fun encryptAuthConfig(config: com.unifiedcomms.data.model.AuthConfig): com.unifiedcomms.data.model.AuthConfig
     fun decryptAuthConfig(encrypted: com.unifiedcomms.data.model.AuthConfig): com.unifiedcomms.data.model.AuthConfig
 }
 
