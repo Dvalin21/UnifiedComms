@@ -20,7 +20,9 @@ class MiniMessagingViewModel : ViewModel() {
     private val _pullError = MutableStateFlow<String?>(null)
     val pullError: StateFlow<String?> = _pullError
 
+    @Suppress("UNUSED_PARAMETER")
     suspend fun pullMessages(_conversationId: String) { }
 
+    @Suppress("UNUSED_PARAMETER")
     suspend fun sendMessage(_conversationId: String, _message: Message) { }
 }

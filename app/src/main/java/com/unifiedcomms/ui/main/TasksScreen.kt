@@ -112,9 +112,7 @@ fun TasksScreen(
                     TaskItem(
                         task = task,
                         onClick = { onTaskClick(task) },
-                        onToggle = { tasks.value = tasks.value.map { if (it.id == task.id) it.copy(isCompleted = !it.isCompleted) else it } },
-                        onStarToggle = { tasks.value = tasks.value.map { if (it.id == task.id) it.copy(isStarred = !it.isStarred) else it } },
-                        onDelete = { tasks.value = tasks.value.filter { it.id != task.id } }
+                        onToggle = { tasks.value = tasks.value.map { if (it.id == task.id) it.copy(isCompleted = !it.isCompleted) else it } }
                     )
                     HorizontalDivider()
                 }
@@ -145,9 +143,7 @@ fun filterMatches(task: MockTask, filter: TaskFilter): Boolean = when (filter) {
 fun TaskItem(
     task: MockTask,
     onClick: () -> Unit,
-    onToggle: () -> Unit,
-    onStarToggle: () -> Unit,
-    onDelete: () -> Unit
+    onToggle: () -> Unit
 ) {
     val priorityColor = when (task.priority) {
         TaskPriority.LOW -> Color(0xFF81C784)
