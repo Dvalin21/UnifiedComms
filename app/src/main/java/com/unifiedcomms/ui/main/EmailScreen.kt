@@ -67,9 +67,9 @@ import kotlin.math.abs
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EmailScreen(
-    viewModel: MainViewModel,
-    accountId: String,
-    folder: String,
+    @Suppress("UNUSED_PARAMETER") viewModel: MainViewModel,
+    @Suppress("UNUSED_PARAMETER") accountId: String,
+    @Suppress("UNUSED_PARAMETER") folder: String,
     onNavigateBack: () -> Unit,
     onCompose: () -> Unit
 ) {
@@ -133,7 +133,7 @@ data class EmailMessage(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ComposeEmailScreen(viewModel: MainViewModel, onSend: () -> Unit) {
+fun ComposeEmailScreen(@Suppress("UNUSED_PARAMETER") viewModel: MainViewModel, onSend: () -> Unit) {
     var to by remember { mutableStateOf("") }
     var subject by remember { mutableStateOf("") }
     var body by remember { mutableStateOf("") }
@@ -159,7 +159,7 @@ fun ComposeEmailScreen(viewModel: MainViewModel, onSend: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EmailDetailScreen(viewModel: MainViewModel, emailId: String, onBack: () -> Unit) {
+fun EmailDetailScreen(@Suppress("UNUSED_PARAMETER") viewModel: MainViewModel, emailId: String, onBack: () -> Unit) {
     val email = getMockEmails().find { it.id == emailId }
         ?: EmailMessage("1", "sender@example.com", "Subject", "Body", "10:30 AM", true, Color.Gray)
 
@@ -196,8 +196,8 @@ fun EmailDetailScreen(viewModel: MainViewModel, emailId: String, onBack: () -> U
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ComposeMessageScreen(
-    viewModel: MainViewModel,
-    conversationId: String,
+    @Suppress("UNUSED_PARAMETER") viewModel: MainViewModel,
+    @Suppress("UNUSED_PARAMETER") conversationId: String,
     onSend: () -> Unit
 ) {
     var messageText by remember { mutableStateOf("") }

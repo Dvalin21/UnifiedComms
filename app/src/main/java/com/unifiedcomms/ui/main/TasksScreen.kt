@@ -57,7 +57,7 @@ import java.time.LocalDate
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun TasksScreen(
-    viewModel: MainViewModel,
+    @Suppress("UNUSED_PARAMETER") viewModel: MainViewModel,
     onCreateTask: () -> Unit,
     onTaskClick: (MockTask) -> Unit
 ) {
@@ -256,7 +256,7 @@ fun getMockTasks(): List<MockTask> = listOf(
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun CreateTaskScreen(
-    viewModel: MainViewModel,
+    @Suppress("UNUSED_PARAMETER") viewModel: MainViewModel,
     onSave: () -> Unit
 ) {
     var title by remember { mutableStateOf("") }

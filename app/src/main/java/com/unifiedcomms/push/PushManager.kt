@@ -11,6 +11,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 
 interface PushManager {
@@ -81,7 +82,7 @@ class PushManagerImpl(
             put("app_version", getAppVersion())
         }
         val mediaType = "application/json".toMediaType()
-        val requestBody = RequestBody.create(mediaType, json.toString())
+        val requestBody = json.toString().toRequestBody(mediaType)
         val request = Request.Builder()
             .url("$serverUrl/api/v1/devices/register")
             .addHeader("Authorization", "Bearer $apiKey")
@@ -127,7 +128,7 @@ class PushManagerImpl(
         }
 
         val mediaType = "application/json".toMediaType()
-        val requestBody = RequestBody.create(mediaType, json.toString())
+        val requestBody = json.toString().toRequestBody(mediaType)
         val request = Request.Builder()
             .url("$serverUrl/api/v1/push/send")
             .addHeader("Authorization", "Bearer $apiKey")
