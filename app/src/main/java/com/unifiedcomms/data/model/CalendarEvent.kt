@@ -96,7 +96,8 @@ data class EventDateTime(
     val timeZone: String = TimeZone.currentSystemDefault().id,
     val isAllDay: Boolean = false
 ) {
-    fun toInstant(tz: TimeZone = TimeZone.currentSystemDefault()): Instant {
+    @Suppress("UNUSED_PARAMETER")
+    fun toInstant(_tz: TimeZone = TimeZone.currentSystemDefault()): Instant {
         val zoneId = ZoneId.of(timeZone)
         return when {
             isAllDay -> Instant.fromEpochMilliseconds(JLocalDateTime.of(JLocalDate.of(date!!.year, date!!.monthNumber, date!!.dayOfMonth), JLocalTime.MIDNIGHT).atZone(zoneId).toInstant().toEpochMilli())
@@ -132,7 +133,8 @@ data class EventColor(
         fun Default(): EventColor = EventColor("#2196F3", "#FFFFFF")
         fun fromInt(background: Int, foreground: Int = -1): EventColor =
             EventColor(String.format("#%06X", (0xFFFFFF and background)), String.format("#%06X", (0xFFFFFF and foreground)))
-        fun generate(accountColor: Int, index: Int): EventColor {
+        @Suppress("UNUSED_PARAMETER")
+        fun generate(_accountColor: Int, index: Int): EventColor {
             val colors = listOf(
                 Pair("#E57373", "#FFFFFF"), // Red
                 Pair("#F06292", "#FFFFFF"), // Pink
@@ -233,7 +235,8 @@ data class RecurrenceRule(
     }
 
     companion object {
-        fun parse(rrule: String): RecurrenceRule? {
+        @Suppress("UNUSED_PARAMETER")
+        fun parse(_rrule: String): RecurrenceRule? {
             // Simplified parser - in production use ical4j
             return null
         }

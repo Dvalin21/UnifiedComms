@@ -101,7 +101,8 @@ data class TaskDateTime(
     val timeZone: String = TimeZone.currentSystemDefault().id,
     val hasTime: Boolean = true
 ) {
-    fun toInstant(tz: TimeZone = TimeZone.currentSystemDefault()): Instant {
+    @Suppress("UNUSED_PARAMETER")
+    fun toInstant(_tz: TimeZone = TimeZone.currentSystemDefault()): Instant {
         val zoneId = ZoneId.of(timeZone)
         return when {
             dateTime != null -> Instant.fromEpochMilliseconds(JLocalDateTime.parse(dateTime.toString()).atZone(ZoneId.of(timeZone)).toInstant().toEpochMilli())
@@ -112,7 +113,6 @@ data class TaskDateTime(
 
     companion object {
         fun fromInstant(instant: Instant, tz: TimeZone = TimeZone.currentSystemDefault(), hasTime: Boolean = true): TaskDateTime {
-            val zoneId = ZoneId.of(tz.id)
             val javaInstant = java.time.Instant.ofEpochMilli(instant.toEpochMilliseconds())
             val zoned = javaInstant.atZone(ZoneId.of(tz.id))
             return if (hasTime) {
