@@ -1,5 +1,5 @@
 # UnifiedComms - Production Handoff Document
-**Session Date:** 2026-06-20
+**Session Date:** 2026-06-21
 **Repository:** https://github.com/Dvalin21/UnifiedComms
 **Branch:** master
 **Working directory:** `~/host/UnifiedComms/`
@@ -60,10 +60,11 @@ https://github.com/Dvalin21/UnifiedComms
 
 ## 📝 Commit / Push Summary
 Latest remote commits on master:
-- `HANDOFF.md` updated to reflect current tree
-- `CryptoManager.kt` rewritten following user direction to preserve functionality
-- `SyncManager.kt` maintained with StateFlow design and lifecycle hooks
-- `MessagesScreen.kt` rewritten according to latest production state
+- `857f4ec` audit: complete 1-5 sweep (5 files, +53/-16)
+- `03e3566` audit: silence remaining composable stub params; fix PushManager deprecation (8 files, +24/-10)
+- `3cd24d1` docs: update HANDOFF with commit hashes and remaining blockers
+- `ae5947a` audit: tighten remaining dead code (6 files, +18/-16)
+- `5bebb96` feat: AES/GCM, lifecycle, flag migration, dead-params cleanup
 
 ---
 ## 🚀 Resume
