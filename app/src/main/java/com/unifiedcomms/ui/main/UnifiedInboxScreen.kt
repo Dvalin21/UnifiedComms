@@ -71,7 +71,7 @@ fun UnifiedInboxScreen(
     onNavigateToAddAccount: () -> Unit
 ) {
     val accounts = viewModel.accounts.collectAsStateWithLifecycle()
-    val activeAccounts = accounts.value?.filter { it.isActive } ?: emptyList()
+    val activeAccounts = accounts.value.filter { it.isActive }
 
     var selectedTab by remember { mutableStateOf(0) }
 

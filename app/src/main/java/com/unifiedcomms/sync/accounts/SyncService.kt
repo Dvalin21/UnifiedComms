@@ -85,7 +85,7 @@ class UnifiedCommsSyncService(context: Context, autoInitialize: Boolean) : Abstr
             // Run sync
             val result = syncManager.performFullSync(unifiedAccount)
 
-            result.errorMessage?.let { error ->
+            result.errorMessage?.let { _ ->
                 syncResult.stats.numIoExceptions++
                 // Log error
             }
