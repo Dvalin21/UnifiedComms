@@ -1,20 +1,19 @@
 package com.unifiedcomms.sync
 
 import android.content.Context
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleObserver
-import androidx.lifecycle.OnLifecycleEvent
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.repository.AccountRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.transform
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.launch
 
 class SyncManager(
     private val emailSync: EmailSyncEngine,
@@ -23,10 +22,46 @@ class SyncManager(
     private val contactSync: ContactSyncEngine,
     private val accountRepo: AccountRepository,
     private val scope: CoroutineScope
-) : LifecycleObserver {
+) : DefaultLifecycleObserver {
 
     private val _syncStates = MutableStateFlow<Map<String, SyncState>>(emptyMap())
     val syncStates: StateFlow<Map<String, SyncState>> = _syncStates
+    private val periodicJobs = mutableMapOf<String, Job>()
+
+    override fun onStart(owner: LifecycleOwner) {
+        scope.launch(Dispatchers.IO) {
+            accountRepo.getAllActive().collect { accounts ->
+                val currentIds = accounts.map { it.id }.toSet()
+                periodicJobs.keys.filter { it !in currentIds }.forEach { cancelPeriodicSync(it) }
+                accounts.forEach { account ->
+                    if (!periodicJobs.containsKey(account.id)) {
+                        schedulePeriodicSync(account)
+                    }
+                }
+            }
+        }
+    }
+
+    override fun onStop(owner: LifecycleOwner) {
+        periodicJobs.values.forEach { it.cancel() }
+        periodicJobs.clear()
+    }
+
+    private fun schedulePeriodicSync(account: Account) {
+        val intervalMs = (account.syncConfig.syncIntervalMinutes * 60 * 1000L)
+        val job = scope.launch(Dispatchers.IO) {
+            while (true) {
+                delay(intervalMs)
+                if (_syncStates.value[account.id]?.isSyncing == true) continue
+                performFullSync(account)
+            }
+        }
+        periodicJobs[account.id] = job
+    }
+
+    private fun cancelPeriodicSync(accountId: String) {
+        periodicJobs.remove(accountId)?.cancel()
+    }
 
     data class SyncState(
         val accountId: String,
@@ -38,32 +73,6 @@ class SyncManager(
         val lastSync: Long? = null,
         val lastError: String? = null
     )
-
-    @OnLifecycleEvent(Lifecycle.Event.ON_START)
-    fun startPeriodicSync() {
-        scope.launch(Dispatchers.IO) {
-            accountRepo.getAllActive().collect { accounts ->
-                accounts.forEach { account ->
-                    if (account.syncConfig.pushEnabled) {
-                        // Push is handled by platform-specific services
-                    } else {
-                        schedulePeriodicSync(account)
-                    }
-                }
-            }
-        }
-    }
-
-    private fun schedulePeriodicSync(account: Account) {
-        val intervalMs = (account.syncConfig.syncIntervalMinutes * 60 * 1000L)
-        scope.launch(Dispatchers.IO) {
-            while (true) {
-                delay(intervalMs)
-                if (_syncStates.value[account.id]?.isSyncing == true) continue
-                performFullSync(account)
-            }
-        }
-    }
 
     suspend fun performFullSync(account: Account): SyncResult {
         updateState(account.id) { it.copy(isSyncing = true, lastError = null) }
