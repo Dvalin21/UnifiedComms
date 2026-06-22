@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.unifiedcomms"
-    compileSdk = 34
+    compileSdk = 35
 
     // Only configure release signing if keystore path is provided
     val keystorePath = System.getenv("KEYSTORE_PATH") ?: ""
@@ -25,7 +25,7 @@ android {
     defaultConfig {
         applicationId = "com.unifiedcomms"
         minSdk = 31
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
