@@ -10,15 +10,44 @@ android {
     namespace = "com.unifiedcomms"
     compileSdk = 35
 
-    // Only configure release signing if keystore path is provided
-    val keystorePath = System.getenv("KEYSTORE_PATH") ?: ""
+    // Release signing: prefer local.properties / project properties, fall back to env vars (CI)
+    fun loadLocalProperties(): Map<String, String> {
+        val map = mutableMapOf<String, String>()
+        val file = rootProject.file("local.properties")
+        if (file.exists()) {
+            file.readLines().forEach { line ->
+                val trimmed = line.trim()
+                if (trimmed.isNotEmpty() && !trimmed.startsWith("#")) {
+                    val idx = trimmed.indexOf("=")
+                    if (idx > 0) {
+                        map[trimmed.substring(0, idx).trim()] = trimmed.substring(idx + 1).trim()
+                    }
+                }
+            }
+        }
+        return map
+    }
+    val localProps = loadLocalProperties()
+    val keystorePath = localProps["KEYSTORE_PATH"]
+        ?: project.findProperty("KEYSTORE_PATH") as String?
+        ?: System.getenv("KEYSTORE_PATH")
+        ?: ""
     if (keystorePath.isNotBlank()) {
         signingConfigs {
             create("release") {
                 storeFile = file(keystorePath)
-                storePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
-                keyAlias = System.getenv("KEY_ALIAS") ?: ""
-                keyPassword = System.getenv("KEY_PASSWORD") ?: ""
+                storePassword = localProps["KEYSTORE_PASSWORD"]
+                    ?: (project.findProperty("KEYSTORE_PASSWORD") as String?)
+                    ?: System.getenv("KEYSTORE_PASSWORD")
+                    ?: "password"
+                keyAlias = localProps["KEY_ALIAS"]
+                    ?: (project.findProperty("KEY_ALIAS") as String?)
+                    ?: System.getenv("KEY_ALIAS")
+                    ?: "unifiedcomms-release"
+                keyPassword = localProps["KEY_PASSWORD"]
+                    ?: (project.findProperty("KEY_PASSWORD") as String?)
+                    ?: System.getenv("KEY_PASSWORD")
+                    ?: "password"
             }
         }
     }
