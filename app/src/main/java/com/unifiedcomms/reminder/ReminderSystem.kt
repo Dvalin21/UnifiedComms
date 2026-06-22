@@ -91,6 +91,7 @@ class FullScreenReminderActivity : Activity() {
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            @Suppress("DEPRECATION")
             window.setDecorFitsSystemWindows(false)
             window.insetsController?.hide(android.view.WindowInsets.Type.statusBars())
             window.insetsController?.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE

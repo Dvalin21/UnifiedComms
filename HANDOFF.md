@@ -45,14 +45,16 @@ Build is **green** (`:app:compileDebugKotlin` succeeds; `:app:assembleRelease` a
    - `CreateTaskScreen` — dropped unused `viewModel`
 
 ---
-## ⚠️ Remaining Warnings / Deferred Items
-1. `CalendarEvent.kt:16` — deprecated `kotlinx.datetime.ZoneOffset` typealias. Should migrate to `FixedOffsetTimeZone` / `UtcOffset`.
-2. `CalendarEvent.kt:103` — 2x unnecessary non-null assertion (`!!`) on a non-null `LocalDate` receiver.
-3. Opt-in requirement markers `androidx.lifecycle.ExperimentalLifecycleApi` and `com.google.devtools.ksp.ExperimentalKspInterop` — currently commented out in `build.gradle.kts`; can be removed or restored once dependency markers are added.
-4. Keystore release signing — blocked on env vars (`KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`).
+## ⚠️ Remaining / Deferred
+1. Keystore release signing — blocked on env vars (`KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`).
+2. Unit tests (Phase 1 deliverable).
+3. Destructive migration path for users upgrading from pre-schema export builds.
 
 ---
 ## ✅ Resolved / No Longer Blockers
+- **CalendarEvent ZoneOffset deprecation** — no longer reproduces; file uses `UtcOffset` only.
+- **CalendarEvent unnecessary `!!`** — no longer reproduces on current Kotlin/AGP.
+- **Opt-in requirement markers** — removed stale commented-out entries from `build.gradle.kts`; build is warning-free.
 - **PushManager** `RequestBody.create` — already migrated to `body.toRequestBody(mediaType)` (verified in prior session).
 - **Task.kt** unused `tz`/`zoneId` — `tz` does not exist at top level; `zoneId` is actively used throughout `Task`.
 - **CryptoManager.kt** param name change warning — suppressed with `@Suppress("PARAMETER_NAME_CHANGED_ON_OVERRIDE")`.
