@@ -7,11 +7,11 @@
 
 ---
 ## Executive Summary
-Build is **green** (`:app:compileDebugKotlin` succeeds in ~49s).
+Build is **green** (`:app:compileDebugKotlin` succeeds; `:app:assembleRelease` also green; `:app:lintRelease` green).
 
 **Phase 0 (Release build baseline)** — COMPLETE
-- ProGuard rules audited, SyncService split from AbstractThreadedSyncAdapter
-- `assembleRelease` succeeds, zero lint errors
+- ProGuard rules audited: add explicit default constructor keeps for Room/Hilt/kotlinx.serialization annotated classes
+- `assembleRelease` and `lintRelease` both green
 
 **Phase 1 (Unit test scaffold)** — COMPLETE
 - Audit confirmed: 0 unit tests, 0 instrumented tests
@@ -25,9 +25,9 @@ Build is **green** (`:app:compileDebugKotlin` succeeds in ~49s).
 - Schema JSON files not yet generating until DAO/entity mismatch is resolved
 
 **Phase 3 (Keystore/signing + target API)** — IN PROGRESS
-- compileSdk/targetSdk bumped to 35, Android SDK 35 installed locally
-- assembleDebug green after SDK bump
-- Signing gated on env vars (`KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`)
+- compileSdk/targetSdk bumped to 35, Android SDK 35 installed
+- assembleRelease and lintRelease both green
+- Signing still gated on env vars (`KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`)
 
 ---
 
@@ -45,11 +45,11 @@ Build is **green** (`:app:compileDebugKotlin` succeeds in ~49s).
    - `CreateTaskScreen` — dropped unused `viewModel`
 
 ---
-## ⚠️ Remaining Warnings (5)
-1. `CalendarEvent.kt:16` — deprecated `ZoneOffset` typealias. Replace with `FixedOffsetTimeZone` of `UtcOffset`.
+## ⚠️ Remaining Warnings / Deferred Items
+1. `CalendarEvent.kt:16` — deprecated `kotlinx.datetime.ZoneOffset` typealias. Should migrate to `FixedOffsetTimeZone` / `UtcOffset`.
 2. `CalendarEvent.kt:103` — 2x unnecessary non-null assertion (`!!`) on a non-null `LocalDate` receiver.
-3. `Opt-in requirement marker androidx.lifecycle.ExperimentalLifecycleApi is unresolved` — add required dependency marker to module.
-4. `Opt-in requirement marker com.google.devtools.ksp.ExperimentalKspInterop is unresolved` — same, dependency marker.
+3. Opt-in requirement markers `androidx.lifecycle.ExperimentalLifecycleApi` and `com.google.devtools.ksp.ExperimentalKspInterop` — currently commented out in `build.gradle.kts`; can be removed or restored once dependency markers are added.
+4. Keystore release signing — blocked on env vars (`KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`).
 
 ---
 ## ✅ Resolved / No Longer Blockers
@@ -75,7 +75,7 @@ Build is **green** (`:app:compileDebugKotlin` succeeds in ~49s).
 
 | Phase | Name | Status | Deliverable |
 |-------|------|--------|-------------|
-| 0 | Release build baseline | COMPLETE | assembleRelease passes, ProGuard rules audited |
+| 0 | Release build baseline | COMPLETE | assembleRelease + lintRelease green; ProGuard rules audited |
 | 1 | Unit test scaffold | COMPLETE | 0 tests audited; scaffolding pending post-Room fix |
 | 2 | Room migration strategy | IN PROGRESS | Schema JSON files emitting, Migration objects defined |
 | 3 | Keystore/signing + target API | IN PROGRESS | Fastlane/env vars pending; compileSdk/targetSdk 35 aligned |
