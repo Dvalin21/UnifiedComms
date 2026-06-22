@@ -3,7 +3,7 @@
 **Repository:** https://github.com/Dvalin21/UnifiedComms
 **Branch:** master
 **Working directory:** `~/host/UnifiedComms/`
-**Local HEAD:** `6846f3a`
+**Local HEAD:** `7d0877c`
 
 ---
 ## Executive Summary
@@ -15,8 +15,8 @@ Build is **green** (`:app:compileDebugKotlin` succeeds; `:app:assembleRelease` a
 - Release APK signed with v2 scheme using local keystore (`release.jks`)
 
 **Phase 1 (Unit test scaffold)** — COMPLETE
-- 16 unit tests added under `app/src/test/`
-- Tested: converters (GeoLocation, ServerConfig, DateTime, StringList), model helpers (CalendarEvent), repository filtering (EmailRepositoryImpl)
+- 24 unit tests added under `app/src/test/`
+- Tested: converters (StringList, DateTime), model helpers (CalendarEvent), repositories (Email/Account/Calendar/Task filtering + delegation), sanity (IsOk)
 
 **Phase 2 (Room migration strategy)** — IN PROGRESS
 - Dotted-path DAO queries resolved via repository-layer filtering (`Flow.map`)
@@ -49,7 +49,7 @@ Build is **green** (`:app:compileDebugKotlin` succeeds; `:app:assembleRelease` a
 
 ---
 ## ⚠️ Remaining / Deferred
-1. Expand unit test coverage beyond current 16 tests.
+1. Expand unit test coverage beyond current 24 tests.
 
 ---
 ## ✅ Resolved / No Longer Blockers
@@ -78,7 +78,7 @@ Build is **green** (`:app:compileDebugKotlin` succeeds; `:app:assembleRelease` a
 | Phase | Name | Status | Deliverable |
 |-------|------|--------|-------------|
 | 0 | Release build baseline | COMPLETE | assembleRelease + lintRelease green; ProGuard rules audited |
-| 1 | Unit test scaffold | COMPLETE | 16 unit tests added (converters, datetime, model, repository) |
+| 1 | Unit test scaffold | COMPLETE | 24 unit tests added (converters, datetime, model, repositories) |
 | 2 | Room migration strategy | IN PROGRESS | Dotted-path queries fixed, schema JSON emitting, MIGRATION_1_1 registered |
 | 3 | Keystore/signing + target API | COMPLETE | Signing verified (v2 APK), assembleRelease + lintRelease green |
 
