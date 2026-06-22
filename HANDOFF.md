@@ -3,7 +3,7 @@
 **Repository:** https://github.com/Dvalin21/UnifiedComms
 **Branch:** master
 **Working directory:** `~/host/UnifiedComms/`
-**Local HEAD:** `f18594c`
+**Local HEAD:** `80875fb`
 
 ---
 ## Executive Summary
@@ -24,9 +24,10 @@ Build is **green** (`:app:compileDebugKotlin` succeeds in ~49s).
 - **BLOCKER:** `Email` `@Index` annotations reference non-existent columns (`isRead`, `body_text`) — must align with actual entity fields
 - Schema JSON files not yet generating until DAO/entity mismatch is resolved
 
-**Phase 3 (Keystore/signing + target API)** — PENDING
-- Keystore signing gated on `[REDACTED]` env vars (`KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`)
-- Target API currently 34; API 35 upgrade deferred until Room schema stable
+**Phase 3 (Keystore/signing + target API)** — IN PROGRESS
+- compileSdk/targetSdk bumped to 35, Android SDK 35 installed locally
+- assembleDebug green after SDK bump
+- Signing gated on env vars (`KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`)
 
 ---
 
@@ -63,13 +64,10 @@ Build is **green** (`:app:compileDebugKotlin` succeeds in ~49s).
 
 ---
 ## 📋 Next Actions
-**Phase 2 must complete before Phase 3.**
-1. Fix `Email` entity `@Index` annotations: replace `isRead` → `isEncrypted`, `body_text` → `bodyText`
-2. Fix DAO queries: replace dotted paths (`flags.isRead`, `systemLabels.draft`, `syncConfig.syncEmail`) with plain columns; add `Flow.map { ... }` filtering in `RepositoryImpl`
-3. Fix `CalendarEvent` fields missing per-field `@TypeConverters` (organizer, attendees, recurrenceRule, recurrenceExceptions, reminders, attachments, conferenceData)
-4. Add per-field `@TypeConverters` to `Task` and `Conversation` entities where needed
-5. Re-run `:app:kaptDebugKotlin` — expect schema JSON files to emit into `app/schemas/`
-6. Define explicit `Migration` objects for each schema change
+1. Provide keystore env vars (`KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`) to enable release signing.
+2. Unit tests (Phase 1 deliverable).
+3. ProGuard/R8 rules audit for targetSdk 35 behavior changes.
+4. Handle destructive migration path for users upgrading from pre-schema export builds.
 
 ---
 
@@ -80,7 +78,7 @@ Build is **green** (`:app:compileDebugKotlin` succeeds in ~49s).
 | 0 | Release build baseline | COMPLETE | assembleRelease passes, ProGuard rules audited |
 | 1 | Unit test scaffold | COMPLETE | 0 tests audited; scaffolding pending post-Room fix |
 | 2 | Room migration strategy | IN PROGRESS | Schema JSON files emitting, Migration objects defined |
-| 3 | Keystore/signing + target API | PENDING | Keystore gated on [REDACTED] env vars; API 34/35 aligned |
+| 3 | Keystore/signing + target API | IN PROGRESS | Fastlane/env vars pending; compileSdk/targetSdk 35 aligned |
 
 ---
 ## 🚀 Resume
