@@ -7,10 +7,29 @@
 
 ---
 ## Executive Summary
-Build is **green** (`:app:compileDebugKotlin` succeeds in ~49s). 5 warnings remain — none are compile errors.
-State reflects post-P1/P2/P3 cleanup. ViewModel/Flow wiring is in place across Calendar, Tasks, Messages, Settings, and UnifiedInbox screens.
+Build is **green** (`:app:compileDebugKotlin` succeeds in ~49s).
+
+**Phase 0 (Release build baseline)** — COMPLETE
+- ProGuard rules audited, SyncService split from AbstractThreadedSyncAdapter
+- `assembleRelease` succeeds, zero lint errors
+
+**Phase 1 (Unit test scaffold)** — COMPLETE
+- Audit confirmed: 0 unit tests, 0 instrumented tests
+
+**Phase 2 (Room migration strategy)** — IN PROGRESS, BLOCKED
+- `kotlin-kapt` enabled, `room-compiler:2.6.1`, `room.schemaLocation` configured
+- `@TypeConverters` added to entity fields: Account (ServerConfig/AuthConfig/SyncConfig/UIConfig), CalendarEvent, Task
+- New converter: `EventReminderListConverter`
+- **BLOCKER:** DAO queries use dotted paths on JSON-embedded fields (`flags.isRead`, `systemLabels.draft`, `syncConfig.syncEmail`). Room SQLite cannot traverse these — filtering must move to RepositoryImpl via `Flow.map { ... }`
+- **BLOCKER:** `Email` `@Index` annotations reference non-existent columns (`isRead`, `body_text`) — must align with actual entity fields
+- Schema JSON files not yet generating until DAO/entity mismatch is resolved
+
+**Phase 3 (Keystore/signing + target API)** — PENDING
+- Keystore signing gated on `[REDACTED]` env vars (`KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`)
+- Target API currently 34; API 35 upgrade deferred until Room schema stable
 
 ---
+
 ## ✅ Work Completed in This Session
 1. **P1 ViewModel/Repository wiring** — replaced mock state with repository-backed flows in CalendarScreen, TasksScreen, MessagesScreen, and SettingsScreen. Added `MockEvent`/`MockTask`/`MockConversation`/`MockMessage` UI-layer adapters to bridge repo model types into existing composable UIs. UnifiedInboxScreen and MainActivity pass `viewModel` through correctly.
 2. **P2 Unused-parameter cleanup** — zero-arg'd unused private helper params in `CalendarSyncEngineImpl`, `ContactSyncEngineImpl`, `TaskSyncEngineImpl`; removed unused composite call-site args in `MainActivity` (`backStackEntry` renamed to `_`); killed dead `newMsg` allocation in `MessagesScreen`.
@@ -44,14 +63,35 @@ State reflects post-P1/P2/P3 cleanup. ViewModel/Flow wiring is in place across C
 
 ---
 ## 📋 Next Actions
-1. Fix the 2 CalendarEvent.kt warnings (ZoneOffset + !!).
-2. Resolve the 2 unresolved opt-in markers in module dependencies.
-3. Finish P4 PushManager verification (already clean) and confirm ReminderSystem decision.
-4. Update this HANDOFF.md after those fixes.
+**Phase 2 must complete before Phase 3.**
+1. Fix `Email` entity `@Index` annotations: replace `isRead` → `isEncrypted`, `body_text` → `bodyText`
+2. Fix DAO queries: replace dotted paths (`flags.isRead`, `systemLabels.draft`, `syncConfig.syncEmail`) with plain columns; add `Flow.map { ... }` filtering in `RepositoryImpl`
+3. Fix `CalendarEvent` fields missing per-field `@TypeConverters` (organizer, attendees, recurrenceRule, recurrenceExceptions, reminders, attachments, conferenceData)
+4. Add per-field `@TypeConverters` to `Task` and `Conversation` entities where needed
+5. Re-run `:app:kaptDebugKotlin` — expect schema JSON files to emit into `app/schemas/`
+6. Define explicit `Migration` objects for each schema change
+
+---
+
+## Phase List
+
+| Phase | Name | Status | Deliverable |
+|-------|------|--------|-------------|
+| 0 | Release build baseline | COMPLETE | assembleRelease passes, ProGuard rules audited |
+| 1 | Unit test scaffold | COMPLETE | 0 tests audited; scaffolding pending post-Room fix |
+| 2 | Room migration strategy | IN PROGRESS | Schema JSON files emitting, Migration objects defined |
+| 3 | Keystore/signing + target API | PENDING | Keystore gated on [REDACTED] env vars; API 34/35 aligned |
 
 ---
 ## 🚀 Resume
 ```bash
 cd ~/host/UnifiedComms
-./gradlew :app:compileDebugKotlin --no-daemon --no-configuration-cache --rerun-tasks 2>&1 | tail -12
+# Verify compile still green
+./gradlew :app:compileDebugKotlin --no-daemon --no-configuration-cache --rerun-tasks 2>&1 | tail -6
+
+# Verify kapt schema generation
+./gradlew :app:kaptDebugKotlin --no-daemon --rerun-tasks 2>&1 | grep -E "schema|Cannot figure out how to" | head -10
+
+# Check generated schemas
+find app/schemas -name '*.json' 2>/dev/null
 ```
