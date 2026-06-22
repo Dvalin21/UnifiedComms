@@ -69,7 +69,7 @@ android {
         freeCompilerArgs += listOf(
             "-opt-in=kotlin.RequiresOptIn",
             "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
-            "-opt-in=androidx.lifecycle.ExperimentalLifecycleApi",
+            // "-opt-in=androidx.lifecycle.ExperimentalLifecycleApi",
             "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api"
         )
     }
@@ -223,8 +223,8 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach 
         freeCompilerArgs += listOf(
             "-opt-in=kotlin.RequiresOptIn",
             "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
-            "-opt-in=androidx.lifecycle.ExperimentalLifecycleApi",
-            "-opt-in=com.google.devtools.ksp.ExperimentalKspInterop"
+            // "-opt-in=androidx.lifecycle.ExperimentalLifecycleApi",
+            // "-opt-in=com.google.devtools.ksp.ExperimentalKspInterop"
         )
     }
 }
