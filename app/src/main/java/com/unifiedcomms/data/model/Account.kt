@@ -5,6 +5,10 @@ import androidx.room.PrimaryKey
 import androidx.room.TypeConverters
 import com.unifiedcomms.data.db.converters.DateTimeConverter
 import com.unifiedcomms.data.db.converters.StringListConverter
+import com.unifiedcomms.data.db.converters.ServerConfigConverter
+import com.unifiedcomms.data.db.converters.AuthConfigConverter
+import com.unifiedcomms.data.db.converters.SyncConfigConverter
+import com.unifiedcomms.data.db.converters.UIConfigConverter
 import kotlinx.datetime.Instant
 import kotlinx.datetime.Clock
 import kotlinx.serialization.Serializable

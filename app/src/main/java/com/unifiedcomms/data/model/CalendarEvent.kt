@@ -7,13 +7,23 @@ import androidx.room.PrimaryKey
 import androidx.room.TypeConverters
 import com.unifiedcomms.data.db.converters.DateTimeConverter
 import com.unifiedcomms.data.db.converters.StringListConverter
+import com.unifiedcomms.data.db.converters.EventColorConverter
+import com.unifiedcomms.data.db.converters.EventDateTimeConverter
+import com.unifiedcomms.data.db.converters.EventAttendeeConverter
+import com.unifiedcomms.data.db.converters.AttendeeListConverter
+import com.unifiedcomms.data.db.converters.RecurrenceRuleConverter
+import com.unifiedcomms.data.db.converters.RecurrenceExceptionListConverter
+import com.unifiedcomms.data.db.converters.InstantListConverter
+import com.unifiedcomms.data.db.converters.EventReminderListConverter
+import com.unifiedcomms.data.db.converters.EventAttachmentListConverter
+import com.unifiedcomms.data.db.converters.ConferenceDataConverter
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
-import kotlinx.datetime.ZoneOffset
+import kotlinx.datetime.UtcOffset
 import kotlinx.serialization.Serializable
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -41,6 +51,7 @@ import java.time.LocalTime as JLocalTime
         )
     ]
 )
+@TypeConverters(InstantListConverter::class)
 data class CalendarEvent(
     @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
     val accountId: String,
@@ -51,23 +62,23 @@ data class CalendarEvent(
     val description: String? = null,
     val location: String? = null,
     val geoLocation: GeoLocation? = null,
-    val startAt: EventDateTime,
-    val endAt: EventDateTime,
+    @TypeConverters(EventDateTimeConverter::class) val startAt: EventDateTime,
+    @TypeConverters(EventDateTimeConverter::class) val endAt: EventDateTime,
     val timezone: String = TimeZone.currentSystemDefault().id,
-    val color: EventColor = EventColor.Default(),
-    val organizer: EventAttendee? = null,
-    val attendees: List<EventAttendee> = emptyList(),
-    val recurrenceRule: RecurrenceRule? = null,
-    val recurrenceExceptions: List<RecurrenceException> = emptyList(),
-    val recurrenceInstances: List<Instant> = emptyList(),
+    @TypeConverters(EventColorConverter::class) val color: EventColor = EventColor.Default(),
+    @TypeConverters(EventAttendeeConverter::class) val organizer: EventAttendee? = null,
+    @TypeConverters(AttendeeListConverter::class) val attendees: List<EventAttendee> = emptyList(),
+    @TypeConverters(RecurrenceRuleConverter::class) val recurrenceRule: RecurrenceRule? = null,
+    @TypeConverters(RecurrenceExceptionListConverter::class) val recurrenceExceptions: List<RecurrenceException> = emptyList(),
+    @TypeConverters(InstantListConverter::class) val recurrenceInstances: List<Instant> = emptyList(),
     val status: EventStatus = EventStatus.CONFIRMED,
     val transparency: EventTransparency = EventTransparency.OPAQUE,
     val visibility: EventVisibility = EventVisibility.DEFAULT,
     val priority: EventPriority = EventPriority.NORMAL,
-    val reminders: List<EventReminder> = listOf(EventReminder.Default()),
+    @TypeConverters(EventReminderListConverter::class) val reminders: List<EventReminder> = listOf(EventReminder.Default()),
     val categories: List<String> = emptyList(),
-    val attachments: List<EventAttachment> = emptyList(),
-    val conferenceData: ConferenceData? = null,
+    @TypeConverters(EventAttachmentListConverter::class) val attachments: List<EventAttachment> = emptyList(),
+    @TypeConverters(ConferenceDataConverter::class) val conferenceData: ConferenceData? = null,
     val sequence: Int = 0,
     val iCalUid: String? = null,
     val etag: String? = null,
@@ -99,8 +110,9 @@ data class EventDateTime(
     @Suppress("UNUSED_PARAMETER")
     fun toInstant(_tz: TimeZone = TimeZone.currentSystemDefault()): Instant {
         val zoneId = ZoneId.of(timeZone)
+        val d = date!!
         return when {
-            isAllDay -> Instant.fromEpochMilliseconds(JLocalDateTime.of(JLocalDate.of(date!!.year, date!!.monthNumber, date!!.dayOfMonth), JLocalTime.MIDNIGHT).atZone(zoneId).toInstant().toEpochMilli())
+            isAllDay -> Instant.fromEpochMilliseconds(JLocalDateTime.of(JLocalDate.of(d.year, d.monthNumber, d.dayOfMonth), JLocalTime.MIDNIGHT).atZone(zoneId).toInstant().toEpochMilli())
             dateTime != null -> Instant.fromEpochMilliseconds(JLocalDateTime.parse(dateTime.toString()).atZone(zoneId).toInstant().toEpochMilli())
             else -> Clock.System.now()
         }
@@ -375,7 +387,7 @@ data class Calendar(
     val owner: String? = null,
     val accessRole: CalendarAccessRole = CalendarAccessRole.OWNER,
     val timeZone: String = TimeZone.currentSystemDefault().id,
-    val supportedComponents: List<String> = listOf("VEVENT", "VTODO"),
+    @TypeConverters(StringListConverter::class) val supportedComponents: List<String> = listOf("VEVENT", "VTODO"),
     @TypeConverters(DateTimeConverter::class) val lastSyncedAt: Instant? = null,
     val etag: String? = null
 ) {

@@ -4,6 +4,7 @@ import com.unifiedcomms.data.db.dao.AccountDao
 import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.model.AccountType
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 class AccountRepositoryImpl(private val dao: AccountDao) : AccountRepository {
     override suspend fun insert(account: Account): Long = dao.insert(account)
@@ -23,11 +24,14 @@ class AccountRepositoryImpl(private val dao: AccountDao) : AccountRepository {
 
     override suspend fun getDefault(): Account? = dao.getDefault()
 
-    override fun getEmailSyncAccounts(): Flow<List<Account>> = dao.getEmailSyncAccounts()
+    override fun getEmailSyncAccounts(): Flow<List<Account>> =
+        dao.getEmailSyncAccounts().map { it.filter { a -> a.syncConfig.syncEmail } }
 
-    override fun getCalendarSyncAccounts(): Flow<List<Account>> = dao.getCalendarSyncAccounts()
+    override fun getCalendarSyncAccounts(): Flow<List<Account>> =
+        dao.getCalendarSyncAccounts().map { it.filter { a -> a.syncConfig.syncCalendar } }
 
-    override fun getTaskSyncAccounts(): Flow<List<Account>> = dao.getTaskSyncAccounts()
+    override fun getTaskSyncAccounts(): Flow<List<Account>> =
+        dao.getTaskSyncAccounts().map { it.filter { a -> a.syncConfig.syncTasks } }
 
     override suspend fun setDefault(accountId: String) = dao.setDefault(accountId)
 }

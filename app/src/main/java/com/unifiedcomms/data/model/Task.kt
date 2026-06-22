@@ -7,6 +7,13 @@ import androidx.room.PrimaryKey
 import androidx.room.TypeConverters
 import com.unifiedcomms.data.db.converters.DateTimeConverter
 import com.unifiedcomms.data.db.converters.StringListConverter
+import com.unifiedcomms.data.db.converters.TaskDateTimeConverter
+import com.unifiedcomms.data.db.converters.RecurrenceRuleConverter
+import com.unifiedcomms.data.db.converters.RecurrenceExceptionListConverter
+import com.unifiedcomms.data.db.converters.TaskAssigneeConverter
+import com.unifiedcomms.data.db.converters.TaskAttachmentListConverter
+import com.unifiedcomms.data.db.converters.GeoLocationConverter
+import com.unifiedcomms.data.db.converters.EventColorConverter
 import kotlinx.datetime.Instant
 import kotlinx.datetime.Clock
 import kotlinx.datetime.LocalDate
@@ -48,13 +55,13 @@ data class Task(
     val description: String? = null,
     val status: TaskStatus = TaskStatus.NEEDS_ACTION,
     val priority: TaskPriority = TaskPriority.NONE,
-    val dueAt: TaskDateTime? = null,
-    val startAt: TaskDateTime? = null,
-    val completedAt: TaskDateTime? = null,
-    val recurrenceRule: RecurrenceRule? = null,
-    val recurrenceExceptions: List<RecurrenceException> = emptyList(),
-    val assignee: TaskAssignee? = null,
-    val attachments: List<TaskAttachment> = emptyList(),
+    @TypeConverters(TaskDateTimeConverter::class) val dueAt: TaskDateTime? = null,
+    @TypeConverters(TaskDateTimeConverter::class) val startAt: TaskDateTime? = null,
+    @TypeConverters(TaskDateTimeConverter::class) val completedAt: TaskDateTime? = null,
+    @TypeConverters(RecurrenceRuleConverter::class) val recurrenceRule: RecurrenceRule? = null,
+    @TypeConverters(RecurrenceExceptionListConverter::class) val recurrenceExceptions: List<RecurrenceException> = emptyList(),
+    @TypeConverters(TaskAssigneeConverter::class) val assignee: TaskAssignee? = null,
+    @TypeConverters(TaskAttachmentListConverter::class) val attachments: List<TaskAttachment> = emptyList(),
     val categories: List<String> = emptyList(),
     val position: Int = 0,
     val percentComplete: Int = 0,
@@ -62,7 +69,7 @@ data class Task(
     val actualDurationMinutes: Int? = null,
     val reminderMinutesBefore: Int? = null,
     val location: String? = null,
-    val geoLocation: GeoLocation? = null,
+    @TypeConverters(GeoLocationConverter::class) val geoLocation: GeoLocation? = null,
     val relatedEmails: List<String> = emptyList(), // Email message IDs
     val relatedEvents: List<String> = emptyList(), // Calendar event UIDs
     val parentTaskId: String? = null, // For subtasks
@@ -165,7 +172,7 @@ data class TaskList(
     val serverId: String,
     val title: String,
     val description: String? = null,
-    val color: EventColor = EventColor.Default(),
+    @TypeConverters(EventColorConverter::class) val color: EventColor = EventColor.Default(),
     val isDefault: Boolean = false,
     val isReadOnly: Boolean = false,
     val sortOrder: Int = 0,

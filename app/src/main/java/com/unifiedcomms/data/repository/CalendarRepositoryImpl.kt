@@ -5,6 +5,7 @@ import com.unifiedcomms.data.db.dao.CalendarEventDao
 import com.unifiedcomms.data.model.Calendar
 import com.unifiedcomms.data.model.CalendarEvent
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.datetime.Instant
 
 class CalendarRepositoryImpl(
@@ -59,10 +60,10 @@ class CalendarRepositoryImpl(
         eventDao.getRecurringEvents(accountId)
 
     override fun getOrganizedBy(accountId: String, email: String): Flow<List<CalendarEvent>> =
-        eventDao.getOrganizedBy(accountId, email)
+        eventDao.getOrganizedBy(accountId, email).map { it.filter { e -> e.organizer?.email == email } }
 
     override fun getAttendedBy(accountId: String, email: String): Flow<List<CalendarEvent>> =
-        eventDao.getAttendedBy(accountId, email)
+        eventDao.getAttendedBy(accountId, email).map { it.filter { e -> e.attendees.any { a -> a.email == email } } }
 
     override fun searchEvents(query: String, accountIds: List<String>, limit: Int): Flow<List<CalendarEvent>> =
         eventDao.searchEvents("%$query%", accountIds, limit)

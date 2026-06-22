@@ -3,6 +3,8 @@ package com.unifiedcomms.data.repository
 import com.unifiedcomms.data.db.dao.EmailDao
 import com.unifiedcomms.data.model.Email
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 
 class EmailRepositoryImpl(private val dao: EmailDao) : EmailRepository {
     override suspend fun insert(email: Email): Long = dao.insert(email)
@@ -30,28 +32,31 @@ class EmailRepositoryImpl(private val dao: EmailDao) : EmailRepository {
         dao.getByAccountAndFolder(accountId, folder, limit, offset)
 
     override fun getUnreadByAccountAndFolder(accountId: String, folder: String): Flow<List<Email>> =
-        dao.getUnreadByAccountAndFolder(accountId, folder)
+        dao.getUnreadByAccountAndFolder(accountId, folder).map { it.filter { e -> !e.flags.isRead } }
 
     override suspend fun getUnreadCount(accountId: String, folder: String): Int =
-        dao.getUnreadCount(accountId, folder)
+        dao.getUnreadByAccountAndFolder(accountId, folder).map { it.size }.first()
 
-    override fun getFlagged(accountId: String): Flow<List<Email>> = dao.getFlagged(accountId)
+    override fun getFlagged(accountId: String): Flow<List<Email>> =
+        dao.getFlagged(accountId).map { it.filter { e -> e.flags.isFlagged } }
 
-    override fun getDrafts(accountId: String): Flow<List<Email>> = dao.getDrafts(accountId)
+    override fun getDrafts(accountId: String): Flow<List<Email>> =
+        dao.getDrafts(accountId).map { it.filter { e -> e.systemLabels.draft } }
 
-    override fun getSent(accountId: String, limit: Int): Flow<List<Email>> = dao.getSent(accountId, limit)
+    override fun getSent(accountId: String, limit: Int): Flow<List<Email>> =
+        dao.getSent(accountId, limit).map { it.filter { e -> e.systemLabels.sent } }
 
     override fun getUnifiedInbox(accountIds: List<String>, folders: List<String>, limit: Int): Flow<List<Email>> =
         dao.getUnifiedInbox(accountIds, folders, limit)
 
     override fun getUnifiedUnread(accountIds: List<String>, limit: Int): Flow<List<Email>> =
-        dao.getUnifiedUnread(accountIds, limit)
+        dao.getUnifiedUnread(accountIds, limit).map { it.filter { e -> !e.flags.isRead } }
 
     override fun searchEmails(query: String, accountIds: List<String>, limit: Int): Flow<List<Email>> =
         dao.searchEmails("%$query%", accountIds, limit)
 
     override fun getWithAttachments(accountId: String, limit: Int): Flow<List<Email>> =
-        dao.getWithAttachments(accountId, limit)
+        dao.getWithAttachments(accountId, limit).map { it.filter { it.hasAttachments() } }
 
     override fun getSince(accountId: String, since: Long): Flow<List<Email>> =
         dao.getSince(accountId, since)

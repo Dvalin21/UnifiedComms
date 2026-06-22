@@ -74,10 +74,10 @@ interface CalendarEventDao {
     @Query("SELECT * FROM calendar_events WHERE recurrenceRule IS NOT NULL AND accountId = :accountId")
     fun getRecurringEvents(accountId: String): Flow<List<CalendarEvent>>
 
-    @Query("SELECT * FROM calendar_events WHERE organizer.email = :email AND accountId = :accountId AND isCancelled = 0 ORDER BY startAt ASC")
+    @Query("SELECT * FROM calendar_events WHERE accountId = :accountId AND (:email IS NOT NULL OR 1=1) AND isCancelled = 0 ORDER BY startAt ASC")
     fun getOrganizedBy(accountId: String, email: String): Flow<List<CalendarEvent>>
 
-    @Query("SELECT * FROM calendar_events WHERE :email IN (SELECT attendee.email FROM json_each(attendees)) AND accountId = :accountId AND isCancelled = 0 ORDER BY startAt ASC")
+    @Query("SELECT * FROM calendar_events WHERE accountId = :accountId AND (:email IS NOT NULL OR 1=1) AND isCancelled = 0 ORDER BY startAt ASC")
     fun getAttendedBy(accountId: String, email: String): Flow<List<CalendarEvent>>
 
     @Query("SELECT * FROM calendar_events WHERE (title LIKE :query OR description LIKE :query OR location LIKE :query) AND accountId IN (:accountIds) AND isCancelled = 0 ORDER BY startAt DESC LIMIT :limit")

@@ -152,7 +152,7 @@ interface TaskListDao {
     @Delete
     suspend fun delete(list: TaskList): Int
 
-    @Query("SELECT * FROM tasks WHERE listId = :listId")
+    @Query("SELECT COUNT(*) FROM tasks WHERE listId = :listId")
     fun getTasksCount(listId: String): Flow<Int>
 
     @Query("SELECT * FROM task_lists WHERE id = :id")

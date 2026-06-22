@@ -43,13 +43,13 @@ interface AccountDao {
     @Query("SELECT * FROM accounts WHERE isActive = 1 AND isDefault = 1 LIMIT 1")
     suspend fun getDefault(): Account?
 
-    @Query("SELECT * FROM accounts WHERE isActive = 1 AND syncConfig.syncEmail = 1")
+    @Query("SELECT * FROM accounts WHERE isActive = 1 ORDER BY isDefault DESC, name ASC")
     fun getEmailSyncAccounts(): Flow<List<Account>>
 
-    @Query("SELECT * FROM accounts WHERE isActive = 1 AND syncConfig.syncCalendar = 1")
+    @Query("SELECT * FROM accounts WHERE isActive = 1 ORDER BY isDefault DESC, name ASC")
     fun getCalendarSyncAccounts(): Flow<List<Account>>
 
-    @Query("SELECT * FROM accounts WHERE isActive = 1 AND syncConfig.syncTasks = 1")
+    @Query("SELECT * FROM accounts WHERE isActive = 1 ORDER BY isDefault DESC, name ASC")
     fun getTaskSyncAccounts(): Flow<List<Account>>
 
     @Query("SELECT * FROM accounts WHERE lastSyncAt IS NOT NULL ORDER BY lastSyncAt DESC LIMIT :limit")
