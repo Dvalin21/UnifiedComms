@@ -41,7 +41,17 @@ import com.unifiedcomms.data.model.*
     EmailFlagsConverter::class,
     TaskDateTimeConverter::class,
     MessageAttachmentListConverter::class,
-    GeoLocationConverter::class
+    GeoLocationConverter::class,
+    ServerConfigConverter::class,
+    AuthConfigConverter::class,
+    SyncConfigConverter::class,
+    UIConfigConverter::class,
+    EventAttendeeConverter::class,
+    ConferenceDataConverter::class,
+    TaskAssigneeConverter::class,
+    TaskAttachmentConverter::class,
+    ConversationSettingsConverter::class,
+    EventReminderListConverter::class
 )
 abstract class UnifiedCommsDatabase : RoomDatabase() {
     abstract fun accountDao(): AccountDao
