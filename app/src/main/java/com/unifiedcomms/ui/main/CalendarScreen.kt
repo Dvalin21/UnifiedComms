@@ -58,6 +58,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -66,16 +67,23 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.abs
+import java.time.ZoneId
+import kotlinx.datetime.TimeZone
+import com.unifiedcomms.data.model.CalendarEvent
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CalendarScreen(
-    @Suppress("UNUSED_PARAMETER") viewModel: MainViewModel,
+    viewModel: MainViewModel,
     onCreateEvent: () -> Unit,
     onEventClick: (MockEvent) -> Unit
 ) {
     var selectedView by remember { mutableStateOf(CalendarView.MONTH) }
     val currentDate = remember { mutableStateOf(java.time.LocalDate.now()) }
+    val accounts by viewModel.accounts.collectAsStateWithLifecycle()
+    val activeAccountIds = accounts.filter { it.isActive }.map { it.id }
+    val allEvents by viewModel.calendarRepository.getUnifiedEvents(activeAccountIds)
+        .collectAsStateWithLifecycle(initialValue = emptyList())
 
     Scaffold(
         topBar = {
@@ -114,9 +122,9 @@ fun CalendarScreen(
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
             when (selectedView) {
-                CalendarView.DAY -> DayView(date = currentDate.value, onEventClick = onEventClick)
-                CalendarView.WEEK -> WeekView(date = currentDate.value, onEventClick = onEventClick)
-                CalendarView.MONTH -> MonthView(date = currentDate.value, onEventClick = onEventClick)
+                CalendarView.DAY -> DayView(date = currentDate.value, events = allEvents, onEventClick = onEventClick)
+                CalendarView.WEEK -> WeekView(date = currentDate.value, events = allEvents, onEventClick = onEventClick)
+                CalendarView.MONTH -> MonthView(date = currentDate.value, allEvents = allEvents, onEventClick = onEventClick)
             }
         }
     }
@@ -126,21 +134,21 @@ enum class CalendarView { DAY, WEEK, MONTH }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DayView(date: java.time.LocalDate, onEventClick: (MockEvent) -> Unit) {
+fun DayView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick: (MockEvent) -> Unit) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text(text = "Day View: ${date.dayOfWeek}, ${date.month} ${date.dayOfMonth}", fontSize = 18.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(16.dp))
 
-        val events = getMockEventsForDate(date)
-        if (events.isNotEmpty()) {
+        val dayEvents = events.filter { isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), date) }
+        if (dayEvents.isNotEmpty()) {
             Surface(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                 shape = RoundedCornerShape(8.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerHighest
             ) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    events.forEach { event ->
-                        EventChip(event = event, onClick = { onEventClick(event) })
+                    dayEvents.forEach { event ->
+                        EventChip(event = event.toMockEvent(), onClick = { onEventClick(event.toMockEvent()) })
                     }
                 }
             }
@@ -150,7 +158,7 @@ fun DayView(date: java.time.LocalDate, onEventClick: (MockEvent) -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WeekView(date: java.time.LocalDate, onEventClick: (MockEvent) -> Unit) {
+fun WeekView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick: (MockEvent) -> Unit) {
     val weekStart = date.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
@@ -169,10 +177,10 @@ fun WeekView(date: java.time.LocalDate, onEventClick: (MockEvent) -> Unit) {
                     Text(text = day.dayOfMonth.toString(), fontSize = 16.sp)
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    val dayEvents = getMockEventsForDate(day)
+                    val dayEvents = events.filter { isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), day) }
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         dayEvents.take(3).forEach { event ->
-                            EventChip(event = event, onClick = { onEventClick(event) })
+                            EventChip(event = event.toMockEvent(), onClick = { onEventClick(event.toMockEvent()) })
                         }
                         if (dayEvents.size > 3) {
                             Text(text = "+${dayEvents.size - 3} more", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -186,7 +194,7 @@ fun WeekView(date: java.time.LocalDate, onEventClick: (MockEvent) -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MonthView(date: java.time.LocalDate, onEventClick: (MockEvent) -> Unit) {
+fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onEventClick: (MockEvent) -> Unit) {
     val firstOfMonth = date.withDayOfMonth(1)
     val dayOfWeekOffset = firstOfMonth.dayOfWeek.value - 1 // Monday = 0
     val daysInMonth = firstOfMonth.lengthOfMonth()
@@ -219,7 +227,9 @@ fun MonthView(date: java.time.LocalDate, onEventClick: (MockEvent) -> Unit) {
                             null
                         }
 
-                        val events = cellDate?.let { getMockEventsForDate(it) } ?: emptyList()
+                        val events = cellDate?.let { date ->
+                            allEvents.filter { ev -> isSameDay(ev.startAt.toInstant(TimeZone.of(ev.startAt.timeZone)), date) }
+                        } ?: emptyList()
 
                         Surface(
                             modifier = Modifier
@@ -231,13 +241,13 @@ fun MonthView(date: java.time.LocalDate, onEventClick: (MockEvent) -> Unit) {
                                 )
                                 .padding(4.dp),
                             shape = RoundedCornerShape(8.dp),
-                            onClick = { val first = events.firstOrNull(); if (first != null) onEventClick(first) }
+                            onClick = { val first = events.firstOrNull(); if (first != null) onEventClick(first.toMockEvent()) }
                         ) {
                             Column(modifier = Modifier.fillMaxSize().padding(4.dp), verticalArrangement = Arrangement.Top) {
                                 Text(text = cellDate?.dayOfMonth?.toString() ?: "", fontSize = 12.sp, fontWeight = if (cellDate == java.time.LocalDate.now()) FontWeight.Bold else FontWeight.Normal)
                                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     events.take(3).forEach { event ->
-                                        EventChip(event = event, compact = true, onClick = { onEventClick(event) })
+                                        EventChip(event = event.toMockEvent(), compact = true, onClick = { onEventClick(event.toMockEvent()) })
                                     }
                                     if (events.size > 3) {
                                         Text(text = "+${events.size - 3}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -278,6 +288,24 @@ fun getMockEventsForDate(date: java.time.LocalDate): List<MockEvent> {
     }
 }
 
+private fun isSameDay(instant: kotlinx.datetime.Instant, date: java.time.LocalDate): Boolean {
+    return java.time.Instant.ofEpochMilli(instant.toEpochMilliseconds())
+        .atZone(ZoneId.systemDefault())
+        .toLocalDate() == date
+}
+
+private fun com.unifiedcomms.data.model.CalendarEvent.toMockEvent(): MockEvent = MockEvent(
+    id = id,
+    title = title,
+    startHour = java.time.Instant.ofEpochMilli(startAt.toInstant().toEpochMilliseconds())
+        .atZone(java.time.ZoneId.of(startAt.timeZone)).hour,
+    endHour = java.time.Instant.ofEpochMilli(endAt.toInstant().toEpochMilliseconds())
+        .atZone(java.time.ZoneId.of(endAt.timeZone)).hour,
+    color = color.toColorInt().toLong(),
+    calendarName = title,
+    isAllDay = startAt.isAllDay
+)
+
 @Composable
 fun EventChip(event: MockEvent, compact: Boolean = false, onClick: () -> Unit) {
     Surface(
@@ -308,7 +336,7 @@ fun EventChip(event: MockEvent, compact: Boolean = false, onClick: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CreateEventScreen(@Suppress("UNUSED_PARAMETER") viewModel: MainViewModel, onSave: () -> Unit) {
+fun CreateEventScreen(onSave: () -> Unit) {
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var location by remember { mutableStateOf("") }
@@ -389,7 +417,7 @@ fun CreateEventScreen(@Suppress("UNUSED_PARAMETER") viewModel: MainViewModel, on
 }
 
 @Composable
-fun EventDetailScreen(@Suppress("UNUSED_PARAMETER") viewModel: MainViewModel, @Suppress("UNUSED_PARAMETER") eventId: String, onEdit: () -> Unit) {
+fun EventDetailScreen(onEdit: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(

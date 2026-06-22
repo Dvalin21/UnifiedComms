@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,17 +53,24 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.time.LocalDate
+import kotlinx.coroutines.launch
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun TasksScreen(
-    @Suppress("UNUSED_PARAMETER") viewModel: MainViewModel,
+    viewModel: MainViewModel,
     onCreateTask: () -> Unit,
     onTaskClick: (MockTask) -> Unit
 ) {
     var filter by remember { mutableStateOf(TaskFilter.ALL) }
-    val tasks = remember { mutableStateOf<List<MockTask>>(getMockTasks()) }
+    val accounts by viewModel.accounts.collectAsStateWithLifecycle()
+    val activeAccountIds = accounts.filter { it.isActive }.map { it.id }
+    val tasks by viewModel.taskRepository.getActiveUnified(activeAccountIds, com.unifiedcomms.data.model.TaskStatus.NEEDS_ACTION)
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    var displayTasks by remember { mutableStateOf<List<MockTask>>(emptyList()) }
+    LaunchedEffect(tasks) { displayTasks = tasks.map { it.toMockTask() } }
 
     Scaffold(
         topBar = {
@@ -108,11 +116,13 @@ fun TasksScreen(
                 modifier = Modifier.fillMaxSize().padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(tasks.value.filter { filterMatches(it, filter) }) { task ->
+                items(displayTasks.filter { filterMatches(it, filter) }) { task ->
                     TaskItem(
                         task = task,
                         onClick = { onTaskClick(task) },
-                        onToggle = { tasks.value = tasks.value.map { if (it.id == task.id) it.copy(isCompleted = !it.isCompleted) else it } }
+                        onToggle = {
+                            displayTasks = displayTasks.map { if (it.id == task.id) it.copy(isCompleted = !it.isCompleted) else it }
+                        }
                     )
                     HorizontalDivider()
                 }
@@ -253,10 +263,30 @@ fun getMockTasks(): List<MockTask> = listOf(
     MockTask("7", "Plan weekend trip", "Research destinations and book hotel", false, true, LocalDate.now().plusDays(10), TaskPriority.LOW)
 )
 
+private fun com.unifiedcomms.data.model.Task.toMockTask(): MockTask = MockTask(
+    id = id,
+    title = title,
+    description = description,
+    isCompleted = status == com.unifiedcomms.data.model.TaskStatus.COMPLETED,
+    isStarred = false,
+    dueDate = dueAt?.let { java.time.LocalDate.parse(it.date.toString()) }
+        ?: dueAt?.dateTime?.let { java.time.LocalDateTime.parse(it.toString()).toLocalDate() },
+    priority = when (priority) {
+        com.unifiedcomms.data.model.TaskPriority.LOW -> TaskPriority.LOW
+        com.unifiedcomms.data.model.TaskPriority.MEDIUM -> TaskPriority.NORMAL
+        com.unifiedcomms.data.model.TaskPriority.HIGH -> TaskPriority.HIGH
+        com.unifiedcomms.data.model.TaskPriority.URGENT -> TaskPriority.URGENT
+        com.unifiedcomms.data.model.TaskPriority.NONE -> TaskPriority.NORMAL
+    },
+    hasSubtasks = hasSubtasks,
+    totalSubtasks = subtaskCount,
+    completedSubtasks = completedSubtaskCount,
+    listName = listId
+)
+
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun CreateTaskScreen(
-    @Suppress("UNUSED_PARAMETER") viewModel: MainViewModel,
     onSave: () -> Unit
 ) {
     var title by remember { mutableStateOf("") }

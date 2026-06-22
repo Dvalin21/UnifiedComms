@@ -56,14 +56,19 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.math.abs
 
 @Composable
 fun MessagesScreen(
+    viewModel: MainViewModel,
     onConversationClick: (MockConversation) -> Unit,
     onNewMessage: () -> Unit
 ) {
-    val conversations = remember { mutableStateOf<List<MockConversation>>(getMockConversations()) }
+    val conversations by viewModel.messagingRepository.getAllConversationsForUser("current_user")
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val displayConversations = remember(conversations) { conversations.map { it.toMockConversation() } }
 
     Scaffold(
         topBar = {
@@ -82,7 +87,7 @@ fun MessagesScreen(
             contentPadding = PaddingValues(vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(1.dp)
         ) {
-            items(conversations.value) { conversation ->
+            items(displayConversations) { conversation ->
                 ConversationListItem(
                     conversation = conversation,
                     onClick = { onConversationClick(conversation) }
@@ -95,21 +100,29 @@ fun MessagesScreen(
 
 @Composable
 fun ConversationScreen(
+    viewModel: MainViewModel,
     conversationId: String,
     onBack: () -> Unit
 ) {
-    val conversation = getMockConversations().find { it.id == conversationId }
-        ?: MockConversation("1", "John Doe", "john@example.com", "Hey! How are you?", "10:30 AM", false, 0, com.unifiedcomms.data.model.ConversationType.DIRECT)
-
+    var conversation by remember { mutableStateOf<com.unifiedcomms.data.model.Conversation?>(null) }
+    LaunchedEffect(conversationId) {
+        conversation = viewModel.messagingRepository.getConversationById(conversationId)
+    }
+    val messages by viewModel.messagingRepository.getMessagesByConversation(conversationId, 100, 0)
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val displayMessages = remember(messages) { messages.map { it.toMockMessage() } }
+    val displayConversation = remember(conversationId, conversation) {
+        conversation?.toMockConversation(messages)
+            ?: MockConversation(conversationId, "Unknown", "", "No conversation", "", false, 0, com.unifiedcomms.data.model.ConversationType.DIRECT)
+    }
     var messageText by remember { mutableStateOf("") }
-    val messages = remember { mutableStateOf<List<MockMessage>>(getMockMessages(conversationId)) }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Column {
-                        Text(text = conversation.name, fontWeight = FontWeight.Bold)
+                        Text(text = displayConversation.name, fontWeight = FontWeight.Bold)
                         Text(text = "Online", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                     }
                 },
@@ -134,7 +147,7 @@ fun ConversationScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                messages.value.forEach { msg ->
+                displayMessages.forEach { msg ->
                     MessageBubble(message = msg, isCurrentUser = msg.isOutgoing)
                 }
             }
@@ -176,15 +189,7 @@ fun ConversationScreen(
                     IconButton(
                         onClick = {
                             if (messageText.isNotBlank()) {
-                                val newMsg = MockMessage(
-                                    id = "${messages.value.size + 1}",
-                                    conversationId = conversationId,
-                                    senderId = "me",
-                                    content = messageText,
-                                    isOutgoing = true,
-                                    timestamp = java.time.LocalTime.now().toString()
-                                )
-                                messages.value = messages.value + newMsg
+                                // TODO: persist send via repository
                                 messageText = ""
                             }
                         },
@@ -390,4 +395,26 @@ fun getMockMessages(conversationId: String): List<MockMessage> = listOf(
     MockMessage("3", conversationId, "them", "That's awesome. Did you see the new calendar feature?", false, "10:27 AM"),
     MockMessage("4", conversationId, "me", "Yes! The color coding is really nice.", true, "10:28 AM"),
     MockMessage("5", conversationId, "them", "I agree. Want to test the messaging integration?", false, "10:29 AM")
+)
+
+private fun com.unifiedcomms.data.model.Conversation.toMockConversation(messages: List<com.unifiedcomms.data.model.Message> = emptyList()): MockConversation = MockConversation(
+    id = id,
+    name = getDisplayName("current_user"),
+    email = getOtherParticipantNames("current_user").firstOrNull().orEmpty(),
+    lastMessage = messages.lastOrNull()?.content.orEmpty(),
+    time = java.time.Instant.ofEpochMilli(lastActivityAt.toEpochMilliseconds())
+        .atZone(java.time.ZoneId.systemDefault()).toLocalTime().toString(),
+    isUnread = unreadCount > 0,
+    unreadCount = unreadCount,
+    type = type
+)
+
+private fun com.unifiedcomms.data.model.Message.toMockMessage(): MockMessage = MockMessage(
+    id = id,
+    conversationId = conversationId,
+    senderId = senderId,
+    content = content,
+    isOutgoing = isOutgoing(),
+    timestamp = java.time.Instant.ofEpochMilli(sentAt.toEpochMilliseconds())
+        .atZone(java.time.ZoneId.systemDefault()).toLocalTime().toString()
 )

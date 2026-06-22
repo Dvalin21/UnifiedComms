@@ -35,10 +35,7 @@ class CalendarSyncEngineImpl(
             try {
                 updateProgress(account.id, null, SyncStage.CONNECTING, 0, 0)
 
-                val config = account.serverConfig
-                val auth = crypto.decryptAuthConfig(account.authConfig)
-
-                val calendars = getCalendarsFromServer(account)
+                val calendars = getCalendarsFromServer()
                 updateProgress(account.id, null, SyncStage.LISTING_FOLDERS, 0, calendars.size)
 
                 var totalSynced = 0
@@ -67,7 +64,7 @@ class CalendarSyncEngineImpl(
             try {
                 updateProgress(account.id, calendar.name, SyncStage.FETCHING_HEADERS, 0, 0)
 
-                val events = fetchEventsFromServer(account, calendar.serverId)
+                val events = fetchEventsFromServer()
                 var synced = 0
                 val newItems = mutableListOf<String>()
                 val updatedItems = mutableListOf<String>()
@@ -109,14 +106,14 @@ class CalendarSyncEngineImpl(
         }
     }
 
-    private fun getCalendarsFromServer(account: Account): List<Calendar> {
+    private fun getCalendarsFromServer(): List<Calendar> {
         // CalDAV implementation using dav4jvm
         // For Google, use Google Calendar API
         // For Exchange, use EWS
         return emptyList() // Placeholder
     }
 
-    private fun fetchEventsFromServer(account: Account, calendarId: String): List<CalendarEvent> {
+    private fun fetchEventsFromServer(): List<CalendarEvent> {
         // Fetch events from CalDAV/Google/Exchange
         return emptyList() // Placeholder
     }
@@ -190,7 +187,7 @@ class CalendarSyncEngineImpl(
     }
 
     override suspend fun getCalendars(account: Account): List<Calendar> {
-        return getCalendarsFromServer(account)
+        return emptyList()
     }
 
     private fun updateProgress(accountId: String, folder: String?, stage: SyncStage, current: Int, total: Int) {
