@@ -2,6 +2,7 @@ package com.unifiedcomms.security
 
 import android.content.Context
 import androidx.biometric.BiometricManager as AndroidBiometricManager
+import androidx.biometric.BiometricManager.Authenticators
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
@@ -65,11 +66,8 @@ class BiometricManagerImpl(
             .setSubtitle(reason)
             .setDescription("Use your biometric to unlock UnifiedComms")
             .setNegativeButtonText("Cancel")
-            // Using integer values for authenticators in biometric 1.2.0-alpha04
-            // DEVICE_CREDENTIAL=*** BIOMETRIC_STRONG = 2
             .setAllowedAuthenticators(
-                2 or  // BIOMETRIC_STRONG
-                1      // DEVICE_CREDENTIAL
+                Authenticators.BIOMETRIC_STRONG or Authenticators.DEVICE_CREDENTIAL
             )
             .build()
 

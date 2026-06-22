@@ -1,10 +1,14 @@
 package com.unifiedcomms.sync.accounts
 
 import android.accounts.Account
+import android.app.Service
 import android.content.AbstractThreadedSyncAdapter
 import android.content.ContentProviderClient
 import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
 import android.content.SyncResult
+import android.os.IBinder
 import android.os.Bundle
 import com.unifiedcomms.data.model.Account as UnifiedAccount
 import com.unifiedcomms.sync.SyncManager
@@ -34,12 +38,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 
-class UnifiedCommsSyncService(context: Context, autoInitialize: Boolean) : AbstractThreadedSyncAdapter(context, autoInitialize) {
+class UnifiedCommsSyncAdapter(
+    context: Context,
+    autoInitialize: Boolean
+) : AbstractThreadedSyncAdapter(context, autoInitialize) {
 
     private lateinit var syncManager: SyncManager
     private lateinit var accountRepo: AccountRepository
-
-    constructor(context: Context) : this(context, true)
 
     init {
         initDependencies(context)
@@ -77,17 +82,14 @@ class UnifiedCommsSyncService(context: Context, autoInitialize: Boolean) : Abstr
         provider: ContentProviderClient,
         syncResult: SyncResult
     ) {
-        // Find our internal account by email - run in blocking coroutine since onPerformSync is synchronous
         runBlocking {
             val unifiedAccount = accountRepo.getByEmailAndType(account.name, getAccountType(authority))
                 ?: return@runBlocking
 
-            // Run sync
             val result = syncManager.performFullSync(unifiedAccount)
 
             result.errorMessage?.let { _ ->
                 syncResult.stats.numIoExceptions++
-                // Log error
             }
         }
     }
@@ -102,11 +104,22 @@ class UnifiedCommsSyncService(context: Context, autoInitialize: Boolean) : Abstr
     }
 }
 
-class UnifiedCommsSyncServiceProvider : android.content.ContentProvider() {
-    private var syncService: UnifiedCommsSyncService? = null
+class UnifiedCommsSyncService : Service() {
+    private var syncAdapter: UnifiedCommsSyncAdapter? = null
 
+    override fun onCreate() {
+        super.onCreate()
+        syncAdapter = UnifiedCommsSyncAdapter(this, true)
+    }
+
+    override fun onBind(intent: Intent): IBinder {
+        return syncAdapter!!.syncAdapterBinder
+    }
+}
+
+class UnifiedCommsSyncServiceProvider : android.content.ContentProvider() {
     override fun onCreate(): Boolean {
-        syncService = UnifiedCommsSyncService(context!!)
+        // No-op; we use a real Service now.
         return true
     }
 
