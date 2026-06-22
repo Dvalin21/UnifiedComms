@@ -3,7 +3,7 @@
 **Repository:** https://github.com/Dvalin21/UnifiedComms
 **Branch:** master
 **Working directory:** `~/host/UnifiedComms/`
-**Local HEAD:** `c19b16a`
+**Local HEAD:** `5c293d4` → pending signing fix commit
 
 ---
 ## Executive Summary
@@ -30,6 +30,7 @@ Build is **green** (`:app:compileDebugKotlin` succeeds; `:app:assembleRelease` a
 - `fallbackToDestructiveMigration()` gated to debug-only (production safe)
 - Release signing configured and verified (local `release.jks`)
 - `kotlinx-serialization` plugin applied to fix runtime serializer generation
+- Signing config now reads from `local.properties` (local dev) or env vars (CI)
 
 ---
 
@@ -69,6 +70,7 @@ Build is **green** (`:app:compileDebugKotlin` succeeds; `:app:assembleRelease` a
 ---
 ## 📋 Next Actions
 1. Set keystore env vars in CI environment (`KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`).
+2. For local dev: use `local.properties` (gitignored) or export env vars in shell profile.
 
 ---
 
