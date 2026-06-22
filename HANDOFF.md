@@ -3,7 +3,7 @@
 **Repository:** https://github.com/Dvalin21/UnifiedComms
 **Branch:** master
 **Working directory:** `~/host/UnifiedComms/`
-**Local HEAD:** `3239a9a`
+**Local HEAD:** `c19b16a`
 
 ---
 ## Executive Summary
@@ -15,16 +15,14 @@ Build is **green** (`:app:compileDebugKotlin` succeeds; `:app:assembleRelease` a
 - Release APK signed with v2 scheme using local keystore (`release.jks`)
 
 **Phase 1 (Unit test scaffold)** — COMPLETE
-- 11 unit tests added under `app/src/test/`
-- Tested: converters (GeoLocation, ServerConfig, DateTime, StringList), model helpers (CalendarEvent)
+- 16 unit tests added under `app/src/test/`
+- Tested: converters (GeoLocation, ServerConfig, DateTime, StringList), model helpers (CalendarEvent), repository filtering (EmailRepositoryImpl)
 
-**Phase 2 (Room migration strategy)** — IN PROGRESS, BLOCKED
-- `kotlin-kapt` enabled, `room-compiler:2.6.1`, `room.schemaLocation` configured
-- `@TypeConverters` added to entity fields: Account (ServerConfig/AuthConfig/SyncConfig/UIConfig), CalendarEvent, Task
-- New converter: `EventReminderListConverter`
-- **BLOCKER:** DAO queries use dotted paths on JSON-embedded fields (`flags.isRead`, `systemLabels.draft`, `syncConfig.syncEmail`). Room SQLite cannot traverse these — filtering must move to RepositoryImpl via `Flow.map { ... }`
-- **BLOCKER:** `Email` `@Index` annotations reference non-existent columns (`isRead`, `body_text`) — must align with actual entity fields
-- Schema JSON files not yet generating until DAO/entity mismatch is resolved
+**Phase 2 (Room migration strategy)** — IN PROGRESS
+- Dotted-path DAO queries resolved via repository-layer filtering (`Flow.map`)
+- `@Index` columns aligned with actual entity fields
+- `MIGRATION_1_1` baseline registered
+- Schema JSON generating at `app/schemas/`
 
 **Phase 3 (Keystore/signing + target API)** — COMPLETE
 - compileSdk/targetSdk bumped to 35, Android SDK 35 installed
@@ -51,7 +49,7 @@ Build is **green** (`:app:compileDebugKotlin` succeeds; `:app:assembleRelease` a
 ---
 ## ⚠️ Remaining / Deferred
 1. Keystore release signing — configured with local `release.jks`; set env vars for CI (`KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`).
-2. Expand unit test coverage beyond current 11 tests.
+2. Expand unit test coverage beyond current 16 tests.
 
 ---
 ## ✅ Resolved / No Longer Blockers
@@ -70,10 +68,7 @@ Build is **green** (`:app:compileDebugKotlin` succeeds; `:app:assembleRelease` a
 
 ---
 ## 📋 Next Actions
-1. Provide keystore env vars (`KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`) to enable release signing.
-2. Unit tests (Phase 1 deliverable).
-3. ProGuard/R8 rules audit for targetSdk 35 behavior changes.
-4. Handle destructive migration path for users upgrading from pre-schema export builds.
+1. Set keystore env vars in CI environment (`KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`).
 
 ---
 
@@ -82,8 +77,8 @@ Build is **green** (`:app:compileDebugKotlin` succeeds; `:app:assembleRelease` a
 | Phase | Name | Status | Deliverable |
 |-------|------|--------|-------------|
 | 0 | Release build baseline | COMPLETE | assembleRelease + lintRelease green; ProGuard rules audited |
-| 1 | Unit test scaffold | COMPLETE | 11 unit tests added (converters, datetime, model) |
-| 2 | Room migration strategy | IN PROGRESS | Schema JSON files emitting, Migration objects defined |
+| 1 | Unit test scaffold | COMPLETE | 16 unit tests added (converters, datetime, model, repository) |
+| 2 | Room migration strategy | IN PROGRESS | Dotted-path queries fixed, schema JSON emitting, MIGRATION_1_1 registered |
 | 3 | Keystore/signing + target API | COMPLETE | Signing verified (v2 APK), assembleRelease + lintRelease green |
 
 ---
