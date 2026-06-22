@@ -56,16 +56,17 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.unifiedcomms.data.model.Account
 
 @Composable
 fun SettingsScreen(
-    @Suppress("UNUSED_PARAMETER") viewModel: MainViewModel,
+    viewModel: MainViewModel,
     onAddAccount: () -> Unit,
     onAccountClick: (Account) -> Unit
 ) {
-    val accounts = remember { mutableStateOf<List<Account>>(emptyList()) }
-    val activeAccounts = accounts.value.filter { it.isActive }
+    val accounts by viewModel.accounts.collectAsStateWithLifecycle()
+    val activeAccounts = accounts.filter { it.isActive }
 
     Scaffold(
         topBar = {

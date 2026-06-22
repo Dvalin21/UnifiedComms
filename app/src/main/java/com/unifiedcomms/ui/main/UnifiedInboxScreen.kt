@@ -65,8 +65,6 @@ fun UnifiedInboxScreen(
     viewModel: MainViewModel,
     onNavigateToEmail: (String, String) -> Unit,
     onNavigateToCalendar: () -> Unit,
-    @Suppress("UNUSED_PARAMETER") onNavigateToTasks: () -> Unit,
-    @Suppress("UNUSED_PARAMETER") onNavigateToMessages: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToAddAccount: () -> Unit
 ) {
@@ -126,7 +124,7 @@ fun UnifiedInboxScreen(
                 1 -> EmailOverviewScreen(activeAccounts, onNavigateToEmail)
                 2 -> CalendarScreen(viewModel, onNavigateToCalendar, { })
                 3 -> TasksScreen(viewModel, { }, { })
-                4 -> MessagesScreen(onConversationClick = { }, onNewMessage = { })
+                4 -> MessagesScreen(viewModel, onConversationClick = { }, onNewMessage = { })
             }
         }
     }
@@ -240,10 +238,10 @@ fun EmailOverviewScreen(
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        FolderChip("Inbox", "INBOX", 5, color.container) { onNavigateToEmail(account.id, "INBOX") }
-                        FolderChip("Sent", "Sent", 0, color.container) { onNavigateToEmail(account.id, "Sent") }
-                        FolderChip("Drafts", "Drafts", 2, color.container) { onNavigateToEmail(account.id, "Drafts") }
-                        FolderChip("Trash", "Trash", 0, color.container) { onNavigateToEmail(account.id, "Trash") }
+                        FolderChip("Inbox", 5, color.container) { onNavigateToEmail(account.id, "INBOX") }
+                        FolderChip("Sent", 0, color.container) { onNavigateToEmail(account.id, "Sent") }
+                        FolderChip("Drafts", 2, color.container) { onNavigateToEmail(account.id, "Drafts") }
+                        FolderChip("Trash", 0, color.container) { onNavigateToEmail(account.id, "Trash") }
                     }
                 }
             }
@@ -253,7 +251,7 @@ fun EmailOverviewScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FolderChip(label: String, @Suppress("UNUSED_PARAMETER") _folder: String, count: Int, color: Color, onClick: () -> Unit) {
+fun FolderChip(label: String, count: Int, color: Color, onClick: () -> Unit) {
     Surface(
         modifier = Modifier
             .fillMaxWidth(0.25f)

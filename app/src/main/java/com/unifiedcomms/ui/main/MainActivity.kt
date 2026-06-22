@@ -26,8 +26,6 @@ class MainActivity : ComponentActivity() {
                             viewModel = viewModel,
                             onNavigateToEmail = { accountId, folder -> navController.navigate("email/$accountId/$folder") },
                             onNavigateToCalendar = { navController.navigate("calendar") },
-                            onNavigateToTasks = { navController.navigate("tasks") },
-                            onNavigateToMessages = { navController.navigate("messages") },
                             onNavigateToSettings = { navController.navigate("settings") },
                             onNavigateToAddAccount = { navController.navigate("add_account") }
                         )
@@ -49,9 +47,8 @@ class MainActivity : ComponentActivity() {
                                 onCompose = { navController.navigate("compose_email/$accountId") }
                             )
                     }
-                    composable("compose_email/{accountId}") { backStackEntry ->
+                    composable("compose_email/{accountId}") { _ ->
                         ComposeEmailScreen(
-                            viewModel = viewModel,
                             onSend = { navController.popBackStack() }
                         )
                     }
@@ -64,15 +61,12 @@ class MainActivity : ComponentActivity() {
                     }
                     composable("create_event") {
                         CreateEventScreen(
-                            viewModel = viewModel,
                             onSave = { navController.popBackStack() }
                         )
                     }
                     composable("event_detail/{eventId}") { backStackEntry ->
                         val eventId = backStackEntry.arguments?.getString("eventId").orEmpty()
                         EventDetailScreen(
-                            viewModel = viewModel,
-                            eventId = eventId,
                             onEdit = { navController.navigate("edit_event/$eventId") }
                         )
                     }
@@ -85,19 +79,20 @@ class MainActivity : ComponentActivity() {
                     }
                     composable("create_task") {
                         CreateTaskScreen(
-                            viewModel = viewModel,
                             onSave = { navController.popBackStack() }
                         )
                     }
                     composable("messages") {
                         MessagesScreen(
+                            viewModel = viewModel,
                             onConversationClick = { conversation -> navController.navigate("conversation/${conversation.id}") },
-                            onNewMessage = { navController.navigate("new_message") }
+                            onNewMessage = { navController.navigate("compose_message") }
                         )
                     }
                     composable("conversation/{conversationId}") { backStackEntry ->
                         val conversationId = backStackEntry.arguments?.getString("conversationId").orEmpty()
                         ConversationScreen(
+                            viewModel = viewModel,
                             conversationId = conversationId,
                             onBack = { navController.popBackStack() }
                         )
