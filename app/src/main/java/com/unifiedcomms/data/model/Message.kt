@@ -101,6 +101,7 @@ data class MessageAttachment(
     val dimensions: Dimensions? = null // For images/video
 ) {
     enum class AttachmentType { IMAGE, VIDEO, AUDIO, FILE, CONTACT, LOCATION }
+    @Serializable
     data class Dimensions(val width: Int, val height: Int)
 }
 
