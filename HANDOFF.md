@@ -27,6 +27,7 @@ Build is **green** (`:app:compileDebugKotlin` succeeds; `:app:assembleRelease` a
 **Phase 3 (Keystore/signing + target API)** — IN PROGRESS
 - compileSdk/targetSdk bumped to 35, Android SDK 35 installed
 - assembleRelease and lintRelease both green
+- `fallbackToDestructiveMigration()` gated to debug-only (production safe)
 - Signing still gated on env vars (`KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`)
 
 ---
@@ -48,10 +49,10 @@ Build is **green** (`:app:compileDebugKotlin` succeeds; `:app:assembleRelease` a
 ## ⚠️ Remaining / Deferred
 1. Keystore release signing — blocked on env vars (`KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`).
 2. Unit tests (Phase 1 deliverable).
-3. Destructive migration path for users upgrading from pre-schema export builds.
 
 ---
 ## ✅ Resolved / No Longer Blockers
+- **Destructive migration path** — `fallbackToDestructiveMigration()` now gated to `BuildConfig.DEBUG` only in `UnifiedCommsDatabase`; production release builds will no longer wipe data on schema mismatch.
 - **CalendarEvent ZoneOffset deprecation** — no longer reproduces; file uses `UtcOffset` only.
 - **CalendarEvent unnecessary `!!`** — no longer reproduces on current Kotlin/AGP.
 - **Opt-in requirement markers** — removed stale commented-out entries from `build.gradle.kts`; build is warning-free.
