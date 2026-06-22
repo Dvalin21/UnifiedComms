@@ -3,7 +3,7 @@
 **Repository:** https://github.com/Dvalin21/UnifiedComms
 **Branch:** master
 **Working directory:** `~/host/UnifiedComms/`
-**Local HEAD:** `5c293d4` → pending signing fix commit
+**Local HEAD:** `6846f3a`
 
 ---
 ## Executive Summary
@@ -49,8 +49,7 @@ Build is **green** (`:app:compileDebugKotlin` succeeds; `:app:assembleRelease` a
 
 ---
 ## ⚠️ Remaining / Deferred
-1. Keystore release signing — configured with local `release.jks`; set env vars for CI (`KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`).
-2. Expand unit test coverage beyond current 16 tests.
+1. Expand unit test coverage beyond current 16 tests.
 
 ---
 ## ✅ Resolved / No Longer Blockers
