@@ -3,7 +3,7 @@
 **Repository:** https://github.com/Dvalin21/UnifiedComms
 **Branch:** master
 **Working directory:** `~/host/UnifiedComms/`
-**Local HEAD:** `f322de8`
+**Local HEAD:** `3239a9a`
 
 ---
 ## Executive Summary
@@ -12,9 +12,11 @@ Build is **green** (`:app:compileDebugKotlin` succeeds; `:app:assembleRelease` a
 **Phase 0 (Release build baseline)** — COMPLETE
 - ProGuard rules audited: add explicit default constructor keeps for Room/Hilt/kotlinx.serialization annotated classes
 - `assembleRelease` and `lintRelease` both green
+- Release APK signed with v2 scheme using local keystore (`release.jks`)
 
 **Phase 1 (Unit test scaffold)** — COMPLETE
-- Audit confirmed: 0 unit tests, 0 instrumented tests
+- 11 unit tests added under `app/src/test/`
+- Tested: converters (GeoLocation, ServerConfig, DateTime, StringList), model helpers (CalendarEvent)
 
 **Phase 2 (Room migration strategy)** — IN PROGRESS, BLOCKED
 - `kotlin-kapt` enabled, `room-compiler:2.6.1`, `room.schemaLocation` configured
@@ -24,11 +26,12 @@ Build is **green** (`:app:compileDebugKotlin` succeeds; `:app:assembleRelease` a
 - **BLOCKER:** `Email` `@Index` annotations reference non-existent columns (`isRead`, `body_text`) — must align with actual entity fields
 - Schema JSON files not yet generating until DAO/entity mismatch is resolved
 
-**Phase 3 (Keystore/signing + target API)** — IN PROGRESS
+**Phase 3 (Keystore/signing + target API)** — COMPLETE
 - compileSdk/targetSdk bumped to 35, Android SDK 35 installed
-- assembleRelease and lintRelease both green
+- `assembleRelease` and `lintRelease` both green
 - `fallbackToDestructiveMigration()` gated to debug-only (production safe)
-- Signing still gated on env vars (`KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`)
+- Release signing configured and verified (local `release.jks`)
+- `kotlinx-serialization` plugin applied to fix runtime serializer generation
 
 ---
 
@@ -47,8 +50,8 @@ Build is **green** (`:app:compileDebugKotlin` succeeds; `:app:assembleRelease` a
 
 ---
 ## ⚠️ Remaining / Deferred
-1. Keystore release signing — blocked on env vars (`KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`).
-2. Unit tests (Phase 1 deliverable).
+1. Keystore release signing — configured with local `release.jks`; set env vars for CI (`KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`).
+2. Expand unit test coverage beyond current 11 tests.
 
 ---
 ## ✅ Resolved / No Longer Blockers
@@ -79,9 +82,9 @@ Build is **green** (`:app:compileDebugKotlin` succeeds; `:app:assembleRelease` a
 | Phase | Name | Status | Deliverable |
 |-------|------|--------|-------------|
 | 0 | Release build baseline | COMPLETE | assembleRelease + lintRelease green; ProGuard rules audited |
-| 1 | Unit test scaffold | COMPLETE | 0 tests audited; scaffolding pending post-Room fix |
+| 1 | Unit test scaffold | COMPLETE | 11 unit tests added (converters, datetime, model) |
 | 2 | Room migration strategy | IN PROGRESS | Schema JSON files emitting, Migration objects defined |
-| 3 | Keystore/signing + target API | IN PROGRESS | Fastlane/env vars pending; compileSdk/targetSdk 35 aligned |
+| 3 | Keystore/signing + target API | COMPLETE | Signing verified (v2 APK), assembleRelease + lintRelease green |
 
 ---
 ## 🚀 Resume
