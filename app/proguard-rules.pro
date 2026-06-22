@@ -57,13 +57,30 @@
 -keep class kotlinx.datetime.** { *; }
 
 # Keep annotated classes
--keep @androidx.room.Entity class *
--keep @androidx.room.Dao class *
--keep @androidx.room.Database class *
--keep @dagger.hilt.android.HiltAndroidApp class *
--keep @dagger.hilt.android.AndroidEntryPoint class *
--keep @dagger.Module class *
--keep @dagger.hilt.InstallIn class *
+-keep @androidx.room.Entity class * {
+    public <init>();
+}
+-keep @androidx.room.Dao class * {
+    public <init>();
+}
+-keep @androidx.room.Database class * {
+    public <init>();
+}
+-keep @dagger.hilt.android.HiltAndroidApp class * {
+    public <init>();
+}
+-keep @dagger.hilt.android.AndroidEntryPoint class * {
+    public <init>();
+}
+-keep @dagger.Module class * {
+    public <init>();
+}
+-keep @dagger.hilt.InstallIn class * {
+    public <init>();
+}
+-keep @kotlinx.serialization.Serializable class * {
+    public <init>();
+}
 
 # Optimize
 -optimizationpasses 5
