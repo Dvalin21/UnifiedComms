@@ -62,11 +62,14 @@ class PushManagerImpl(
     private var deviceId: String? = null
 
     private fun getAppVersion(): String {
-        return try { 
-            Class.forName("com.unifiedcomms.BuildConfig").getField("VERSION_NAME").get(null) as String 
-        } catch (e: Exception) { 
+        return try {
+            val raw = Class.forName("com.unifiedcomms.BuildConfig").getField("VERSION_NAME").get(null)
+            (raw as String).ifBlank {
+                context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.0"
+            }
+        } catch (e: Exception) {
             try {
-                context.packageManager.getPackageInfo(context.packageName, 0).versionName
+                context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.0"
             } catch (e2: PackageManager.NameNotFoundException) {
                 "1.0.0"
             }
