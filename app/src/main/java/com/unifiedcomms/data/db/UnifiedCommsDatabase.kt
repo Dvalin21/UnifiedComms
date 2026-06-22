@@ -77,7 +77,11 @@ abstract class UnifiedCommsDatabase : RoomDatabase() {
                 )
                     .enableMultiInstanceInvalidation()
                     .addMigrations(Migrations.MIGRATION_1_1)
-                    .fallbackToDestructiveMigration() // For development - remove in production
+                    .also { builder ->
+                        if (com.unifiedcomms.BuildConfig.DEBUG) {
+                            builder.fallbackToDestructiveMigration()
+                        }
+                    }
                     .addCallback(object : Callback() {
                         override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                             super.onCreate(db)
