@@ -10,8 +10,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM"
+        tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
@@ -91,7 +93,7 @@
 
         <!-- Full-screen Reminder Activity -->
         <activity
-            android:name=".ui.reminder.FullScreenReminderActivity"
+            android:name=".reminder.FullScreenReminderActivity"
             android:exported="false"
             android:launchMode="singleInstance"
             android:showOnLockScreen="true"
@@ -129,15 +131,6 @@
             </intent-filter>
         </service>
 
-        <service
-            android:name=".push.PushMessageService"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="com.google.firebase.MESSAGING_EVENT" />
-            </intent-filter>
-        </service>
-
-        <!-- Receivers -->
         <receiver
             android:name=".sync.BootReceiver"
             android:exported="true"
@@ -150,10 +143,6 @@
 
         <receiver
             android:name=".reminder.ReminderAlarmReceiver"
-            android:exported="false" />
-
-        <receiver
-            android:name=".sync.SyncAlarmReceiver"
             android:exported="false" />
 
         <!-- Sync Adapters -->

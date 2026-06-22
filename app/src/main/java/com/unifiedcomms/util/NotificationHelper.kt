@@ -12,6 +12,7 @@ import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.unifiedcomms.R
 import com.unifiedcomms.data.model.AttendeeStatus
 import com.unifiedcomms.ui.main.MainActivity
@@ -26,6 +27,18 @@ object NotificationHelper {
     const val CHANNEL_ID_REMINDERS = "reminders"
     const val CHANNEL_ID_SYNC = "sync"
     const val CHANNEL_ID_SECURITY = "security"
+
+    private fun Context.notifySafe(id: Int, notification: Notification) {
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            NotificationManagerCompat.from(this).notify(id, notification)
+        }
+    }
+
+    private fun Context.notifySafe(tag: String?, id: Int, notification: Notification) {
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            NotificationManagerCompat.from(this).notify(tag, id, notification)
+        }
+    }
 
     fun createNotificationChannels(context: Context) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -63,7 +76,7 @@ object NotificationHelper {
                 NotificationChannel(
                     CHANNEL_ID_REMINDERS,
                     "Reminders",
-                    NotificationManager.IMPORTANCE_MAX
+                    NotificationManager.IMPORTANCE_HIGH
                 ).apply {
                     description = "Full-screen calendar reminders"
                     enableVibration(true)
@@ -123,7 +136,7 @@ object NotificationHelper {
             .setGroupSummary(false)
             .build()
 
-        NotificationManagerCompat.from(context).notify("email_$messageId".hashCode(), notification)
+        context.notifySafe("email_$messageId".hashCode(), notification)
     }
 
     fun showCalendarReminder(
@@ -165,7 +178,7 @@ object NotificationHelper {
             .setOngoing(true)
             .build()
 
-        NotificationManagerCompat.from(context).notify(eventId.hashCode(), notification)
+        context.notifySafe(eventId.hashCode(), notification)
     }
 
     fun showTaskReminder(
@@ -194,7 +207,7 @@ object NotificationHelper {
             .setAutoCancel(true)
             .build()
 
-        NotificationManagerCompat.from(context).notify(taskId.hashCode(), notification)
+        context.notifySafe(taskId.hashCode(), notification)
     }
 
     fun showMessageNotification(
@@ -225,7 +238,7 @@ object NotificationHelper {
             .setGroupSummary(false)
             .build()
 
-        NotificationManagerCompat.from(context).notify(conversationId.hashCode(), notification)
+        context.notifySafe(conversationId.hashCode(), notification)
     }
 
     fun showCalendarInviteNotification(
@@ -289,7 +302,7 @@ object NotificationHelper {
             .setAutoCancel(true)
             .build()
 
-        NotificationManagerCompat.from(context).notify(eventId.hashCode() + 100, notification)
+        context.notifySafe(eventId.hashCode() + 100, notification)
     }
 
     fun showSyncNotification(
@@ -309,7 +322,7 @@ object NotificationHelper {
             builder.setProgress(100, progress, false)
         }
 
-        NotificationManagerCompat.from(context).notify(1001, builder.build())
+        context.notifySafe(1001, builder.build())
     }
 
     fun dismissSyncNotification(context: Context) {
@@ -341,6 +354,6 @@ object NotificationHelper {
             .setAutoCancel(true)
             .build()
 
-        NotificationManagerCompat.from(context).notify(2001, notification)
+        context.notifySafe(2001, notification)
     }
 }

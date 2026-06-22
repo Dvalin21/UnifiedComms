@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.unifiedcomms.R
 import com.unifiedcomms.data.model.CalendarEvent
 import com.unifiedcomms.data.model.ReminderMethod
@@ -66,7 +67,9 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
             )
             .build()
 
-        NotificationManagerCompat.from(context).notify(eventId.hashCode(), notification)
+        if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            NotificationManagerCompat.from(context).notify(eventId.hashCode(), notification)
+        }
     }
 }
 
