@@ -31,7 +31,7 @@ class TaskSyncEngineImpl(
             try {
                 updateProgress(account.id, null, SyncStage.CONNECTING, 0, 0)
 
-                val lists = getTaskListsFromServer(account)
+                val lists = getTaskListsFromServer()
                 updateProgress(account.id, null, SyncStage.LISTING_FOLDERS, 0, lists.size)
 
                 var totalSynced = 0
@@ -60,7 +60,7 @@ class TaskSyncEngineImpl(
             try {
                 updateProgress(account.id, taskList.title, SyncStage.FETCHING_HEADERS, 0, 0)
 
-                val tasks = fetchTasksFromServer(account, taskList.serverId)
+                val tasks = fetchTasksFromServer()
                 var synced = 0
                 val newItems = mutableListOf<String>()
                 val updatedItems = mutableListOf<String>()
@@ -98,12 +98,12 @@ class TaskSyncEngineImpl(
         }
     }
 
-    private fun getTaskListsFromServer(account: Account): List<TaskList> {
+    private fun getTaskListsFromServer(): List<TaskList> {
         // CalDAV VTODO or Google Tasks API
         return emptyList()
     }
 
-    private fun fetchTasksFromServer(account: Account, listId: String): List<Task> {
+    private fun fetchTasksFromServer(): List<Task> {
         // Fetch tasks from server
         return emptyList()
     }
@@ -170,7 +170,7 @@ class TaskSyncEngineImpl(
     }
 
     override suspend fun getTaskLists(account: Account): List<TaskList> {
-        return getTaskListsFromServer(account)
+        return emptyList()
     }
 
     private fun updateProgress(accountId: String, folder: String?, stage: SyncStage, current: Int, total: Int) {

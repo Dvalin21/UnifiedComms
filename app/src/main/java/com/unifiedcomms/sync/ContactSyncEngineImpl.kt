@@ -30,7 +30,7 @@ class ContactSyncEngineImpl(
             try {
                 updateProgress(account.id, null, SyncStage.CONNECTING, 0, 0)
 
-                val contacts = fetchContactsFromServer(account)
+                val contacts = fetchContactsFromServer()
                 updateProgress(account.id, null, SyncStage.FETCHING_HEADERS, 0, contacts.size)
 
                 var synced = 0
@@ -77,7 +77,7 @@ class ContactSyncEngineImpl(
         }
     }
 
-    private fun fetchContactsFromServer(account: Account): List<UnifiedContact> {
+    private fun fetchContactsFromServer(): List<UnifiedContact> {
         // CardDAV, Google People API, Exchange
         return emptyList()
     }

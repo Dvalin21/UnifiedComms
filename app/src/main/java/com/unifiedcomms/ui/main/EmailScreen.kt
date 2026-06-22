@@ -139,7 +139,7 @@ data class EmailMessage(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ComposeEmailScreen(@Suppress("UNUSED_PARAMETER") viewModel: MainViewModel, onSend: () -> Unit) {
+fun ComposeEmailScreen(onSend: () -> Unit) {
     var to by remember { mutableStateOf("") }
     var subject by remember { mutableStateOf("") }
     var body by remember { mutableStateOf("") }
@@ -163,68 +163,7 @@ fun ComposeEmailScreen(@Suppress("UNUSED_PARAMETER") viewModel: MainViewModel, o
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun EmailDetailScreen(@Suppress("UNUSED_PARAMETER") viewModel: MainViewModel, emailId: String, onBack: () -> Unit) {
-    val email = getMockEmails().find { it.id == emailId }
-        ?: EmailMessage("1", "sender@example.com", "Subject", "Body", "10:30 AM", true, Color.Gray)
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("") },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Back") } },
-                actions = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Default.Reply, contentDescription = "Reply") }
-                    IconButton(onClick = onBack) { Icon(Icons.Default.Delete, contentDescription = "Delete") }
-                    IconButton(onClick = onBack) { Icon(Icons.Default.MoreVert, contentDescription = "More") }
-                }
-            )
-        }
-    ) { innerPadding ->
-        Column(modifier = Modifier.padding(innerPadding).padding(16.dp).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            androidx.compose.material3.Text(text = email.subject, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
-                    Text(text = email.from.first().uppercase(), fontWeight = FontWeight.Bold, color = Color.White)
-                }
-                Column(modifier = Modifier.padding(horizontal = 12.dp)) {
-                    androidx.compose.material3.Text(text = email.from, fontWeight = FontWeight.Bold)
-                    androidx.compose.material3.Text(text = "to me", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            HorizontalDivider()
-            androidx.compose.material3.Text(text = email.body)
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ComposeMessageScreen(
-    @Suppress("UNUSED_PARAMETER") viewModel: MainViewModel,
-    @Suppress("UNUSED_PARAMETER") conversationId: String,
-    onSend: () -> Unit
-) {
-    var messageText by remember { mutableStateOf("") }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("New Message") },
-                navigationIcon = { IconButton(onClick = onSend) { Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Cancel") } },
-                actions = {
-                    IconButton(onClick = onSend) { Icon(Icons.AutoMirrored.Default.Send, contentDescription = "Send") }
-                }
-            )
-        }
-    ) { innerPadding ->
-        Column(modifier = Modifier.padding(innerPadding).padding(16.dp).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            TextField(value = "", onValueChange = { }, label = { Text("Recipient") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-            TextField(value = messageText, onValueChange = { messageText = it }, label = { Text("Message") }, modifier = Modifier.fillMaxSize(), minLines = 8)
-        }
-    }
-}
 
 fun getMockEmails(): List<EmailMessage> = listOf(
     EmailMessage("1", "Alice Johnson", "Project Update - Q4 Goals", "Hi team, just wanted to share the latest updates on our Q4 objectives...", "10:30 AM", true, Color(0xFF6750A4)),
