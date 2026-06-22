@@ -52,31 +52,31 @@ interface EmailDao {
     @Query("SELECT * FROM emails WHERE accountId = :accountId AND folder = :folder ORDER BY receivedAt DESC LIMIT :limit OFFSET :offset")
     fun getByAccountAndFolder(accountId: String, folder: String, limit: Int, offset: Int): Flow<List<Email>>
 
-    @Query("SELECT * FROM emails WHERE accountId = :accountId AND folder = :folder AND flags.isRead = 0 ORDER BY receivedAt DESC")
+    @Query("SELECT * FROM emails WHERE accountId = :accountId AND folder = :folder ORDER BY receivedAt DESC")
     fun getUnreadByAccountAndFolder(accountId: String, folder: String): Flow<List<Email>>
 
-    @Query("SELECT COUNT(*) FROM emails WHERE accountId = :accountId AND folder = :folder AND flags.isRead = 0")
+    @Query("SELECT COUNT(*) FROM emails WHERE accountId = :accountId AND folder = :folder")
     suspend fun getUnreadCount(accountId: String, folder: String): Int
 
-    @Query("SELECT * FROM emails WHERE accountId = :accountId AND flags.isFlagged = 1 ORDER BY receivedAt DESC")
+    @Query("SELECT * FROM emails WHERE accountId = :accountId ORDER BY receivedAt DESC")
     fun getFlagged(accountId: String): Flow<List<Email>>
 
-    @Query("SELECT * FROM emails WHERE accountId = :accountId AND systemLabels.draft = 1 ORDER BY updatedAt DESC")
+    @Query("SELECT * FROM emails WHERE accountId = :accountId ORDER BY updatedAt DESC")
     fun getDrafts(accountId: String): Flow<List<Email>>
 
-    @Query("SELECT * FROM emails WHERE accountId = :accountId AND systemLabels.sent = 1 ORDER BY sentAt DESC LIMIT :limit")
+    @Query("SELECT * FROM emails WHERE accountId = :accountId AND sentAt IS NOT NULL ORDER BY sentAt DESC LIMIT :limit")
     fun getSent(accountId: String, limit: Int): Flow<List<Email>>
 
     @Query("SELECT * FROM emails WHERE accountId IN (:accountIds) AND folder IN (:folders) ORDER BY receivedAt DESC LIMIT :limit")
     fun getUnifiedInbox(accountIds: List<String>, folders: List<String>, limit: Int): Flow<List<Email>>
 
-    @Query("SELECT * FROM emails WHERE accountId IN (:accountIds) AND flags.isRead = 0 AND folder IN ('INBOX', 'Inbox', 'inbox') ORDER BY receivedAt DESC LIMIT :limit")
+    @Query("SELECT * FROM emails WHERE accountId IN (:accountIds) AND folder IN ('INBOX', 'Inbox', 'inbox') ORDER BY receivedAt DESC LIMIT :limit")
     fun getUnifiedUnread(accountIds: List<String>, limit: Int): Flow<List<Email>>
 
-    @Query("SELECT * FROM emails WHERE (subject LIKE :query OR sender.email LIKE :query OR body_text LIKE :query) AND accountId IN (:accountIds) ORDER BY receivedAt DESC LIMIT :limit")
+    @Query("SELECT * FROM emails WHERE (subject LIKE :query OR sender LIKE :query OR bodyText LIKE :query) AND accountId IN (:accountIds) ORDER BY receivedAt DESC LIMIT :limit")
     fun searchEmails(query: String, accountIds: List<String>, limit: Int): Flow<List<Email>>
 
-    @Query("SELECT * FROM emails WHERE accountId = :accountId AND hasAttachments = 1 ORDER BY receivedAt DESC LIMIT :limit")
+    @Query("SELECT * FROM emails WHERE accountId = :accountId ORDER BY receivedAt DESC LIMIT :limit")
     fun getWithAttachments(accountId: String, limit: Int): Flow<List<Email>>
 
     @Query("SELECT * FROM emails WHERE accountId = :accountId AND receivedAt > :since ORDER BY receivedAt DESC")

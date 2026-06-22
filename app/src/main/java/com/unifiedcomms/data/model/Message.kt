@@ -6,6 +6,10 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverters
 import com.unifiedcomms.data.db.converters.DateTimeConverter
+import com.unifiedcomms.data.db.converters.StringListConverter
+import com.unifiedcomms.data.db.converters.MapConverter
+import com.unifiedcomms.data.db.converters.MessageAttachmentListConverter
+import com.unifiedcomms.data.db.converters.ConversationSettingsConverter
 import kotlinx.datetime.Instant
 import kotlinx.datetime.Clock
 import kotlinx.serialization.Serializable
@@ -40,8 +44,8 @@ data class Message(
     val status: MessageStatus = MessageStatus.PENDING,
     val replyToId: String? = null,
     val forwardFromId: String? = null,
-    val attachments: List<MessageAttachment> = emptyList(),
-    val metadata: Map<String, String> = emptyMap(),
+    @TypeConverters(MessageAttachmentListConverter::class) val attachments: List<MessageAttachment> = emptyList(),
+    @TypeConverters(MapConverter::class) val metadata: Map<String, String> = emptyMap(),
     val isEncrypted: Boolean = true,
     val encryptionKeyId: String? = null,
     @TypeConverters(DateTimeConverter::class) val sentAt: Instant = Clock.System.now(),
@@ -113,8 +117,8 @@ data class MessageAttachment(
 data class Conversation(
     @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
     val participantIds: List<String>, // Includes our user ID + others
-    val participantNames: Map<String, String>, // userId -> display name
-    val participantAvatars: Map<String, String> = emptyMap(),
+    @TypeConverters(MapConverter::class) val participantNames: Map<String, String>, // userId -> display name
+    @TypeConverters(MapConverter::class) val participantAvatars: Map<String, String> = emptyMap(),
     val type: ConversationType = ConversationType.DIRECT,
     val title: String? = null, // For groups
     val description: String? = null,
@@ -126,7 +130,7 @@ data class Conversation(
     val isPinned: Boolean = false,
     val isMuted: Boolean = false,
     val muteUntil: Instant? = null,
-    val settings: ConversationSettings = ConversationSettings(),
+    @TypeConverters(ConversationSettingsConverter::class) val settings: ConversationSettings = ConversationSettings(),
     @TypeConverters(DateTimeConverter::class) val createdAt: Instant = Clock.System.now(),
     @TypeConverters(DateTimeConverter::class) val updatedAt: Instant = Clock.System.now()
 ) {
@@ -162,8 +166,8 @@ data class ConversationSettings(
 data class UnifiedContact(
     @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
     val unifiedCommsId: String? = null, // If they have the app
-    val emails: List<String> = emptyList(),
-    val phoneNumbers: List<String> = emptyList(),
+    @TypeConverters(StringListConverter::class) val emails: List<String> = emptyList(),
+    @TypeConverters(StringListConverter::class) val phoneNumbers: List<String> = emptyList(),
     val displayName: String,
     val firstName: String? = null,
     val lastName: String? = null,
@@ -172,10 +176,10 @@ data class UnifiedContact(
     val organization: String? = null,
     val title: String? = null,
     val department: String? = null,
-    val addresses: List<String> = emptyList(),
-    val websites: List<String> = emptyList(),
+    @TypeConverters(StringListConverter::class) val addresses: List<String> = emptyList(),
+    @TypeConverters(StringListConverter::class) val websites: List<String> = emptyList(),
     val notes: String? = null,
-    val tags: List<String> = emptyList(),
+    @TypeConverters(StringListConverter::class) val tags: List<String> = emptyList(),
     val isFavorite: Boolean = false,
     val isBlocked: Boolean = false,
     val source: ContactSource = ContactSource.LOCAL,
@@ -183,7 +187,9 @@ data class UnifiedContact(
     val accountId: String? = null, // Which account this contact came from
     @TypeConverters(DateTimeConverter::class) val createdAt: Instant = Clock.System.now(),
     @TypeConverters(DateTimeConverter::class) val updatedAt: Instant = Clock.System.now(),
-    @TypeConverters(DateTimeConverter::class) val lastSyncedAt: Instant? = null
+    @TypeConverters(DateTimeConverter::class) val lastSyncedAt: Instant? = null,
+    val isLocalOnly: Boolean = false,
+    val needsSync: Boolean = false
 ) {
     fun hasUnifiedComms(): Boolean = unifiedCommsId != null
     fun getInitials(): String {

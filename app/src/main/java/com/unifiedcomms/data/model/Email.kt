@@ -6,7 +6,13 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverters
 import com.unifiedcomms.data.db.converters.DateTimeConverter
+import com.unifiedcomms.data.db.converters.EmailAddressConverter
+import com.unifiedcomms.data.db.converters.EmailFlagsConverter
+import com.unifiedcomms.data.db.converters.EmailRecipientsConverter
+import com.unifiedcomms.data.db.converters.MapConverter
 import com.unifiedcomms.data.db.converters.StringListConverter
+import com.unifiedcomms.data.db.converters.SystemLabelsConverter
+import com.unifiedcomms.data.db.converters.AttachmentListConverter
 import kotlinx.datetime.Instant
 import kotlinx.datetime.Clock
 import kotlinx.datetime.LocalDateTime
@@ -20,8 +26,8 @@ import kotlinx.serialization.Serializable
         Index(value = ["accountId", "folder"]),
         Index(value = ["accountId", "receivedAt"]),
         Index(value = ["threadId"]),
-        Index(value = ["isRead"]),
-        Index(value = ["subject", "sender", "body_text"])
+        Index(value = ["isEncrypted"]),
+        Index(value = ["subject", "sender", "bodyText"])
     ],
     foreignKeys = [
         ForeignKey(
@@ -41,8 +47,8 @@ data class Email(
     val threadId: String,
     val inReplyTo: String? = null,
     val references: List<String> = emptyList(),
-    val sender: EmailAddress,
-    val recipients: EmailRecipients,
+    @TypeConverters(EmailAddressConverter::class) val sender: EmailAddress,
+    @TypeConverters(EmailRecipientsConverter::class) val recipients: EmailRecipients,
     val subject: String,
     val bodyText: String? = null,
     val bodyHtml: String? = null,
@@ -51,10 +57,10 @@ data class Email(
     @TypeConverters(DateTimeConverter::class) val receivedAt: Instant = Clock.System.now(),
     @TypeConverters(DateTimeConverter::class) val fetchedAt: Instant = Clock.System.now(),
     @TypeConverters(StringListConverter::class) val labels: List<String> = emptyList(),
-    val systemLabels: SystemLabels = SystemLabels(),
-    val flags: EmailFlags = EmailFlags(),
-    val attachments: List<Attachment> = emptyList(),
-    val headers: Map<String, String> = emptyMap(),
+    @TypeConverters(SystemLabelsConverter::class) val systemLabels: SystemLabels = SystemLabels(),
+    @TypeConverters(EmailFlagsConverter::class) val flags: EmailFlags = EmailFlags(),
+    @TypeConverters(AttachmentListConverter::class) val attachments: List<Attachment> = emptyList(),
+    @TypeConverters(MapConverter::class) val headers: Map<String, String> = emptyMap(),
     val priority: EmailPriority = EmailPriority.NORMAL,
     val sensitivity: EmailSensitivity = EmailSensitivity.NORMAL,
     val isEncrypted: Boolean = false,

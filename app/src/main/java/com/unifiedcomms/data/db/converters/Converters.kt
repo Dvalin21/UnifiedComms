@@ -185,5 +185,121 @@ class GeoLocationConverter {
     fun fromGeo(value: com.unifiedcomms.data.model.GeoLocation?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toGeo(value: String?): com.unifiedcomms.data.model.GeoLocation? = value?.let { json.decodeFromString(value) }
+    fun toGeo(value: String?): com.unifiedcomms.data.model.GeoLocation? = value?.let { json.decodeFromString(it) }
+}
+
+class EventReminderListConverter {
+    private val json = Json { ignoreUnknownKeys = true }
+
+    @TypeConverter
+    fun fromList(value: List<com.unifiedcomms.data.model.EventReminder>?): String? = value?.let { json.encodeToString(it) }
+
+    @TypeConverter
+    fun toList(value: String?): List<com.unifiedcomms.data.model.EventReminder> = value?.let { json.decodeFromString(it) } ?: emptyList()
+}
+
+class InstantListConverter {
+    @TypeConverter
+    fun fromList(value: List<kotlinx.datetime.Instant>?): String? = value?.let { it.joinToString(",") { i -> i.toEpochMilliseconds().toString() } }
+
+    @TypeConverter
+    fun toList(value: String?): List<kotlinx.datetime.Instant> = value?.split(",")?.map { kotlinx.datetime.Instant.fromEpochMilliseconds(it.toLong()) } ?: emptyList()
+}
+
+class EventAttendeeConverter {
+    private val json = Json { ignoreUnknownKeys = true }
+
+    @TypeConverter
+    fun fromAttendee(value: com.unifiedcomms.data.model.EventAttendee?): String? = value?.let { json.encodeToString(it) }
+
+    @TypeConverter
+    fun toAttendee(value: String?): com.unifiedcomms.data.model.EventAttendee? = value?.let { json.decodeFromString(it) }
+}
+
+class ConferenceDataConverter {
+    private val json = Json { ignoreUnknownKeys = true }
+
+    @TypeConverter
+    fun fromConference(value: com.unifiedcomms.data.model.ConferenceData?): String? = value?.let { json.encodeToString(it) }
+
+    @TypeConverter
+    fun toConference(value: String?): com.unifiedcomms.data.model.ConferenceData? = value?.let { json.decodeFromString(it) }
+}
+
+class TaskAssigneeConverter {
+    private val json = Json { ignoreUnknownKeys = true }
+
+    @TypeConverter
+    fun fromAssignee(value: com.unifiedcomms.data.model.TaskAssignee?): String? = value?.let { json.encodeToString(it) }
+
+    @TypeConverter
+    fun toAssignee(value: String?): com.unifiedcomms.data.model.TaskAssignee? = value?.let { json.decodeFromString(it) }
+}
+
+class TaskAttachmentListConverter {
+    private val json = Json { ignoreUnknownKeys = true }
+
+    @TypeConverter
+    fun fromList(value: List<com.unifiedcomms.data.model.TaskAttachment>?): String? = value?.let { json.encodeToString(it) }
+
+    @TypeConverter
+    fun toList(value: String?): List<com.unifiedcomms.data.model.TaskAttachment> = value?.let { json.decodeFromString(it) } ?: emptyList()
+}
+
+class ConversationSettingsConverter {
+    private val json = Json { ignoreUnknownKeys = true }
+
+    @TypeConverter
+    fun fromSettings(value: com.unifiedcomms.data.model.ConversationSettings?): String? = value?.let { json.encodeToString(it) }
+
+    @TypeConverter
+    fun toSettings(value: String?): com.unifiedcomms.data.model.ConversationSettings = value?.let { json.decodeFromString(it) } ?: com.unifiedcomms.data.model.ConversationSettings()
+}
+
+class ServerConfigConverter {
+    private val json = Json { ignoreUnknownKeys = true }
+
+    @TypeConverter
+    fun fromConfig(value: com.unifiedcomms.data.model.ServerConfig?): String? = value?.let { json.encodeToString(it) }
+
+    @TypeConverter
+    fun toConfig(value: String?): com.unifiedcomms.data.model.ServerConfig = value?.let { json.decodeFromString(it) } ?: com.unifiedcomms.data.model.ServerConfig(
+        imapHost = null, imapPort = 993, imapUseSsl = true,
+        smtpHost = null, smtpPort = 587, smtpUseStartTls = true,
+        caldavUrl = null, carddavUrl = null, webdavUrl = null,
+        oauthTokenUrl = null, oauthAuthUrl = null, oauthClientId = null,
+        oauthScopes = emptyList(), supportsPush = false, pushConfig = null
+    )
+}
+
+class AuthConfigConverter {
+    private val json = Json { ignoreUnknownKeys = true }
+
+    @TypeConverter
+    fun fromConfig(value: com.unifiedcomms.data.model.AuthConfig?): String? = value?.let { json.encodeToString(it) }
+
+    @TypeConverter
+    fun toConfig(value: String?): com.unifiedcomms.data.model.AuthConfig = value?.let { json.decodeFromString(it) } ?: com.unifiedcomms.data.model.AuthConfig(
+        type = com.unifiedcomms.data.model.AuthType.PASSWORD, username = null, passwordEncrypted = null
+    )
+}
+
+class SyncConfigConverter {
+    private val json = Json { ignoreUnknownKeys = true }
+
+    @TypeConverter
+    fun fromConfig(value: com.unifiedcomms.data.model.SyncConfig?): String? = value?.let { json.encodeToString(it) }
+
+    @TypeConverter
+    fun toConfig(value: String?): com.unifiedcomms.data.model.SyncConfig = value?.let { json.decodeFromString(it) } ?: com.unifiedcomms.data.model.SyncConfig.Defaults()
+}
+
+class UIConfigConverter {
+    private val json = Json { ignoreUnknownKeys = true }
+
+    @TypeConverter
+    fun fromConfig(value: com.unifiedcomms.data.model.UIConfig?): String? = value?.let { json.encodeToString(it) }
+
+    @TypeConverter
+    fun toConfig(value: String?): com.unifiedcomms.data.model.UIConfig = value?.let { json.decodeFromString(it) } ?: com.unifiedcomms.data.model.UIConfig.Defaults()
 }

@@ -220,7 +220,7 @@ interface ContactDao {
     @Query("SELECT * FROM contacts WHERE source = :source AND accountId = :accountId ORDER BY displayName ASC")
     fun getBySourceAndAccount(source: com.unifiedcomms.data.model.ContactSource, accountId: String): Flow<List<UnifiedContact>>
 
-    @Query("SELECT * FROM contacts WHERE hasUnifiedComms = 1 ORDER BY displayName ASC")
+    @Query("SELECT * FROM contacts WHERE unifiedCommsId IS NOT NULL ORDER BY displayName ASC")
     fun getUnifiedCommsContacts(): Flow<List<UnifiedContact>>
 
     @Query("SELECT * FROM contacts WHERE isFavorite = 1 ORDER BY displayName ASC")

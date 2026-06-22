@@ -22,7 +22,7 @@ import com.unifiedcomms.data.model.*
         UnifiedContact::class
     ],
     version = 1,
-    exportSchema = false
+    exportSchema = true
 )
 @TypeConverters(
     DateTimeConverter::class,
@@ -49,7 +49,7 @@ import com.unifiedcomms.data.model.*
     EventAttendeeConverter::class,
     ConferenceDataConverter::class,
     TaskAssigneeConverter::class,
-    TaskAttachmentConverter::class,
+    TaskAttachmentListConverter::class,
     ConversationSettingsConverter::class,
     EventReminderListConverter::class
 )
