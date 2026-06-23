@@ -22,9 +22,9 @@
 | **📧 Email** | Google, Mailcow, Outlook, Yahoo, Exchange, iCloud, Generic IMAP/SMTP | Unified inbox, push, attachments, PGP, threading, flags |
 | **📅 Calendar** | Google, CalDAV, Exchange, iCloud | Shared calendars, color preservation, invites (Yes/No/Maybe), RRULE recurrence |
 | **✅ Tasks** | CalDAV VTODO, Google Tasks | Subtasks, priorities (Low/Normal/High/Urgent), due dates, recurring |
-| **💬 Messaging** | UnifiedComms users only | E2E encrypted (AES-256 + RSA-4096), share emails/events/tasks, calendar invites in chat |
-| **🔒 Security** | — | Biometric lock, AES-256 at rest, certificate pinning, zero telemetry |
-| **🎨 Widgets** | Glance | Email, Calendar, Tasks, Unified (3-panel) — configurable, dark/light aware |
+| **💬 Messaging** | UnifiedComms users only | Direct/group/broadcast conversations, rich sharing (emails, events, tasks, calendar invites) |
+| **🔒 Security** | — | Biometric lock, AES-256 for stored credentials (Android Keystore), zero telemetry |
+| **🔔 Reminders** | AlarmManager | Full-screen heads-up alerts with snooze/dismiss |
 
 ---
 
@@ -32,8 +32,8 @@
 
 ### Prerequisites
 - Android 12+ (API 31)
-- Kotlin 1.9+, Gradle 8.5+, Java 17
-- Android SDK 34
+- Kotlin 1.9+, Gradle 8.9+, Java 17
+- Android SDK 35
 
 ### Build
 
@@ -55,11 +55,15 @@ export PUSH_API_KEY="your_push_server_key"
 # Build debug APK
 ./gradlew assembleDebug
 
-# Build release AAB (requires signing config)
+# Build release APK (requires signing config)
+./gradlew assembleRelease
+
+# Build release AAB
 ./gradlew bundleRelease
 ```
 
 ### Install
+
 ```bash
 # Debug
 adb install app/build/outputs/apk/debug/app-debug.apk
@@ -194,7 +198,7 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 
 ---
 
-### 5. Messaging — Secure Chat
+### 5. Messaging — Unified Chat
 
 **Main Screen → Messages Tab**
 
@@ -217,49 +221,15 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 | 📧 | **Email** — Shares email preview with sender/subject |
 
 **Features:**
-- **E2E Encrypted** — AES-256 message encryption, RSA-4096 key exchange
-- **Disappearing Messages** — Per-conversation timer (24h default)
 - **Read Receipts** — Double-check when delivered/read
-- **Voice Messages** — Hold mic button to record
-- **Push Notifications** — Real-time via FCM/WebPush
+- **Push Notifications** — Real-time where supported
 - **Mute** — Per-conversation, custom duration
 - **Pin** — Keep important chats at top
 - **Archive** — Hide without deleting
 
-**Calendar Invites in Chat:**
-```
-┌─────────────────────────────────────┐
-│ 📅 Team Standup                     │
-│ Tomorrow, 9:00 AM - 10:00 AM        │
-│ Conference Room A                   │
-│ ┌──────┬──────┬────────┐            │
-│ │ Yes  │  No  │ Maybe  │            │
-│ └──────┴──────┴────────┘            │
-└─────────────────────────────────────┘
-```
-Recipient taps → Response sent instantly to organizer.
-
 ---
 
-### 6. Widgets (Glance)
-
-**Add to Home Screen:** Long-press home → Widgets → UnifiedComms
-
-| Widget | Sizes | Configuration |
-|--------|-------|---------------|
-| **Email** | 2×2 to 4×4 | Accounts to show, unread only, max items |
-| **Calendar** | 2×2 to 4×4 | Calendars, days ahead (1-7), max events, all-day toggle |
-| **Tasks** | 2×2 to 4×4 | Lists, filters (overdue/today/starred), max tasks |
-| **Unified** | 3×3 to 5×5 | All three sections + quick actions (Compose/New Event/New Task) |
-
-**Widget Actions:**
-- Tap account/event/task → Opens app to that item
-- Buttons: Compose, New Event, New Task, Inbox, Month View, All Tasks
-- Auto-refresh: Every 30 minutes + on app sync
-
----
-
-### 7. Reminders — Full-Screen Alerts
+### 6. Reminders — Full-Screen Alerts
 
 **Default: 1 hour before events**
 
@@ -288,23 +258,23 @@ When reminder fires:
 
 ---
 
-### 8. Security & Privacy
+### 7. Security & Privacy
 
 **Biometric Lock:**
 - Settings → Security → Biometric Lock → Enable
 - Prompts on app launch, after timeout (configurable: 1/5/15/30 min)
 
 **Encryption:**
-- **At Rest** — Room database encrypted with SQLCipher (AES-256)
+- **At Rest** — AuthConfig credentials (passwords, tokens) encrypted with Android Keystore (AES-256-GCM)
 - **Keys** — Stored in Android Keystore (hardware-backed)
-- **In Transit** — TLS 1.3, certificate pinning for known providers
-- **Messages** — E2E AES-256 + RSA-4096 (keys never leave device)
+- **In Transit** — TLS 1.3 for network sync
+- **Database** — Standard Room database (no SQLCipher)
 
 **Zero Telemetry:**
 - No analytics SDKs (Firebase, Play Services analytics, etc.)
 - No crash reporting (no Crashlytics, Sentry, etc.)
 - No usage tracking
-- No network calls except explicit sync/push/messaging
+- No network calls except explicit sync/messaging
 
 **Data Control:**
 - Settings → Advanced → Clear All Data (wipes everything)
@@ -313,7 +283,7 @@ When reminder fires:
 
 ---
 
-### 9. Sync & Data Management
+### 8. Sync & Data Management
 
 **Auto-Sync:**
 - Interval: 15 min (default) / 30 min / 1 hour / Manual
@@ -382,9 +352,8 @@ When reminder fires:
 app/
 ├── data/
 │   ├── model/          # Account, Email, CalendarEvent, Task, Message, Conversation, UnifiedContact
-│   ├── db/             # Room: Database, 7 DAOs, 15 TypeConverters
+│   ├── db/             # Room: Database, 9 DAOs, TypeConverters
 │   └── repository/     # 7 Repositories (interfaces + impls)
-├── di/                 # Hilt modules (Database, Repository, Sync, Security, Messaging)
 ├── sync/
 │   ├── accounts/       # Authenticator, ContentProvider, SyncService
 │   ├── EmailSyncEngineImpl      # IMAP/SMTP + OAuth2
@@ -393,25 +362,23 @@ app/
 │   ├── ContactSyncEngineImpl    # CardDAV + Google People
 │   └── SyncManager              # Orchestrates all engines
 ├── security/
-│   ├── CryptoManager   # AES-256 (Keystore), RSA-4096, encrypt AuthConfig
+│   ├── CryptoManager   # AES-256-GCM (Keystore), encrypt AuthConfig secrets
 │   └── BiometricManager # Fingerprint/Face ID auth
-├── push/               # FCM/WebPush, device registration, topic subscriptions
-├── messaging/          # AIDL service, E2E encrypted messaging
+├── push/               # Push manager, device registration, topic subscriptions
+├── messaging/          # MessagingService, Parcelables
 ├── reminder/           # AlarmManager exact alarms, FullScreenReminderActivity
-├── widgets/            # 4 Glance widgets (Email, Calendar, Tasks, Unified)
 ├── ui/
 │   ├── main/           # MainActivity, 6 screens (Inbox, Email, Calendar, Tasks, Messages, Settings)
 │   ├── auth/           # AddAccountActivity (OAuth + manual), OAuthCallbackActivity
 │   ├── search/         # Global search
 │   ├── settings/       # Settings activity
 │   └── theme/          # Material 3, dynamic colors, account color palette
-└── util/               # PreferencesManager (encrypted), NotificationHelper, InviteActionReceiver
+└── util/               # PreferencesManager, NotificationHelper, InviteActionReceiver
 ```
 
 **Key Libraries:**
-- `Room 2.6`, `Hilt 2.50`, `Compose 1.6`, `Glance 1.1`
-- `JavaMail 1.6.7` (IMAP/SMTP)
-- `dav4jvm 3.5.2` + `ical4android 1.2.1` (CalDAV/CardDAV)
+- `Room 2.6`, `Compose 1.6`, `Glance 1.1`
+- `JavaMail 1.6.7` (IMAP/SMTP via `android-mail`)
 - `OkHttp 4.12` + `Retrofit 2.11` (REST)
 - `kotlinx-serialization 1.6` (JSON)
 - `Coil 2.6` (images)
@@ -422,17 +389,17 @@ app/
 ## 📦 Building Release
 
 ```bash
-# Set signing env vars
+# Set signing env vars (or use local.properties)
 export KEYSTORE_PATH=/path/to/release.jks
 export KEYSTORE_PASSWORD=your_store_password
 export KEY_ALIAS=your_key_alias
 export KEY_PASSWORD=your_key_password
 
-# Build signed AAB
-./gradlew bundleRelease
+# Build signed APK
+./gradlew assembleRelease
 
-# Output: app/build/outputs/bundle/release/app-release.aab
-# Upload to Play Console
+# Or build signed AAB
+./gradlew bundleRelease
 ```
 
 ---
@@ -460,7 +427,6 @@ MIT License — See [LICENSE](LICENSE) for details.
 - **AndroidX**: Room, Hilt, Compose, Glance, WorkManager, Biometric, Security-Crypto
 - **OkHttp**, **Retrofit**, **Kotlinx Serialization**, **Coroutines**
 - **JavaMail** for IMAP/SMTP
-- **dav4jvm**, **ical4android** for CalDAV/CardDAV
 - **Coil** for image loading
 
 ---
