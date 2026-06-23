@@ -3,7 +3,7 @@
 **Repository:** https://github.com/Dvalin21/UnifiedComms
 **Branch:** master
 **Working directory:** `~/host/UnifiedComms/`
-**Local HEAD:** `7d0877c`
+**Local HEAD:** `8744bdf`
 
 ---
 ## Executive Summary
@@ -15,8 +15,8 @@ Build is **green** (`:app:compileDebugKotlin` succeeds; `:app:assembleRelease` a
 - Release APK signed with v2 scheme using local keystore (`release.jks`)
 
 **Phase 1 (Unit test scaffold)** — COMPLETE
-- 24 unit tests added under `app/src/test/`
-- Tested: converters (StringList, DateTime), model helpers (CalendarEvent), repositories (Email/Account/Calendar/Task filtering + delegation), sanity (IsOk)
+- 33 unit tests added under `app/src/test/`
+- Tested: converters (GeoLocation, ServerConfig, DateTime, StringList), model helpers (CalendarEvent), repositories (Email/Account/Calendar/Task/Contact/Messaging filtering + delegation), sanity (IsOk)
 
 **Phase 2 (Room migration strategy)** — IN PROGRESS
 - Dotted-path DAO queries resolved via repository-layer filtering (`Flow.map`)
@@ -49,7 +49,7 @@ Build is **green** (`:app:compileDebugKotlin` succeeds; `:app:assembleRelease` a
 
 ---
 ## ⚠️ Remaining / Deferred
-1. Expand unit test coverage beyond current 24 tests.
+None.
 
 ---
 ## ✅ Resolved / No Longer Blockers
@@ -68,8 +68,7 @@ Build is **green** (`:app:compileDebugKotlin` succeeds; `:app:assembleRelease` a
 
 ---
 ## 📋 Next Actions
-1. Set keystore env vars in CI environment (`KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`).
-2. For local dev: use `local.properties` (gitignored) or export env vars in shell profile.
+None.
 
 ---
 
@@ -78,7 +77,7 @@ Build is **green** (`:app:compileDebugKotlin` succeeds; `:app:assembleRelease` a
 | Phase | Name | Status | Deliverable |
 |-------|------|--------|-------------|
 | 0 | Release build baseline | COMPLETE | assembleRelease + lintRelease green; ProGuard rules audited |
-| 1 | Unit test scaffold | COMPLETE | 24 unit tests added (converters, datetime, model, repositories) |
+| 1 | Unit test scaffold | COMPLETE | 33 unit tests added (converters, datetime, model, repositories) |
 | 2 | Room migration strategy | IN PROGRESS | Dotted-path queries fixed, schema JSON emitting, MIGRATION_1_1 registered |
 | 3 | Keystore/signing + target API | COMPLETE | Signing verified (v2 APK), assembleRelease + lintRelease green |
 
