@@ -11,14 +11,21 @@ import kotlinx.coroutines.SupervisorJob
 // @HiltAndroidApp
 class UnifiedCommsApplication : Application() {
 
+    companion object {
+        @Volatile
+        private var INSTANCE: UnifiedCommsApplication? = null
+
+        fun getInstance(): UnifiedCommsApplication = INSTANCE!!
+    }
+
     private val mainScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val ioScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    lateinit var database: UnifiedCommsDatabase
+        private set
 
     override fun onCreate() {
         super.onCreate()
-        // Initialize database
-        UnifiedCommsDatabase.getInstance(this)
-        // Initialize WorkManager, notification channels, etc.
+        database = UnifiedCommsDatabase.getInstance(this)
         initializeNotificationChannels()
     }
 
@@ -29,18 +36,8 @@ class UnifiedCommsApplication : Application() {
     val mainCoroutineScope: CoroutineScope get() = mainScope
     val ioCoroutineScope: CoroutineScope get() = ioScope
 
-    companion object {
-        private var instance: UnifiedCommsApplication? = null
-
-        fun getInstance(): UnifiedCommsApplication = instance!!
-
-        private fun setInstance(app: UnifiedCommsApplication) {
-            instance = app
-        }
-    }
-
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
-        setInstance(this)
+        INSTANCE = this
     }
 }
