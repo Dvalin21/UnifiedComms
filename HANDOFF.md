@@ -3,7 +3,7 @@
 **Repository:** https://github.com/Dvalin21/UnifiedComms
 **Branch:** master
 **Working directory:** `~/host/UnifiedComms/`
-**Local HEAD:** `8744bdf`
+**Local HEAD:** `80bc101`
 
 ---
 ## Executive Summary
