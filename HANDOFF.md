@@ -78,7 +78,7 @@ None.
 |-------|------|--------|-------------|
 | 0 | Release build baseline | COMPLETE | assembleRelease + lintRelease green; ProGuard rules audited |
 | 1 | Unit test scaffold | COMPLETE | 33 unit tests added (converters, datetime, model, repositories) |
-| 2 | Room migration strategy | IN PROGRESS | Dotted-path queries fixed, schema JSON emitting, MIGRATION_1_1 registered |
+| 2 | Room migration strategy | COMPLETE | Dotted-path queries fixed, schema JSON emitting, MIGRATION_1_1 registered |
 | 3 | Keystore/signing + target API | COMPLETE | Signing verified (v2 APK), assembleRelease + lintRelease green |
 
 ---
