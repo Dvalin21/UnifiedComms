@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.unifiedcomms.data.db.UnifiedCommsDatabase
+import com.unifiedcomms.util.PreferencesManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -25,6 +26,7 @@ class UnifiedCommsApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        PreferencesManager.initialize(this)
         database = UnifiedCommsDatabase.getInstance(this)
         initializeNotificationChannels()
     }

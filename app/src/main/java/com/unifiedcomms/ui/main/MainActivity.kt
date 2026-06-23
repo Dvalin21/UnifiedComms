@@ -49,7 +49,11 @@ class MainActivity : ComponentActivity() {
                             onNavigateToEmail = { accountId, folder -> navController.navigate("email/$accountId/$folder") },
                             onNavigateToCalendar = { navController.navigate("calendar") },
                             onNavigateToSettings = { navController.navigate("settings") },
-                            onNavigateToAddAccount = { navController.navigate("add_account") }
+                            onNavigateToAddAccount = { navController.navigate("add_account") },
+                            onNavigateToConversation = { conversationId -> navController.navigate("conversation/$conversationId") },
+                            onNavigateToComposeMessage = { navController.navigate("compose_message") },
+                            onNavigateToCreateEvent = { navController.navigate("create_event") },
+                            onEventClick = { eventId -> navController.navigate("event_detail/$eventId") }
                         )
                     }
                     composable(
@@ -81,7 +85,7 @@ class MainActivity : ComponentActivity() {
                         CalendarScreen(
                             viewModel = viewModel,
                             onCreateEvent = { navController.navigate("create_event") },
-                            onEventClick = { event -> navController.navigate("event_detail/${event.id}") }
+                            onEventClick = { eventId -> navController.navigate("event_detail/$eventId") }
                         )
                     }
                     composable("create_event") {
@@ -104,7 +108,8 @@ class MainActivity : ComponentActivity() {
                             EventDetailScreen(
                                 event = event!!,
                                 onEdit = { navController.navigate("edit_event/$eventId") },
-                                onBack = { navController.popBackStack() }
+                                onBack = { navController.popBackStack() },
+                                onShare = { /* TODO: share event */ }
                             )
                         }
                     }
@@ -126,7 +131,7 @@ class MainActivity : ComponentActivity() {
                     composable("messages") {
                         MessagesScreen(
                             viewModel = viewModel,
-                            onConversationClick = { conversation -> navController.navigate("conversation/${conversation.id}") },
+                            onConversationClick = { conversationId -> navController.navigate("conversation/$conversationId") },
                             onNewMessage = { navController.navigate("compose_message") }
                         )
                     }
@@ -143,7 +148,8 @@ class MainActivity : ComponentActivity() {
                             viewModel = viewModel,
                             onAddAccount = { navController.navigate("add_account") },
                             onAccountClick = { account -> navController.navigate("account_settings/${account.id}") },
-                            onBack = { navController.popBackStack() }
+                            onBack = { navController.popBackStack() },
+                            onEncryptionClick = { navController.navigate("encryption") }
                         )
                     }
                     composable("add_account") {
@@ -187,6 +193,9 @@ class MainActivity : ComponentActivity() {
                             taskId = taskId,
                             onSave = { navController.popBackStack() }
                         )
+                    }
+                    composable("encryption") {
+                        EncryptionScreen(onBack = { navController.popBackStack() })
                     }
                 }
             }

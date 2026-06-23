@@ -67,7 +67,11 @@ fun UnifiedInboxScreen(
     onNavigateToEmail: (String, String) -> Unit,
     onNavigateToCalendar: () -> Unit,
     onNavigateToSettings: () -> Unit,
-    onNavigateToAddAccount: () -> Unit
+    onNavigateToAddAccount: () -> Unit,
+    onNavigateToConversation: (String) -> Unit = {},
+    onNavigateToComposeMessage: () -> Unit = {},
+    onNavigateToCreateEvent: () -> Unit = {},
+    onEventClick: (String) -> Unit = {}
 ) {
     val accounts = viewModel.accounts.collectAsStateWithLifecycle()
     val activeAccounts = accounts.value.filter { it.isActive }
@@ -128,9 +132,9 @@ fun UnifiedInboxScreen(
             when (selectedTab) {
                 0 -> UnifiedInboxContent(activeAccounts, onNavigateToEmail)
                 1 -> EmailOverviewScreen(activeAccounts, onNavigateToEmail)
-                2 -> CalendarScreen(viewModel, onNavigateToCalendar, { })
-                3 -> TasksScreen(viewModel, { }, { })
-                4 -> MessagesScreen(viewModel, onConversationClick = { }, onNewMessage = { })
+                2 -> CalendarScreen(viewModel, onNavigateToCalendar, onEventClick)
+                3 -> TasksScreen(viewModel, onCreateTask = { }, onTaskClick = { /* TODO: task detail */ })
+                4 -> MessagesScreen(viewModel, onConversationClick = onNavigateToConversation, onNewMessage = onNavigateToComposeMessage, onNavigateToCreateEvent = onNavigateToCreateEvent)
             }
         }
     }

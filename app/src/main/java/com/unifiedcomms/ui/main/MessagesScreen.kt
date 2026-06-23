@@ -58,6 +58,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -65,8 +67,9 @@ import kotlin.math.abs
 @Composable
 fun MessagesScreen(
     viewModel: MainViewModel,
-    onConversationClick: (MockConversation) -> Unit,
-    onNewMessage: () -> Unit
+    onConversationClick: (String) -> Unit,
+    onNewMessage: () -> Unit,
+    onNavigateToCreateEvent: () -> Unit = {}
 ) {
     val conversations by viewModel.messagingRepository.getAllConversationsForUser("current_user")
         .collectAsStateWithLifecycle(initialValue = emptyList())
@@ -93,7 +96,7 @@ fun MessagesScreen(
             items(displayConversations) { conversation ->
                 ConversationListItem(
                     conversation = conversation,
-                    onClick = { onConversationClick(conversation) }
+                    onClick = { onConversationClick(conversation.id) }
                 )
                 HorizontalDivider()
             }
@@ -119,6 +122,26 @@ fun ConversationScreen(
             ?: MockConversation(conversationId, "Unknown", "", "No conversation", "", false, 0, com.unifiedcomms.data.model.ConversationType.DIRECT)
     }
     var messageText by remember { mutableStateOf("") }
+    var showDialog by remember { mutableStateOf<String?>(null) }
+    val dialogMessage = when (showDialog) {
+        "call" -> "Voice calls are not yet implemented."
+        "video" -> "Video calls are not yet implemented."
+        "attach" -> "Attachments are not yet implemented."
+        "calendar" -> "Calendar invites require a create_event flow."
+        "task" -> "Task sharing is not yet implemented."
+        "email" -> "Email sharing is not yet implemented."
+        "voice" -> "Voice messages are not yet implemented."
+        else -> ""
+    }
+
+    if (showDialog != null && dialogMessage.isNotBlank()) {
+        AlertDialog(
+            onDismissRequest = { showDialog = null },
+            title = { Text("Coming Soon") },
+            text = { Text(dialogMessage) },
+            confirmButton = { TextButton(onClick = { showDialog = null }) { Text("OK") } }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -135,9 +158,9 @@ fun ConversationScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { }) { Icon(Icons.Default.Call, contentDescription = "Call") }
-                    IconButton(onClick = { }) { Icon(Icons.Default.Videocam, contentDescription = "Video call") }
-                    IconButton(onClick = { }) { Icon(Icons.Default.MoreVert, contentDescription = "Menu") }
+                    IconButton(onClick = { showDialog = "call" }) { Icon(Icons.Default.Call, contentDescription = "Call") }
+                    IconButton(onClick = { showDialog = "video" }) { Icon(Icons.Default.Videocam, contentDescription = "Video call") }
+                    IconButton(onClick = { showDialog = "menu" }) { Icon(Icons.Default.MoreVert, contentDescription = "Menu") }
                 }
             )
         }
@@ -164,16 +187,16 @@ fun ConversationScreen(
                     modifier = Modifier.padding(16.dp).fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { }) {
+                    IconButton(onClick = { showDialog = "attach" }) {
                         Icon(Icons.Default.AttachFile, contentDescription = "Attach")
                     }
-                    IconButton(onClick = { }) {
+                    IconButton(onClick = { showDialog = "calendar" }) {
                         Icon(Icons.Default.CalendarMonth, contentDescription = "Calendar invite")
                     }
-                    IconButton(onClick = { }) {
+                    IconButton(onClick = { showDialog = "task" }) {
                         Icon(Icons.Default.Checklist, contentDescription = "Share task")
                     }
-                    IconButton(onClick = { }) {
+                    IconButton(onClick = { showDialog = "email" }) {
                         Icon(Icons.Default.Email, contentDescription = "Share email")
                     }
 
@@ -185,7 +208,7 @@ fun ConversationScreen(
                         singleLine = true
                     )
 
-                    IconButton(onClick = { }) {
+                    IconButton(onClick = { showDialog = "voice" }) {
                         Icon(Icons.Default.Mic, contentDescription = "Voice message")
                     }
 
