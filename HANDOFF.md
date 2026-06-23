@@ -3,7 +3,7 @@
 **Repository:** https://github.com/Dvalin21/UnifiedComms
 **Branch:** master
 **Working directory:** `~/host/UnifiedComms/`
-**Local HEAD:** `0b40991`
+**Local HEAD:** `31caec2`
 
 ---
 ## Executive Summary
@@ -97,6 +97,6 @@ find app/schemas -name '*.json' 2>/dev/null
 ```
 
 ---
-**Production APK:** app/build/outputs/apk/release/app-release.apk (signed v2, ~10 MB) — GitHub release v0.1.2 at https://github.com/Dvalin21/UnifiedComms/releases/tag/v0.1.2
+**Production APK:** app/build/outputs/apk/release/app-release.apk (signed v2, ~10 MB) — GitHub release v0.1.3 at https://github.com/Dvalin21/UnifiedComms/releases/tag/v0.1.3
 
 **Commit summary (this batch):** Full API-to-GUI wiring — PreferencesManager init, SettingsScreen persisted toggles, MessagesScreen/ConversationScreen action dialogs, UnifiedInboxScreen navigation callbacks, CalendarScreen share/edit flows, EncryptionScreen, Clear All Data, About/Reminder dialogs.
