@@ -140,7 +140,12 @@ fun AccountSettingsScreen(
                     subtitle = "Sync email",
                     icon = Icons.Default.Email,
                     trailing = {
-                        Switch(checked = syncEmail, onCheckedChange = { syncEmail = it })
+                        Switch(checked = syncEmail, onCheckedChange = {
+                            syncEmail = it
+                            effectiveScope.launch {
+                                accountState = viewModel.updateAccount(accountState.copy(syncConfig = accountState.syncConfig.copy(syncEmail = it)))
+                            }
+                        })
                     }
                 )
                 HorizontalDivider()
@@ -149,7 +154,12 @@ fun AccountSettingsScreen(
                     subtitle = "Sync calendar",
                     icon = Icons.Default.CalendarMonth,
                     trailing = {
-                        Switch(checked = syncCalendar, onCheckedChange = { syncCalendar = it })
+                        Switch(checked = syncCalendar, onCheckedChange = {
+                            syncCalendar = it
+                            effectiveScope.launch {
+                                accountState = viewModel.updateAccount(accountState.copy(syncConfig = accountState.syncConfig.copy(syncCalendar = it)))
+                            }
+                        })
                     }
                 )
                 HorizontalDivider()
@@ -158,7 +168,12 @@ fun AccountSettingsScreen(
                     subtitle = "Sync tasks",
                     icon = Icons.Default.Checklist,
                     trailing = {
-                        Switch(checked = syncTasks, onCheckedChange = { syncTasks = it })
+                        Switch(checked = syncTasks, onCheckedChange = {
+                            syncTasks = it
+                            effectiveScope.launch {
+                                accountState = viewModel.updateAccount(accountState.copy(syncConfig = accountState.syncConfig.copy(syncTasks = it)))
+                            }
+                        })
                     }
                 )
                 HorizontalDivider()
@@ -167,7 +182,12 @@ fun AccountSettingsScreen(
                     subtitle = "Sync contacts",
                     icon = Icons.Default.AccountCircle,
                     trailing = {
-                        Switch(checked = syncContacts, onCheckedChange = { syncContacts = it })
+                        Switch(checked = syncContacts, onCheckedChange = {
+                            syncContacts = it
+                            effectiveScope.launch {
+                                accountState = viewModel.updateAccount(accountState.copy(syncConfig = accountState.syncConfig.copy(syncContacts = it)))
+                            }
+                        })
                     }
                 )
 
@@ -199,7 +219,9 @@ fun AccountSettingsScreen(
                             checked = isActive,
                             onCheckedChange = {
                                 isActive = it
-                                accountState = accountState.copy(isActive = it)
+                                effectiveScope.launch {
+                                    accountState = viewModel.updateAccount(accountState.copy(isActive = it))
+                                }
                             }
                         )
                     }

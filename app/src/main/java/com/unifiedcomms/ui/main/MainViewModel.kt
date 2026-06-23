@@ -4,6 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.unifiedcomms.UnifiedCommsApplication
 import com.unifiedcomms.data.model.Account
+import com.unifiedcomms.data.model.CalendarEvent
+import com.unifiedcomms.data.model.Message
+import com.unifiedcomms.data.model.Task
 import com.unifiedcomms.data.repository.AccountRepository
 import com.unifiedcomms.data.repository.AccountRepositoryImpl
 import com.unifiedcomms.data.repository.CalendarRepository
@@ -97,6 +100,12 @@ class MainViewModel(
         accountRepo.setDefault(accountId)
     }
 
+    suspend fun updateAccount(account: Account): Account {
+        accountRepo.update(account)
+        loadAccounts()
+        return _accounts.value.find { it.id == account.id } ?: account
+    }
+
     suspend fun syncAllAccounts() {
         _isSyncing.value = true
         _syncProgress.value = 0
@@ -118,6 +127,23 @@ class MainViewModel(
         syncManager.performFullSync(account)
         _isSyncing.value = false
     }
+
+    suspend fun sendMessage(conversationId: String, content: String) {
+        val existing = messagingRepo.getConversationById(conversationId)
+        val message = Message(
+            conversationId = conversationId,
+            senderId = "current_user",
+            recipientId = existing?.participantIds?.firstOrNull { it != "current_user" }.orEmpty(),
+            content = content,
+            sentAt = kotlinx.datetime.Clock.System.now()
+        )
+        messagingRepo.insertMessage(message)
+        messagingRepo.updateLastMessage(conversationId, message, "current_user")
+    }
+
+    suspend fun getEventById(eventId: String): CalendarEvent? = calendarRepo.getEventById(eventId)
+
+    suspend fun getTaskById(taskId: String): Task? = taskRepo.getById(taskId)
 
     fun getAccountColor(accountId: String): com.unifiedcomms.ui.theme.AccountColor {
         return com.unifiedcomms.ui.theme.AccountColors.getColorForAccount(accountId)

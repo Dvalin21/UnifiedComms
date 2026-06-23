@@ -57,7 +57,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 @Composable
@@ -69,6 +71,7 @@ fun MessagesScreen(
     val conversations by viewModel.messagingRepository.getAllConversationsForUser("current_user")
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val displayConversations = remember(conversations) { conversations.map { it.toMockConversation() } }
+    val coroutineScope: kotlinx.coroutines.CoroutineScope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
@@ -189,7 +192,9 @@ fun ConversationScreen(
                     IconButton(
                         onClick = {
                             if (messageText.isNotBlank()) {
-                                // TODO: persist send via repository
+                                kotlinx.coroutines.GlobalScope.launch {
+                                    viewModel.sendMessage(conversationId = conversationId, content = messageText)
+                                }
                                 messageText = ""
                             }
                         },
@@ -381,21 +386,9 @@ data class MockMessage(
     val timestamp: String
 )
 
-fun getMockConversations(): List<MockConversation> = listOf(
-    MockConversation("1", "John Doe", "john@example.com", "Hey! How are you?", "10:30 AM", true, 2, com.unifiedcomms.data.model.ConversationType.DIRECT),
-    MockConversation("2", "Jane Smith", "jane@company.com", "Meeting moved to 3pm", "9:15 AM", false, 0, com.unifiedcomms.data.model.ConversationType.DIRECT),
-    MockConversation("3", "Team UnifiedComms", "team@unifiedcomms.app", "Release v1.0 is live!", "Yesterday", false, 0, com.unifiedcomms.data.model.ConversationType.GROUP),
-    MockConversation("4", "Alice Chen", "alice@startup.io", "Can you review the PR?", "2 days ago", true, 1, com.unifiedcomms.data.model.ConversationType.DIRECT),
-    MockConversation("5", "Support", "support@unifiedcomms.app", "Welcome to UnifiedComms!", "3 days ago", false, 0, com.unifiedcomms.data.model.ConversationType.BROADCAST)
-)
+fun getMockConversations(): List<MockConversation> = emptyList()
 
-fun getMockMessages(conversationId: String): List<MockMessage> = listOf(
-    MockMessage("1", conversationId, "them", "Hey! How are you doing?", false, "10:25 AM"),
-    MockMessage("2", conversationId, "me", "I'm doing great! Thanks for asking.", true, "10:26 AM"),
-    MockMessage("3", conversationId, "them", "That's awesome. Did you see the new calendar feature?", false, "10:27 AM"),
-    MockMessage("4", conversationId, "me", "Yes! The color coding is really nice.", true, "10:28 AM"),
-    MockMessage("5", conversationId, "them", "I agree. Want to test the messaging integration?", false, "10:29 AM")
-)
+fun getMockMessages(conversationId: String): List<MockMessage> = emptyList()
 
 private fun com.unifiedcomms.data.model.Conversation.toMockConversation(messages: List<com.unifiedcomms.data.model.Message> = emptyList()): MockConversation = MockConversation(
     id = id,
