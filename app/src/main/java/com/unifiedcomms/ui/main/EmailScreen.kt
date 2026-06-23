@@ -54,6 +54,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,6 +67,9 @@ import kotlin.math.abs
 
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.unifiedcomms.data.model.Email
+import com.unifiedcomms.data.model.EmailAddress
+import com.unifiedcomms.data.model.EmailRecipients
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -80,6 +84,9 @@ fun EmailScreen(
         .getByAccountAndFolder(accountId, folder, 100, 0)
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val messages = emails.map { it.toEmailMessage() }
+
+    var deleteTarget by remember { mutableStateOf<EmailMessage?>(null) }
+    val coroutineScope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
@@ -99,26 +106,32 @@ fun EmailScreen(
     ) { innerPadding ->
         LazyColumn(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
             items(messages) { message ->
+                var localMessage by remember(message.id) { mutableStateOf(message) }
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { /* open */ },
-                    color = if (message.isUnread) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.surface,
-                    tonalElevation = if (message.isUnread) 1.dp else 0.dp
+                    color = if (localMessage.isUnread) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.surface,
+                    tonalElevation = if (localMessage.isUnread) 1.dp else 0.dp
                 ) {
                     Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
-                            Text(text = message.from.first().uppercase(), fontWeight = FontWeight.Bold, color = Color.White)
+                            Text(text = localMessage.from.first().uppercase(), fontWeight = FontWeight.Bold, color = Color.White)
                         }
                         Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                androidx.compose.material3.Text(text = message.from, fontWeight = if (message.isUnread) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                androidx.compose.material3.Text(text = localMessage.from, fontWeight = if (localMessage.isUnread) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                                 Spacer(modifier = Modifier.width(8.dp))
-                                androidx.compose.material3.Text(text = message.time, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                androidx.compose.material3.Text(text = localMessage.time, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            androidx.compose.material3.Text(text = message.subject, fontWeight = if (message.isUnread) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            androidx.compose.material3.Text(text = message.body, maxLines = 2, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            androidx.compose.material3.Text(text = localMessage.subject, fontWeight = if (localMessage.isUnread) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            androidx.compose.material3.Text(text = localMessage.body, maxLines = 2, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
+                        IconButton(onClick = {
+                            coroutineScope.launch {
+                                viewModel.emailRepository.markAsRead(listOf(message.id))
+                            }
+                        }) { Icon(Icons.Default.Email, contentDescription = "Toggle read") }
                     }
                 }
                 HorizontalDivider()
@@ -139,10 +152,15 @@ data class EmailMessage(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ComposeEmailScreen(onSend: () -> Unit) {
+fun ComposeEmailScreen(
+    accountId: String,
+    viewModel: MainViewModel,
+    onSend: () -> Unit
+) {
     var to by remember { mutableStateOf("") }
     var subject by remember { mutableStateOf("") }
     var body by remember { mutableStateOf("") }
+    val coroutineScope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
@@ -150,7 +168,26 @@ fun ComposeEmailScreen(onSend: () -> Unit) {
                 title = { androidx.compose.material3.Text("New Message") },
                 navigationIcon = { IconButton(onClick = onSend) { Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Cancel") } },
                 actions = {
-                    IconButton(onClick = onSend) { Icon(Icons.AutoMirrored.Default.Send, contentDescription = "Send") }
+                    IconButton(onClick = {
+                        if (to.isNotBlank() && subject.isNotBlank()) {
+                            coroutineScope.launch {
+                                val email = Email(
+                                    accountId = accountId,
+                                    folder = "Sent",
+                                    uid = java.util.UUID.randomUUID().toString(),
+                                    messageId = java.util.UUID.randomUUID().toString(),
+                                    threadId = java.util.UUID.randomUUID().toString(),
+                                    sender = EmailAddress(to, to),
+                                    recipients = EmailRecipients(to = listOf(EmailAddress(to, to))),
+                                    subject = subject,
+                                    bodyText = body,
+                                    sentAt = kotlinx.datetime.Clock.System.now()
+                                )
+                                viewModel.emailRepository.insert(email)
+                                onSend()
+                            }
+                        }
+                    }) { Icon(Icons.Default.Send, contentDescription = "Send") }
                 }
             )
         }

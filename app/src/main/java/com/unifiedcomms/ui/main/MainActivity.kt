@@ -5,7 +5,23 @@ package com.unifiedcomms.ui.main
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.material3.Text
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -19,6 +35,12 @@ class MainActivity : ComponentActivity() {
             UnifiedCommsTheme {
                 val navController = rememberNavController()
                 val viewModel: MainViewModel = viewModel()
+                DisposableEffect(lifecycle, viewModel.syncManagerInstance) {
+                    lifecycle.addObserver(viewModel.syncManagerInstance)
+                    onDispose {
+                        lifecycle.removeObserver(viewModel.syncManagerInstance)
+                    }
+                }
 
                 NavHost(navController, startDestination = "unified_inbox") {
                     composable("unified_inbox") {
@@ -47,8 +69,11 @@ class MainActivity : ComponentActivity() {
                                 onCompose = { navController.navigate("compose_email/$accountId") }
                             )
                     }
-                    composable("compose_email/{accountId}") { _ ->
+                    composable("compose_email/{accountId}") { backStackEntry ->
+                        val accountId = backStackEntry.arguments?.getString("accountId").orEmpty()
                         ComposeEmailScreen(
+                            accountId = accountId,
+                            viewModel = viewModel,
                             onSend = { navController.popBackStack() }
                         )
                     }
@@ -60,15 +85,28 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     composable("create_event") {
+                        val activeAccounts by viewModel.accounts.collectAsStateWithLifecycle()
                         CreateEventScreen(
+                            viewModel = viewModel,
+                            accountId = activeAccounts.filter { it.isActive }.firstOrNull()?.id.orEmpty(),
                             onSave = { navController.popBackStack() }
                         )
                     }
                     composable("event_detail/{eventId}") { backStackEntry ->
                         val eventId = backStackEntry.arguments?.getString("eventId").orEmpty()
-                        EventDetailScreen(
-                            onEdit = { navController.navigate("edit_event/$eventId") }
-                        )
+                        var event by remember { mutableStateOf<com.unifiedcomms.data.model.CalendarEvent?>(null) }
+                        androidx.compose.runtime.LaunchedEffect(eventId) {
+                            event = viewModel.getEventById(eventId)
+                        }
+                        if (event == null) {
+                            Column(modifier = Modifier.fillMaxSize().padding(16.dp)) { Text("Event not found") }
+                        } else {
+                            EventDetailScreen(
+                                event = event!!,
+                                onEdit = { navController.navigate("edit_event/$eventId") },
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
                     }
                     composable("tasks") {
                         TasksScreen(
@@ -78,7 +116,10 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     composable("create_task") {
+                        val activeAccounts by viewModel.accounts.collectAsStateWithLifecycle()
                         CreateTaskScreen(
+                            viewModel = viewModel,
+                            accountId = activeAccounts.filter { it.isActive }.firstOrNull()?.id.orEmpty(),
                             onSave = { navController.popBackStack() }
                         )
                     }
@@ -101,7 +142,8 @@ class MainActivity : ComponentActivity() {
                         SettingsScreen(
                             viewModel = viewModel,
                             onAddAccount = { navController.navigate("add_account") },
-                            onAccountClick = { account -> navController.navigate("account_settings/${account.id}") }
+                            onAccountClick = { account -> navController.navigate("account_settings/${account.id}") },
+                            onBack = { navController.popBackStack() }
                         )
                     }
                     composable("add_account") {
@@ -116,6 +158,34 @@ class MainActivity : ComponentActivity() {
                             viewModel = viewModel,
                             accountId = accountId,
                             onBack = { navController.popBackStack() }
+                        )
+                    }
+                    composable("compose_message") {
+                        val activeAccounts by viewModel.accounts.collectAsStateWithLifecycle()
+                        ComposeEmailScreen(
+                            accountId = activeAccounts.filter { it.isActive }.firstOrNull()?.id.orEmpty(),
+                            viewModel = viewModel,
+                            onSend = { navController.popBackStack() }
+                        )
+                    }
+                    composable("edit_event/{eventId}") { backStackEntry ->
+                        val eventId = backStackEntry.arguments?.getString("eventId").orEmpty()
+                        val accounts by viewModel.accounts.collectAsStateWithLifecycle()
+                        CreateEventScreen(
+                            viewModel = viewModel,
+                            accountId = accounts.firstOrNull()?.id.orEmpty(),
+                            eventId = eventId,
+                            onSave = { navController.popBackStack() }
+                        )
+                    }
+                    composable("task_detail/{taskId}") { backStackEntry ->
+                        val taskId = backStackEntry.arguments?.getString("taskId").orEmpty()
+                        val accounts by viewModel.accounts.collectAsStateWithLifecycle()
+                        CreateTaskScreen(
+                            viewModel = viewModel,
+                            accountId = accounts.firstOrNull()?.id.orEmpty(),
+                            taskId = taskId,
+                            onSave = { navController.popBackStack() }
                         )
                     }
                 }

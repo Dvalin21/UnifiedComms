@@ -80,6 +80,7 @@ None.
 | 1 | Unit test scaffold | COMPLETE | 33 unit tests added (converters, datetime, model, repositories) |
 | 2 | Room migration strategy | COMPLETE | Dotted-path queries fixed, schema JSON emitting, MIGRATION_1_1 registered |
 | 3 | Keystore/signing + target API | COMPLETE | Signing verified (v2 APK), assembleRelease + lintRelease green |
+| QA | Functional audit | COMPLETE | compileDebugKotlin + assembleRelease + lintRelease + testDebugUnitTest all green; APK signed |
 
 ---
 ## 🚀 Resume
@@ -94,3 +95,19 @@ cd ~/host/UnifiedComms
 # Check generated schemas
 find app/schemas -name '*.json' 2>/dev/null
 ```
+
+---
+**Production APK:** `app/build/outputs/apk/release/app-release.apk` (signed v2, ~10 MB) — verified 2026-06-23.
+
+**Commit summary (this batch):** functional audit gap closure — UI/ViewModel persistence wiring, mock data removal, RealDataModel adapters, CalendarEvent detail bindings, StateFlow collectAsStateWithLifecycle migration.
+
+**Modified files (this batch):**
+- AccountSettingsScreen.kt
+- CalendarScreen.kt
+- EmailScreen.kt
+- MainActivity.kt
+- MainViewModel.kt
+- MessagesScreen.kt
+- SettingsScreen.kt
+- TasksScreen.kt
+- UnifiedInboxScreen.kt
