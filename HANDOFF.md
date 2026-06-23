@@ -97,7 +97,7 @@ find app/schemas -name '*.json' 2>/dev/null
 ```
 
 ---
-**Production APK:** `app/build/outputs/apk/release/app-release.apk` (signed v2, ~10 MB) — verified 2026-06-23.
+**Production APK:** app/build/outputs/apk/release/app-release.apk (signed v2, ~10 MB) — GitHub release v0.1.2 at https://github.com/Dvalin21/UnifiedComms/releases/tag/v0.1.2
 
 **Commit summary (this batch):** functional audit gap closure — UI/ViewModel persistence wiring, mock data removal, RealDataModel adapters, CalendarEvent detail bindings, StateFlow collectAsStateWithLifecycle migration.
 
