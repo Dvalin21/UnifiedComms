@@ -2,27 +2,58 @@ package com.unifiedcomms.ui.main
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.unifiedcomms.UnifiedCommsApplication
 import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.repository.AccountRepository
-import com.unifiedcomms.data.repository.EmailRepository
+import com.unifiedcomms.data.repository.AccountRepositoryImpl
 import com.unifiedcomms.data.repository.CalendarRepository
-import com.unifiedcomms.data.repository.TaskRepository
-import com.unifiedcomms.data.repository.MessagingRepository
+import com.unifiedcomms.data.repository.CalendarRepositoryImpl
 import com.unifiedcomms.data.repository.ContactRepository
+import com.unifiedcomms.data.repository.ContactRepositoryImpl
+import com.unifiedcomms.data.repository.EmailRepository
+import com.unifiedcomms.data.repository.EmailRepositoryImpl
+import com.unifiedcomms.data.repository.MessagingRepository
+import com.unifiedcomms.data.repository.MessagingRepositoryImpl
+import com.unifiedcomms.data.repository.TaskRepository
+import com.unifiedcomms.data.repository.TaskRepositoryImpl
+import com.unifiedcomms.security.CryptoManagerImpl
+import com.unifiedcomms.sync.CalendarSyncEngineImpl
+import com.unifiedcomms.sync.ContactSyncEngineImpl
+import com.unifiedcomms.sync.EmailSyncEngineImpl
 import com.unifiedcomms.sync.SyncManager
+import com.unifiedcomms.sync.TaskSyncEngineImpl
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 class MainViewModel(
-    private val accountRepo: AccountRepository,
-    private val emailRepo: EmailRepository,
-    private val calendarRepo: CalendarRepository,
-    private val taskRepo: TaskRepository,
-    private val messagingRepo: MessagingRepository,
-    private val contactRepo: ContactRepository,
-    private val syncManager: SyncManager
+    private val app: UnifiedCommsApplication = UnifiedCommsApplication.getInstance()
 ) : ViewModel() {
+
+    private val accountRepo: AccountRepository = AccountRepositoryImpl(app.database.accountDao())
+    private val emailRepo: EmailRepository = EmailRepositoryImpl(app.database.emailDao())
+    private val calendarRepo: CalendarRepository = CalendarRepositoryImpl(
+        app.database.calendarEventDao(),
+        app.database.calendarDao()
+    )
+    private val taskRepo: TaskRepository = TaskRepositoryImpl(
+        app.database.taskDao(),
+        app.database.taskListDao()
+    )
+    private val messagingRepo: MessagingRepository = MessagingRepositoryImpl(
+        app.database.messageDao(),
+        app.database.conversationDao()
+    )
+    private val contactRepo: ContactRepository = ContactRepositoryImpl(app.database.contactDao())
+    private val crypto = com.unifiedcomms.security.CryptoManagerImpl(app)
+    private val syncManager: SyncManager = SyncManager(
+        EmailSyncEngineImpl(emailRepo, accountRepo, crypto, viewModelScope),
+        CalendarSyncEngineImpl(calendarRepo, accountRepo, crypto, viewModelScope),
+        TaskSyncEngineImpl(taskRepo, accountRepo, crypto, viewModelScope),
+        ContactSyncEngineImpl(contactRepo, accountRepo, crypto, viewModelScope),
+        accountRepo,
+        viewModelScope
+    )
 
     private val _accounts = MutableStateFlow<List<Account>>(emptyList())
     val accounts: StateFlow<List<Account>> = _accounts
