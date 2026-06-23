@@ -63,7 +63,8 @@ import com.unifiedcomms.data.model.Account
 fun SettingsScreen(
     viewModel: MainViewModel,
     onAddAccount: () -> Unit,
-    onAccountClick: (Account) -> Unit
+    onAccountClick: (Account) -> Unit,
+    onBack: () -> Unit
 ) {
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
     val activeAccounts = accounts.filter { it.isActive }
@@ -73,7 +74,7 @@ fun SettingsScreen(
             TopAppBar(
                 title = { Text("Settings", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
-                    IconButton(onClick = { /* TODO: back */ }) {
+                    IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Back")
                     }
                 }

@@ -45,6 +45,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,6 +72,7 @@ fun TasksScreen(
         .collectAsStateWithLifecycle(initialValue = emptyList())
     var displayTasks by remember { mutableStateOf<List<MockTask>>(emptyList()) }
     LaunchedEffect(tasks) { displayTasks = tasks.map { it.toMockTask() } }
+    val coroutineScope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
@@ -121,7 +123,10 @@ fun TasksScreen(
                         task = task,
                         onClick = { onTaskClick(task) },
                         onToggle = {
-                            displayTasks = displayTasks.map { if (it.id == task.id) it.copy(isCompleted = !it.isCompleted) else it }
+                            coroutineScope.launch {
+                                viewModel.taskRepository.markCompleted(task.id, !task.isCompleted)
+                                displayTasks = displayTasks.map { if (it.id == task.id) it.copy(isCompleted = !task.isCompleted) else it }
+                            }
                         }
                     )
                     HorizontalDivider()
@@ -253,15 +258,7 @@ val MockTask.isOverdue: Boolean
 val MockTask.priorityColor: Color
     get() = priority.color
 
-fun getMockTasks(): List<MockTask> = listOf(
-    MockTask("1", "Review pull request #42", "Check the new sync engine implementation", false, false, LocalDate.now().plusDays(1), TaskPriority.HIGH),
-    MockTask("2", "Buy groceries", "Milk, eggs, bread, fruits", false, true, LocalDate.now(), TaskPriority.NORMAL),
-    MockTask("3", "Schedule dentist appointment", "Call Dr. Smith's office", false, false, LocalDate.now().plusDays(3), TaskPriority.LOW),
-    MockTask("4", "Finish project proposal", "Complete the Q4 budget proposal", true, false, LocalDate.now().minusDays(2), TaskPriority.URGENT),
-    MockTask("5", "Call mom", "Check in on her", false, false, LocalDate.now(), TaskPriority.NORMAL),
-    MockTask("6", "Refactor sync engine", "Move to Kotlin Flow and Room", false, false, LocalDate.now().plusDays(7), TaskPriority.HIGH, true, 5, 2, "Work"),
-    MockTask("7", "Plan weekend trip", "Research destinations and book hotel", false, true, LocalDate.now().plusDays(10), TaskPriority.LOW)
-)
+fun getMockTasks(): List<MockTask> = emptyList()
 
 private fun com.unifiedcomms.data.model.Task.toMockTask(): MockTask = MockTask(
     id = id,
@@ -287,20 +284,67 @@ private fun com.unifiedcomms.data.model.Task.toMockTask(): MockTask = MockTask(
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun CreateTaskScreen(
+    viewModel: MainViewModel,
+    accountId: String,
+    taskId: String? = null,
     onSave: () -> Unit
 ) {
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
-    var dueDate by remember { mutableStateOf<LocalDate?>(LocalDate.now().plusDays(1)) }
+    var dueDate by remember { mutableStateOf<java.time.LocalDate?>(java.time.LocalDate.now().plusDays(1)) }
     var priority by remember { mutableStateOf(TaskPriority.NORMAL) }
     var listName by remember { mutableStateOf("Personal") }
+    val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(taskId) {
+        if (taskId != null) {
+            val existing = viewModel.getTaskById(taskId)
+            if (existing != null) {
+                title = existing.title
+                description = existing.description ?: ""
+                dueDate = existing.dueAt?.date?.let { java.time.LocalDate.of(it.year, it.monthNumber, it.dayOfMonth) }
+                priority = when (existing.priority) {
+                    com.unifiedcomms.data.model.TaskPriority.LOW -> TaskPriority.LOW
+                    com.unifiedcomms.data.model.TaskPriority.MEDIUM -> TaskPriority.NORMAL
+                    com.unifiedcomms.data.model.TaskPriority.HIGH -> TaskPriority.HIGH
+                    com.unifiedcomms.data.model.TaskPriority.URGENT -> TaskPriority.URGENT
+                    else -> TaskPriority.NORMAL
+                }
+                listName = existing.listId
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Create Task") },
+                title = { Text(if (taskId == null) "Create Task" else "Edit Task") },
                 navigationIcon = { IconButton(onClick = onSave) { Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Cancel") } },
-                actions = { IconButton(onClick = onSave) { Icon(Icons.Default.Save, contentDescription = "Save") } }
+                actions = {
+                    IconButton(onClick = {
+                        if (title.isNotBlank()) {
+                            coroutineScope.launch {
+                                val task = com.unifiedcomms.data.model.Task(
+                                    id = taskId ?: java.util.UUID.randomUUID().toString(),
+                                    accountId = accountId,
+                                    listId = listName,
+                                    uid = taskId ?: java.util.UUID.randomUUID().toString(),
+                                    title = title,
+                                    description = description.takeIf { it.isNotBlank() },
+                                    priority = when (priority) {
+                                        TaskPriority.LOW -> com.unifiedcomms.data.model.TaskPriority.LOW
+                                        TaskPriority.NORMAL -> com.unifiedcomms.data.model.TaskPriority.MEDIUM
+                                        TaskPriority.HIGH -> com.unifiedcomms.data.model.TaskPriority.HIGH
+                                        TaskPriority.URGENT -> com.unifiedcomms.data.model.TaskPriority.URGENT
+                                    },
+                                    dueAt = dueDate?.let { com.unifiedcomms.data.model.TaskDateTime(date = kotlinx.datetime.LocalDate(it.year, it.monthValue, it.dayOfMonth)) }
+                                )
+                                if (taskId == null) viewModel.taskRepository.insert(task) else viewModel.taskRepository.update(task)
+                                onSave()
+                            }
+                        }
+                    }) { Icon(Icons.Default.Save, contentDescription = "Save") }
+                }
             )
         }
     ) { innerPadding ->

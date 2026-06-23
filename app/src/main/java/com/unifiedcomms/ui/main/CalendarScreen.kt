@@ -57,6 +57,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
@@ -67,9 +68,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.abs
-import java.time.ZoneId
+import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
+import java.time.ZoneId
 import com.unifiedcomms.data.model.CalendarEvent
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -336,7 +339,12 @@ fun EventChip(event: MockEvent, compact: Boolean = false, onClick: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CreateEventScreen(onSave: () -> Unit) {
+fun CreateEventScreen(
+    viewModel: MainViewModel,
+    accountId: String,
+    eventId: String? = null,
+    onSave: () -> Unit
+) {
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var location by remember { mutableStateOf("") }
@@ -344,6 +352,7 @@ fun CreateEventScreen(onSave: () -> Unit) {
     var isAllDay by remember { mutableStateOf(false) }
     var selectedColor by remember { mutableStateOf(0xFFE57373) }
     var showDatePicker by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
 
     val dateState = rememberDatePickerState(initialSelectedDateMillis = selectedDate.toEpochDay() * 86400000)
 
@@ -353,9 +362,47 @@ fun CreateEventScreen(onSave: () -> Unit) {
                 title = { Text("Create Event") },
                 navigationIcon = { IconButton(onClick = onSave) { Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Cancel") } },
                 actions = {
-                    IconButton(onClick = { onSave() }) {
-                        Icon(Icons.Default.Save, contentDescription = "Save")
-                    }
+                    IconButton(onClick = {
+                        if (title.isNotBlank()) {
+                            coroutineScope.launch {
+                                val event = com.unifiedcomms.data.model.CalendarEvent(
+                                    accountId = accountId,
+                                    calendarId = accountId,
+                                    uid = java.util.UUID.randomUUID().toString(),
+                                    title = title,
+                                    description = description.takeIf { it.isNotBlank() },
+                                    location = location.takeIf { it.isNotBlank() },
+                                    startAt = com.unifiedcomms.data.model.EventDateTime(
+                                        dateTime = kotlinx.datetime.LocalDateTime(
+                                            selectedDate.year,
+                                            selectedDate.monthValue,
+                                            selectedDate.dayOfMonth,
+                                            9,
+                                            0
+                                        ),
+                                        date = kotlinx.datetime.LocalDate(selectedDate.year, selectedDate.monthValue, selectedDate.dayOfMonth),
+                                        timeZone = kotlinx.datetime.TimeZone.currentSystemDefault().id,
+                                        isAllDay = isAllDay
+                                    ),
+                                    endAt = com.unifiedcomms.data.model.EventDateTime(
+                                        dateTime = kotlinx.datetime.LocalDateTime(
+                                            selectedDate.year,
+                                            selectedDate.monthValue,
+                                            selectedDate.dayOfMonth,
+                                            10,
+                                            0
+                                        ),
+                                        date = kotlinx.datetime.LocalDate(selectedDate.year, selectedDate.monthValue, selectedDate.dayOfMonth),
+                                        timeZone = kotlinx.datetime.TimeZone.currentSystemDefault().id,
+                                        isAllDay = isAllDay
+                                    ),
+                                    color = com.unifiedcomms.data.model.EventColor.fromInt(selectedColor.toInt())
+                                )
+                                viewModel.calendarRepository.insertEvent(event)
+                                onSave()
+                            }
+                        }
+                    }) { Icon(Icons.Default.Save, contentDescription = "Save") }
                 }
             )
         }
@@ -417,12 +464,23 @@ fun CreateEventScreen(onSave: () -> Unit) {
 }
 
 @Composable
-fun EventDetailScreen(onEdit: () -> Unit) {
+fun EventDetailScreen(
+    event: CalendarEvent,
+    onEdit: () -> Unit,
+    onBack: () -> Unit
+) {
+    val fmt = java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy h:mm a")
+    val startZoned = java.time.Instant.ofEpochMilli(event.startAt.toInstant(kotlinx.datetime.TimeZone.of(event.timezone)).toEpochMilliseconds())
+        .atZone(java.time.ZoneId.of(event.timezone))
+    val endZoned = java.time.Instant.ofEpochMilli(event.endAt.toInstant(kotlinx.datetime.TimeZone.of(event.timezone)).toEpochMilliseconds())
+        .atZone(java.time.ZoneId.of(event.timezone))
+    val range = "${fmt.format(startZoned)} - ${fmt.format(endZoned)}"
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Event Details") },
-                navigationIcon = { IconButton(onClick = onEdit) { Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Back") } },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Back") } },
                 actions = {
                     IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, contentDescription = "Edit") }
                     IconButton(onClick = { /* Share */ }) { Icon(Icons.Default.Share, contentDescription = "Share") }
@@ -440,17 +498,21 @@ fun EventDetailScreen(onEdit: () -> Unit) {
                 color = MaterialTheme.colorScheme.surfaceContainerHighest
             ) {
                 Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(text = "Team Meeting", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                    Text(text = "Tomorrow, 10:00 AM - 11:00 AM", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(text = "Conference Room A", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(text = event.title, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                    Text(text = range, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (!event.location.isNullOrBlank()) Text(text = event.location, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     HorizontalDivider()
-                    Text(text = "Attendees:", fontWeight = FontWeight.Bold)
-                    listOf("alice@company.com", "bob@company.com", "charlie@company.com").forEach { email ->
-                        Text(text = "• " + email)
+                    if (event.attendees.isNotEmpty()) {
+                        Text(text = "Attendees:", fontWeight = FontWeight.Bold)
+                        event.attendees.forEach { att ->
+                            Text(text = "• ${att.name ?: att.email}")
+                        }
+                        HorizontalDivider()
                     }
-                    HorizontalDivider()
-                    Text(text = "Description:", fontWeight = FontWeight.Bold)
-                    Text(text = "Weekly team sync to discuss project progress and blockers.")
+                    if (!event.description.isNullOrBlank()) {
+                        Text(text = "Description:", fontWeight = FontWeight.Bold)
+                        Text(text = event.description)
+                    }
                 }
             }
         }
