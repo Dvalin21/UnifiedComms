@@ -3,7 +3,7 @@
 **Repository:** https://github.com/Dvalin21/UnifiedComms
 **Branch:** master
 **Working directory:** `~/host/UnifiedComms/`
-**Local HEAD:** `80bc101`
+**Local HEAD:** `0b40991`
 
 ---
 ## Executive Summary
@@ -99,15 +99,4 @@ find app/schemas -name '*.json' 2>/dev/null
 ---
 **Production APK:** app/build/outputs/apk/release/app-release.apk (signed v2, ~10 MB) — GitHub release v0.1.2 at https://github.com/Dvalin21/UnifiedComms/releases/tag/v0.1.2
 
-**Commit summary (this batch):** functional audit gap closure — UI/ViewModel persistence wiring, mock data removal, RealDataModel adapters, CalendarEvent detail bindings, StateFlow collectAsStateWithLifecycle migration.
-
-**Modified files (this batch):**
-- AccountSettingsScreen.kt
-- CalendarScreen.kt
-- EmailScreen.kt
-- MainActivity.kt
-- MainViewModel.kt
-- MessagesScreen.kt
-- SettingsScreen.kt
-- TasksScreen.kt
-- UnifiedInboxScreen.kt
+**Commit summary (this batch):** Full API-to-GUI wiring — PreferencesManager init, SettingsScreen persisted toggles, MessagesScreen/ConversationScreen action dialogs, UnifiedInboxScreen navigation callbacks, CalendarScreen share/edit flows, EncryptionScreen, Clear All Data, About/Reminder dialogs.

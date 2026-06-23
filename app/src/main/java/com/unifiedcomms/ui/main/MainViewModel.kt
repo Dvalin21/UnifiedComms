@@ -3,6 +3,7 @@ package com.unifiedcomms.ui.main
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.unifiedcomms.UnifiedCommsApplication
+import com.unifiedcomms.data.db.UnifiedCommsDatabase
 import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.model.CalendarEvent
 import com.unifiedcomms.data.model.Message
@@ -27,6 +28,7 @@ import com.unifiedcomms.sync.SyncManager
 import com.unifiedcomms.sync.TaskSyncEngineImpl
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class MainViewModel(
@@ -147,6 +149,12 @@ class MainViewModel(
 
     fun getAccountColor(accountId: String): com.unifiedcomms.ui.theme.AccountColor {
         return com.unifiedcomms.ui.theme.AccountColors.getColorForAccount(accountId)
+    }
+
+    fun clearAllData() {
+        viewModelScope.launch(Dispatchers.IO) {
+            UnifiedCommsDatabase.getInstance(app).clearAllTables()
+        }
     }
 
     // Repository accessors for screens

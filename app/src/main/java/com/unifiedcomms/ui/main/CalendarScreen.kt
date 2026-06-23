@@ -79,7 +79,7 @@ import kotlinx.coroutines.launch
 fun CalendarScreen(
     viewModel: MainViewModel,
     onCreateEvent: () -> Unit,
-    onEventClick: (MockEvent) -> Unit
+    onEventClick: (String) -> Unit
 ) {
     var selectedView by remember { mutableStateOf(CalendarView.MONTH) }
     val currentDate = remember { mutableStateOf(java.time.LocalDate.now()) }
@@ -137,7 +137,7 @@ enum class CalendarView { DAY, WEEK, MONTH }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DayView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick: (MockEvent) -> Unit) {
+fun DayView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick: (String) -> Unit) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text(text = "Day View: ${date.dayOfWeek}, ${date.month} ${date.dayOfMonth}", fontSize = 18.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(16.dp))
@@ -151,7 +151,7 @@ fun DayView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick
             ) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     dayEvents.forEach { event ->
-                        EventChip(event = event.toMockEvent(), onClick = { onEventClick(event.toMockEvent()) })
+                        EventChip(event = event.toMockEvent(), onClick = { onEventClick(event.id) })
                     }
                 }
             }
@@ -161,7 +161,7 @@ fun DayView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WeekView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick: (MockEvent) -> Unit) {
+fun WeekView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick: (String) -> Unit) {
     val weekStart = date.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
@@ -183,7 +183,7 @@ fun WeekView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClic
                     val dayEvents = events.filter { isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), day) }
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         dayEvents.take(3).forEach { event ->
-                            EventChip(event = event.toMockEvent(), onClick = { onEventClick(event.toMockEvent()) })
+                            EventChip(event = event.toMockEvent(), onClick = { onEventClick(event.id) })
                         }
                         if (dayEvents.size > 3) {
                             Text(text = "+${dayEvents.size - 3} more", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -197,7 +197,7 @@ fun WeekView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClic
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onEventClick: (MockEvent) -> Unit) {
+fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onEventClick: (String) -> Unit) {
     val firstOfMonth = date.withDayOfMonth(1)
     val dayOfWeekOffset = firstOfMonth.dayOfWeek.value - 1 // Monday = 0
     val daysInMonth = firstOfMonth.lengthOfMonth()
@@ -244,13 +244,13 @@ fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onEvent
                                 )
                                 .padding(4.dp),
                             shape = RoundedCornerShape(8.dp),
-                            onClick = { val first = events.firstOrNull(); if (first != null) onEventClick(first.toMockEvent()) }
+                            onClick = { val first = events.firstOrNull(); if (first != null) onEventClick(first.id) }
                         ) {
                             Column(modifier = Modifier.fillMaxSize().padding(4.dp), verticalArrangement = Arrangement.Top) {
                                 Text(text = cellDate?.dayOfMonth?.toString() ?: "", fontSize = 12.sp, fontWeight = if (cellDate == java.time.LocalDate.now()) FontWeight.Bold else FontWeight.Normal)
                                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     events.take(3).forEach { event ->
-                                        EventChip(event = event.toMockEvent(), compact = true, onClick = { onEventClick(event.toMockEvent()) })
+                                        EventChip(event = event.toMockEvent(), compact = true, onClick = { onEventClick(event.id) })
                                     }
                                     if (events.size > 3) {
                                         Text(text = "+${events.size - 3}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -467,7 +467,8 @@ fun CreateEventScreen(
 fun EventDetailScreen(
     event: CalendarEvent,
     onEdit: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onShare: () -> Unit = {}
 ) {
     val fmt = java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy h:mm a")
     val startZoned = java.time.Instant.ofEpochMilli(event.startAt.toInstant(kotlinx.datetime.TimeZone.of(event.timezone)).toEpochMilliseconds())
@@ -483,7 +484,7 @@ fun EventDetailScreen(
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Back") } },
                 actions = {
                     IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, contentDescription = "Edit") }
-                    IconButton(onClick = { /* Share */ }) { Icon(Icons.Default.Share, contentDescription = "Share") }
+                    IconButton(onClick = onShare) { Icon(Icons.Default.Share, contentDescription = "Share") }
                 }
             )
         }
