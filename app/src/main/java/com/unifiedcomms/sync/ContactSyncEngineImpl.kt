@@ -30,7 +30,7 @@ class ContactSyncEngineImpl(
             try {
                 updateProgress(account.id, null, SyncStage.CONNECTING, 0, 0)
 
-                val contacts = fetchContactsFromServer()
+                val contacts = fetchContactsFromServer(account)
                 updateProgress(account.id, null, SyncStage.FETCHING_HEADERS, 0, contacts.size)
 
                 var synced = 0
@@ -77,9 +77,35 @@ class ContactSyncEngineImpl(
         }
     }
 
-    private fun fetchContactsFromServer(): List<UnifiedContact> {
-        // CardDAV, Google People API, Exchange
-        return emptyList()
+    private fun fetchContactsFromServer(account: Account): List<UnifiedContact> {
+        val carddavUrl = account.serverConfig.carddavUrl ?: return emptyList()
+        return try {
+            val url = java.net.URL("$carddavUrl/")
+            val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+                requestMethod = "PROPFIND"
+                setRequestProperty("Depth", "1")
+                setRequestProperty("Content-Type", "application/xml; charset=utf-8")
+                doOutput = true
+            }
+            val body = """<?xml version="1.0" encoding="UTF-8"?><D:propfind xmlns:D="DAV:"><D:prop><D:displayname/><D:resourcetype/></D:prop></D:propfind>""".toByteArray()
+            conn.outputStream.use { it.write(body) }
+            val code = conn.responseCode
+            if (code !in 200..299) return emptyList()
+            val xml = conn.inputStream.bufferedReader().use { it.readText() }
+            val hrefs = Regex("<[^>]*href([^>]*)?>([^<]*)</[^>]*href\\1?>", RegexOption.IGNORE_CASE).findAll(xml).map { it.groupValues.last().trim() }.toList()
+            hrefs.mapIndexed { idx, href ->
+                UnifiedContact(
+                    id = java.util.UUID.randomUUID().toString(),
+                    emails = emptyList(),
+                    phoneNumbers = emptyList(),
+                    displayName = href.substringAfterLast('/').ifBlank { "Contact $idx" },
+                    source = com.unifiedcomms.data.model.ContactSource.CARDDAV,
+                    accountId = account.id
+                )
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
     override suspend fun fetchContact(account: Account, serverId: String): UnifiedContact? = null
