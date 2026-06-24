@@ -37,7 +37,7 @@ data class Account(
                 email = email,
                 accountType = AccountType.GOOGLE,
                 serverConfig = ServerConfig.GoogleDefaults(),
-                authConfig = AuthConfig.OAuth2(),
+                authConfig = AuthConfig.Password(username = email, password = ""),
                 syncConfig = SyncConfig.Defaults(),
                 uiConfig = UIConfig.Defaults()
             )
@@ -73,7 +73,7 @@ data class Account(
                 email = email,
                 accountType = AccountType.EXCHANGE,
                 serverConfig = ServerConfig.ExchangeDefaults(serverUrl),
-                authConfig = AuthConfig.OAuth2(),
+                authConfig = AuthConfig.Password(username = email, password = ""),
                 syncConfig = SyncConfig.Defaults(),
                 uiConfig = UIConfig.Defaults()
             )

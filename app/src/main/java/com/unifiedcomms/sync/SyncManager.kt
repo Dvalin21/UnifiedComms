@@ -77,50 +77,51 @@ class SyncManager(
     suspend fun performFullSync(account: Account): SyncResult {
         updateState(account.id) { it.copy(isSyncing = true, lastError = null) }
 
-        val results = mutableListOf<SyncResult>()
+        var totalSynced = 0
         val startTime = System.currentTimeMillis()
+        var failed = false
+        var errorMessage: String? = null
 
-        try {
-            if (account.syncConfig.syncEmail) {
-                val result = emailSync.syncAccount(account)
-                results.add(result)
-                if (!result.success) throw SyncException("Email sync failed: ${result.errorMessage}")
-            }
-
-            if (account.syncConfig.syncCalendar) {
-                val result = calendarSync.syncAccount(account)
-                results.add(result)
-                if (!result.success) throw SyncException("Calendar sync failed: ${result.errorMessage}")
-            }
-
-            if (account.syncConfig.syncTasks) {
-                val result = taskSync.syncAccount(account)
-                results.add(result)
-                if (!result.success) throw SyncException("Task sync failed: ${result.errorMessage}")
-            }
-
-            if (account.syncConfig.syncContacts) {
-                val result = contactSync.syncAccount(account)
-                results.add(result)
-                if (!result.success) throw SyncException("Contact sync failed: ${result.errorMessage}")
-            }
-
-            val totalSynced = results.sumOf { it.itemsSynced }
-            updateState(account.id) {
-                it.copy(
-                    isSyncing = false,
-                    lastSync = startTime,
-                    lastError = null
-                )
-            }
-            return SyncResult.success(totalSynced)
-
-        } catch (e: Exception) {
-            updateState(account.id) {
-                it.copy(isSyncing = false, lastError = e.message)
-            }
-            return SyncResult.failure(e.message ?: "Unknown sync error")
+        if (account.syncConfig.syncEmail) {
+            val result = emailSync.syncAccount(account)
+            if (!result.success) {
+                failed = true
+                errorMessage = result.errorMessage ?: "Email sync failed"
+            } else totalSynced += result.itemsSynced
         }
+
+        if (account.syncConfig.syncCalendar) {
+            val result = calendarSync.syncAccount(account)
+            if (!result.success) {
+                failed = true
+                errorMessage = (errorMessage ?: "") + if (errorMessage.isNullOrBlank().not()) "; Calendar sync failed: ${result.errorMessage}" else "Calendar sync failed: ${result.errorMessage}"
+            } else totalSynced += result.itemsSynced
+        }
+
+        if (account.syncConfig.syncTasks) {
+            val result = taskSync.syncAccount(account)
+            if (!result.success) {
+                failed = true
+                errorMessage = (errorMessage ?: "") + if (errorMessage.isNullOrBlank().not()) "; Task sync failed: ${result.errorMessage}" else "Task sync failed: ${result.errorMessage}"
+            } else totalSynced += result.itemsSynced
+        }
+
+        if (account.syncConfig.syncContacts) {
+            val result = contactSync.syncAccount(account)
+            if (!result.success) {
+                failed = true
+                errorMessage = (errorMessage ?: "") + if (errorMessage.isNullOrBlank().not()) "; Contact sync failed: ${result.errorMessage}" else "Contact sync failed: ${result.errorMessage}"
+            } else totalSynced += result.itemsSynced
+        }
+
+        updateState(account.id) {
+            it.copy(
+                isSyncing = false,
+                lastSync = startTime,
+                lastError = if (failed) errorMessage else null
+            )
+        }
+        return if (failed) SyncResult.failure(errorMessage ?: "Sync failed") else SyncResult.success(totalSynced)
     }
 
     suspend fun syncEmail(account: Account, folder: String? = null): SyncResult {
