@@ -143,6 +143,8 @@ fun ConversationScreen(
         )
     }
 
+    val coroutineScope = rememberCoroutineScope()
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -215,8 +217,11 @@ fun ConversationScreen(
                     IconButton(
                         onClick = {
                             if (messageText.isNotBlank()) {
-                                kotlinx.coroutines.GlobalScope.launch {
-                                    viewModel.sendMessage(conversationId = conversationId, content = messageText)
+                                coroutineScope.launch {
+                                    viewModel.sendMessage(
+                                        conversationId = conversationId,
+                                        content = messageText
+                                    )
                                 }
                                 messageText = ""
                             }
