@@ -1,6 +1,11 @@
 package com.unifiedcomms.ui.main
-import androidx.compose.material.icons.filled.ArrowBack
+
+import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Reply
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Search
 
 import androidx.compose.foundation.background
@@ -19,13 +24,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -34,22 +35,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AttachFile
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.Checklist
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Email
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Reply
-import androidx.compose.material.icons.automirrored.filled.Reply
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -92,8 +77,12 @@ fun EmailScreen(
         topBar = {
             TopAppBar(
                 title = { androidx.compose.material3.Text("Unified Inbox", fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Back")
+                    }
+                },
                 actions = {
-                    IconButton(onClick = onNavigateBack) { Icon(Icons.Default.Search, contentDescription = "Search") }
                     IconButton(onClick = onCompose) { Icon(Icons.Default.Add, contentDescription = "Compose") }
                 }
             )
@@ -166,7 +155,11 @@ fun ComposeEmailScreen(
         topBar = {
             TopAppBar(
                 title = { androidx.compose.material3.Text("New Message") },
-                navigationIcon = { IconButton(onClick = onSend) { Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Cancel") } },
+                navigationIcon = {
+                    IconButton(onClick = onSend) {
+                        Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Cancel")
+                    }
+                },
                 actions = {
                     IconButton(onClick = {
                         if (to.isNotBlank() && subject.isNotBlank()) {
@@ -187,7 +180,7 @@ fun ComposeEmailScreen(
                                 onSend()
                             }
                         }
-                    }) { Icon(Icons.Default.Send, contentDescription = "Send") }
+                    }) { Icon(Icons.AutoMirrored.Default.Send, contentDescription = "Send") }
                 }
             )
         }
@@ -199,16 +192,6 @@ fun ComposeEmailScreen(
         }
     }
 }
-
-
-
-fun getMockEmails(): List<EmailMessage> = listOf(
-    EmailMessage("1", "Alice Johnson", "Project Update - Q4 Goals", "Hi team, just wanted to share the latest updates on our Q4 objectives...", "10:30 AM", true, Color(0xFF6750A4)),
-    EmailMessage("2", "Bob Smith", "Meeting Scheduled for Tomorrow", "Hi, I've scheduled our weekly sync for tomorrow at 2 PM...", "9:15 AM", false, Color(0xFF625B71)),
-    EmailMessage("3", "Charlie Brown", "New Feature Request", "I've been thinking about a new feature that could really improve our workflow...", "Yesterday", false, Color(0xFF7D5260)),
-    EmailMessage("4", "Diana Prince", "Bug Fix Deployed", "The fix for the authentication issue has been deployed to production...", "2 days ago", true, Color(0xFF9C27B0)),
-    EmailMessage("5", "UnifiedComms Team", "Welcome to UnifiedComms!", "Welcome to your new unified communication platform...", "3 days ago", false, Color(0xFFB00020))
-)
 
 private fun Email.toEmailMessage(): EmailMessage {
     val formatter = java.time.format.DateTimeFormatter.ofPattern("h:mm a")
@@ -223,6 +206,6 @@ private fun Email.toEmailMessage(): EmailMessage {
         body = bodyText.orEmpty().take(120),
         time = formatter.format(ldt),
         isUnread = isUnread(),
-        accountColor = androidx.compose.ui.graphics.Color.Unspecified
+        accountColor = Color.Unspecified
     )
 }
