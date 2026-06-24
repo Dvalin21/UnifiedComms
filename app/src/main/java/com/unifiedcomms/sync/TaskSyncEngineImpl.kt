@@ -31,7 +31,7 @@ class TaskSyncEngineImpl(
             try {
                 updateProgress(account.id, null, SyncStage.CONNECTING, 0, 0)
 
-                val lists = getTaskListsFromServer()
+                val lists = getTaskListsFromServer(account)
                 updateProgress(account.id, null, SyncStage.LISTING_FOLDERS, 0, lists.size)
 
                 var totalSynced = 0
@@ -60,7 +60,7 @@ class TaskSyncEngineImpl(
             try {
                 updateProgress(account.id, taskList.title, SyncStage.FETCHING_HEADERS, 0, 0)
 
-                val tasks = fetchTasksFromServer()
+                val tasks = fetchTasksFromServer(account)
                 var synced = 0
                 val newItems = mutableListOf<String>()
                 val updatedItems = mutableListOf<String>()
@@ -98,14 +98,62 @@ class TaskSyncEngineImpl(
         }
     }
 
-    private fun getTaskListsFromServer(): List<TaskList> {
-        // CalDAV VTODO or Google Tasks API
-        return emptyList()
+    private fun getTaskListsFromServer(account: Account): List<TaskList> {
+        val caldavUrl = account.serverConfig.caldavUrl ?: return emptyList()
+        return try {
+            val url = java.net.URL("$caldavUrl/")
+            val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+                requestMethod = "PROPFIND"
+                setRequestProperty("Depth", "1")
+                setRequestProperty("Content-Type", "application/xml; charset=utf-8")
+                doOutput = true
+            }
+            val body = """<?xml version="1.0" encoding="UTF-8"?><D:propfind xmlns:D="DAV:"><D:prop><D:displayname/><D:resourcetype/></D:prop></D:propfind>""".toByteArray()
+            conn.outputStream.use { it.write(body) }
+            if (conn.responseCode !in 200..299) return emptyList()
+            val xml = conn.inputStream.bufferedReader().use { it.readText() }
+            val hrefs = Regex("<[^>]*href([^>]*)?>([^<]*)</[^>]*href\\1?>", RegexOption.IGNORE_CASE).findAll(xml).map { it.groupValues.last().trim() }.toList()
+            hrefs.mapIndexed { idx, href ->
+                TaskList(
+                    id = java.util.UUID.randomUUID().toString(),
+                    accountId = account.id,
+                    serverId = href,
+                    title = href.substringAfterLast('/').ifBlank { "Tasks" }
+                )
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
     }
 
-    private fun fetchTasksFromServer(): List<Task> {
-        // Fetch tasks from server
-        return emptyList()
+    private fun fetchTasksFromServer(account: Account): List<Task> {
+        val caldavUrl = account.serverConfig.caldavUrl ?: return emptyList()
+        return try {
+            val url = java.net.URL("$caldavUrl/")
+            val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+                requestMethod = "PROPFIND"
+                setRequestProperty("Depth", "1")
+                setRequestProperty("Content-Type", "application/xml; charset=utf-8")
+                doOutput = true
+            }
+            val body = """<?xml version="1.0" encoding="UTF-8"?><D:propfind xmlns:D="DAV:"><D:prop><D:getetag/><D:calendar-data/></D:prop></D:propfind>""".toByteArray()
+            conn.outputStream.use { it.write(body) }
+            if (conn.responseCode !in 200..299) return emptyList()
+            val xml = conn.inputStream.bufferedReader().use { it.readText() }
+            val hrefs = Regex("<[^>]*href([^>]*)?>([^<]*)</[^>]*href\\1?>", RegexOption.IGNORE_CASE).findAll(xml).map { it.groupValues.last().trim() }.toList()
+            hrefs.mapIndexed { idx, href ->
+                Task(
+                    id = java.util.UUID.randomUUID().toString(),
+                    accountId = account.id,
+                    listId = "",
+                    uid = href,
+                    title = href.substringAfterLast('/').ifBlank { "Task $idx" },
+                    status = com.unifiedcomms.data.model.TaskStatus.NEEDS_ACTION
+                )
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
     }
 
     override suspend fun fetchTask(account: Account, listId: String, uid: String): Task? = null

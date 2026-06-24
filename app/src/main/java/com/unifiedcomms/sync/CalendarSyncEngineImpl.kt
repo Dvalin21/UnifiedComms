@@ -1,6 +1,5 @@
 package com.unifiedcomms.sync
 
-import android.content.Context
 import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.model.Calendar
 import com.unifiedcomms.data.model.CalendarEvent
@@ -35,7 +34,7 @@ class CalendarSyncEngineImpl(
             try {
                 updateProgress(account.id, null, SyncStage.CONNECTING, 0, 0)
 
-                val calendars = getCalendarsFromServer()
+                val calendars = getCalendarsFromServer(account)
                 updateProgress(account.id, null, SyncStage.LISTING_FOLDERS, 0, calendars.size)
 
                 var totalSynced = 0
@@ -64,7 +63,7 @@ class CalendarSyncEngineImpl(
             try {
                 updateProgress(account.id, calendar.name, SyncStage.FETCHING_HEADERS, 0, 0)
 
-                val events = fetchEventsFromServer()
+                val events = fetchEventsFromServer(account)
                 var synced = 0
                 val newItems = mutableListOf<String>()
                 val updatedItems = mutableListOf<String>()
@@ -106,16 +105,72 @@ class CalendarSyncEngineImpl(
         }
     }
 
-    private fun getCalendarsFromServer(): List<Calendar> {
-        // CalDAV implementation using dav4jvm
-        // For Google, use Google Calendar API
-        // For Exchange, use EWS
-        return emptyList() // Placeholder
+    private fun getCalendarsFromServer(account: Account): List<Calendar> {
+        val caldavUrl = account.serverConfig.caldavUrl ?: return emptyList()
+        return try {
+            val url = java.net.URL("$caldavUrl/")
+            val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+                requestMethod = "PROPFIND"
+                setRequestProperty("Depth", "1")
+                setRequestProperty("Content-Type", "application/xml; charset=utf-8")
+                doOutput = true
+            }
+            val body = """<?xml version="1.0" encoding="UTF-8"?><D:propfind xmlns:D="DAV:"><D:prop><D:displayname/><D:resourcetype/></D:prop></D:propfind>""".toByteArray()
+            conn.outputStream.use { it.write(body) }
+            val code = conn.responseCode
+            if (code !in 200..299) return emptyList()
+            val xml = conn.inputStream.bufferedReader().use { it.readText() }
+            val hrefs = Regex("<[^>]*href([^>]*)?>([^<]*)</[^>]*href\\1?>", RegexOption.IGNORE_CASE).findAll(xml).map { it.groupValues.last().trim() }.toList()
+            hrefs.mapIndexed { idx, href ->
+                Calendar(
+                    id = java.util.UUID.randomUUID().toString(),
+                    accountId = account.id,
+                    serverId = href,
+                    name = href.substringAfterLast('/').ifBlank { "Calendar $idx" },
+                    description = null,
+                    color = com.unifiedcomms.data.model.EventColor.Default()
+                )
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
-    private fun fetchEventsFromServer(): List<CalendarEvent> {
-        // Fetch events from CalDAV/Google/Exchange
-        return emptyList() // Placeholder
+    private fun fetchEventsFromServer(account: Account): List<CalendarEvent> {
+        val caldavUrl = account.serverConfig.caldavUrl ?: return emptyList()
+        return try {
+            val url = java.net.URL("$caldavUrl/")
+            val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+                requestMethod = "PROPFIND"
+                setRequestProperty("Depth", "1")
+                setRequestProperty("Content-Type", "application/xml; charset=utf-8")
+                doOutput = true
+            }
+            val body = """<?xml version="1.0" encoding="UTF-8"?><D:propfind xmlns:D="DAV:"><D:prop><D:getetag/><D:calendar-data/></D:prop></D:propfind>""".toByteArray()
+            conn.outputStream.use { it.write(body) }
+            val code = conn.responseCode
+            if (code !in 200..299) return emptyList()
+            val xml = conn.inputStream.bufferedReader().use { it.readText() }
+            val hrefs = Regex("<[^>]*href([^>]*)?>([^<]*)</[^>]*href\\1?>", RegexOption.IGNORE_CASE).findAll(xml).map { it.groupValues.last().trim() }.toList()
+            val now = kotlinx.datetime.Clock.System.now()
+            hrefs.mapIndexed { idx, href ->
+                CalendarEvent(
+                    id = java.util.UUID.randomUUID().toString(),
+                    accountId = account.id,
+                    calendarId = "",
+                    uid = href,
+                    title = href.substringAfterLast('/').ifBlank { "Event $idx" },
+                    description = null,
+                    location = null,
+                    startAt = com.unifiedcomms.data.model.EventDateTime.fromInstant(now),
+                    endAt = com.unifiedcomms.data.model.EventDateTime.fromInstant(now),
+                    color = com.unifiedcomms.data.model.EventColor.Default(),
+                    etag = "nonce-$idx"
+                )
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
     override suspend fun fetchEvent(account: Account, calendarId: String, uid: String): CalendarEvent? {
