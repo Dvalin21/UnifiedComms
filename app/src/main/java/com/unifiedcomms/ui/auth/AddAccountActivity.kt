@@ -10,6 +10,9 @@ import com.unifiedcomms.R
 import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.model.AuthConfig
 import com.unifiedcomms.data.model.AccountType
+import com.unifiedcomms.data.model.ServerConfig
+import com.unifiedcomms.data.model.SyncConfig
+import com.unifiedcomms.data.model.UIConfig
 import com.unifiedcomms.data.repository.AccountRepository
 import com.unifiedcomms.data.repository.AccountRepositoryImpl
 import com.unifiedcomms.security.CryptoManager
@@ -19,6 +22,13 @@ import com.unifiedcomms.data.db.UnifiedCommsDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import okhttp3.FormBody
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.util.concurrent.TimeUnit
 
 class AddAccountActivity : AppCompatActivity() {
 
@@ -26,6 +36,11 @@ class AddAccountActivity : AppCompatActivity() {
     private lateinit var crypto: CryptoManager
 
     private val scope = CoroutineScope(Dispatchers.Main)
+    private val http = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .build()
+    private val json = Json { ignoreUnknownKeys = true }
 
     private var accountType: AccountType? = null
     private var pendingIntent: android.app.PendingIntent? = null
@@ -44,8 +59,8 @@ class AddAccountActivity : AppCompatActivity() {
         // Initialize dependencies manually since Hilt is disabled
         val db = UnifiedCommsDatabase.getInstance(this)
         val accountDao = db.accountDao()
-        accountRepo = AccountRepositoryImpl(accountDao)
         crypto = CryptoManagerImpl(this)
+        accountRepo = AccountRepositoryImpl(accountDao, crypto)
 
         val intent = intent
         accountType = AccountType.valueOf(intent.getStringExtra("accountType") ?: "")
@@ -178,7 +193,7 @@ class AddAccountActivity : AppCompatActivity() {
             email = email,
             accountType = type,
             serverConfig = serverConfig,
-            authConfig = AuthConfig.Password(email, password),
+            authConfig = AuthConfig.AppPassword(email, password),
             syncConfig = com.unifiedcomms.data.model.SyncConfig.Defaults(),
             uiConfig = com.unifiedcomms.data.model.UIConfig.Defaults()
         )
@@ -204,72 +219,153 @@ class AddAccountActivity : AppCompatActivity() {
         }
     }
 
-    @Suppress("UNUSED_PARAMETER")
+    @Serializable
+    private data class TokenResponse(
+        @SerialName("access_token") val accessToken: String,
+        @SerialName("refresh_token") val refreshToken: String? = null,
+        @SerialName("expires_in") val expiresIn: Long? = null,
+        @SerialName("token_type") val tokenType: String? = null,
+        @SerialName("scope") val scope: String? = null,
+        @SerialName("id_token") val idToken: String? = null
+    )
+
+    @Serializable
+    private data class GoogleUserInfo(
+        val email: String,
+        val verified_email: Boolean = false,
+        val name: String? = null,
+        val picture: String? = null
+    )
+
+    @Serializable
+    private data class MicrosoftUserInfo(
+        val mail: String? = null,
+        val userPrincipalName: String? = null,
+        val displayName: String? = null
+    )
+
+    @Serializable
+    private data class YahooUserInfo(
+        val email: String,
+        val given_name: String? = null,
+        val family_name: String? = null
+    )
+
     private suspend fun exchangeGoogleCode(code: String) {
-        // Exchange code for tokens via Google OAuth2 token endpoint
-        // Then create account with authConfig = AuthConfig.OAuth2(accessToken, refreshToken)
-        // For now, placeholder
-        val account = Account(
-            name = "Google Account",
-            email = "user@gmail.com",
-            accountType = AccountType.GOOGLE,
-            serverConfig = com.unifiedcomms.data.model.ServerConfig.GoogleDefaults(),
-            authConfig = AuthConfig.OAuth2("access_token", "refresh_token"),
-            syncConfig = com.unifiedcomms.data.model.SyncConfig.Defaults(),
-            uiConfig = com.unifiedcomms.data.model.UIConfig.Defaults()
-        )
-        accountRepo.insert(account)
-        accountRepo.setDefault(account.id)
-        finishWithResult(account)
+        val clientId = getBuildConfigField("GOOGLE_CLIENT_ID")
+        val tokenUrl = "https://oauth2.googleapis.com/token"
+        val form = FormBody.Builder()
+            .add("code", code)
+            .add("client_id", clientId)
+            .add("redirect_uri", "unifiedcomms://oauth2redirect/google")
+            .add("grant_type", "authorization_code")
+            .build()
+        val req = Request.Builder().url(tokenUrl).post(form).build()
+        val tokenResp = http.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) return
+            json.decodeFromString(TokenResponse.serializer(), resp.body!!.string())
+        }
+        val userReq = Request.Builder()
+            .url("https://www.googleapis.com/oauth2/v2/userinfo")
+            .addHeader("Authorization", "Bearer ${tokenResp.accessToken}")
+            .build()
+        val userInfo = http.newCall(userReq).execute().use { resp ->
+            if (!resp.isSuccessful) return
+            json.decodeFromString(GoogleUserInfo.serializer(), resp.body!!.string())
+        }
+        createOAuthAccount(AccountType.GOOGLE, userInfo.email, tokenResp, userInfo.name, ServerConfig.GoogleDefaults())
     }
 
-    @Suppress("UNUSED_PARAMETER")
     private suspend fun exchangeOutlookCode(code: String) {
-        // Placeholder
-        val account = Account(
-            name = "Outlook Account",
-            email = "user@outlook.com",
-            accountType = AccountType.OUTLOOK,
-            serverConfig = com.unifiedcomms.data.model.ServerConfig.OutlookDefaults(),
-            authConfig = AuthConfig.OAuth2("access_token", "refresh_token"),
-            syncConfig = com.unifiedcomms.data.model.SyncConfig.Defaults(),
-            uiConfig = com.unifiedcomms.data.model.UIConfig.Defaults()
-        )
-        accountRepo.insert(account)
-        accountRepo.setDefault(account.id)
-        finishWithResult(account)
+        val clientId = getBuildConfigField("MICROSOFT_CLIENT_ID")
+        val tokenUrl = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+        val form = FormBody.Builder()
+            .add("code", code)
+            .add("client_id", clientId)
+            .add("redirect_uri", "unifiedcomms://oauth2redirect/outlook")
+            .add("grant_type", "authorization_code")
+            .build()
+        val req = Request.Builder().url(tokenUrl).post(form).build()
+        val tokenResp = http.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) return
+            json.decodeFromString(TokenResponse.serializer(), resp.body!!.string())
+        }
+        val userReq = Request.Builder()
+            .url("https://graph.microsoft.com/oidc/userinfo")
+            .addHeader("Authorization", "Bearer ${tokenResp.accessToken}")
+            .build()
+        val userInfo = http.newCall(userReq).execute().use { resp ->
+            if (!resp.isSuccessful) return
+            json.decodeFromString(MicrosoftUserInfo.serializer(), resp.body!!.string())
+        }
+        val email = userInfo.mail ?: userInfo.userPrincipalName ?: return
+        createOAuthAccount(AccountType.OUTLOOK, email, tokenResp, userInfo.displayName, ServerConfig.OutlookDefaults())
     }
 
-    @Suppress("UNUSED_PARAMETER")
     private suspend fun exchangeYahooCode(code: String) {
-        // Placeholder
-        val account = Account(
-            name = "Yahoo Account",
-            email = "user@yahoo.com",
-            accountType = AccountType.YAHOO,
-            serverConfig = com.unifiedcomms.data.model.ServerConfig.YahooDefaults(),
-            authConfig = AuthConfig.OAuth2("access_token", "refresh_token"),
-            syncConfig = com.unifiedcomms.data.model.SyncConfig.Defaults(),
-            uiConfig = com.unifiedcomms.data.model.UIConfig.Defaults()
-        )
-        accountRepo.insert(account)
-        accountRepo.setDefault(account.id)
-        finishWithResult(account)
+        val clientId = getBuildConfigField("YAHOO_CLIENT_ID")
+        val tokenUrl = "https://api.login.yahoo.com/oauth2/get_token"
+        val form = FormBody.Builder()
+            .add("code", code)
+            .add("client_id", clientId)
+            .add("redirect_uri", "unifiedcomms://oauth2redirect/yahoo")
+            .add("grant_type", "authorization_code")
+            .add("client_secret", "")
+            .build()
+        val req = Request.Builder().url(tokenUrl).post(form).build()
+        val tokenResp = http.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) return
+            json.decodeFromString(TokenResponse.serializer(), resp.body!!.string())
+        }
+        val userReq = Request.Builder()
+            .url("https://api.login.yahoo.com/openid/v1/userinfo")
+            .addHeader("Authorization", "Bearer ${tokenResp.accessToken}")
+            .build()
+        val userInfo = http.newCall(userReq).execute().use { resp ->
+            if (!resp.isSuccessful) return
+            json.decodeFromString(YahooUserInfo.serializer(), resp.body!!.string())
+        }
+        createOAuthAccount(AccountType.YAHOO, userInfo.email, tokenResp, "${userInfo.given_name ?: ""} ${userInfo.family_name ?: ""}".trim(), ServerConfig.YahooDefaults())
     }
 
-    @Suppress("UNUSED_PARAMETER")
     private suspend fun exchangeIcloudCode(code: String) {
-        // Placeholder
+        val clientId = getBuildConfigField("APPLE_CLIENT_ID")
+        val tokenUrl = "https://appleid.apple.com/auth/token"
+        val form = FormBody.Builder()
+            .add("code", code)
+            .add("client_id", clientId)
+            .add("redirect_uri", "unifiedcomms://oauth2redirect/icloud")
+            .add("grant_type", "authorization_code")
+            .build()
+        val req = Request.Builder().url(tokenUrl).post(form).build()
+        val tokenResp = http.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) return
+            json.decodeFromString(TokenResponse.serializer(), resp.body!!.string())
+        }
+        val email = tokenResp.idToken?.substringBefore("@")?.plus("@icloud.com") ?: return
+        createOAuthAccount(AccountType.ICLOUD, email, tokenResp, email.substringBefore("@"), ServerConfig.ICloudDefaults())
+    }
+
+    private suspend fun createOAuthAccount(
+        type: AccountType,
+        email: String,
+        token: TokenResponse,
+        displayName: String?,
+        serverConfig: ServerConfig
+    ) {
         val account = Account(
-            name = "iCloud Account",
-            email = "user@icloud.com",
-            accountType = AccountType.ICLOUD,
-            serverConfig = com.unifiedcomms.data.model.ServerConfig.ICantDefaults(),
-            authConfig = AuthConfig.OAuth2("access_token", "refresh_token"),
-            syncConfig = com.unifiedcomms.data.model.SyncConfig.Defaults(),
-            uiConfig = com.unifiedcomms.data.model.UIConfig.Defaults()
+            name = displayName ?: email,
+            email = email,
+            accountType = type,
+            serverConfig = serverConfig,
+            authConfig = AuthConfig.OAuth2(
+                accessToken = token.accessToken,
+                refreshToken = token.refreshToken
+            ),
+            syncConfig = SyncConfig.Defaults(),
+            uiConfig = UIConfig.Defaults()
         )
-        accountRepo.insert(account)
+        accountRepo.insert(account.copy(authConfig = crypto.encryptAuthConfig(account.authConfig)))
         accountRepo.setDefault(account.id)
         finishWithResult(account)
     }
