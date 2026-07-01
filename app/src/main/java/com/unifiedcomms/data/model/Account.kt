@@ -199,6 +199,8 @@ data class ServerConfig(
             supportsPush = true,
             pushConfig = PushConfig.ICant()
         )
+
+        fun ICloudDefaults(): ServerConfig = ICantDefaults()
     }
 }
 
@@ -240,6 +242,12 @@ data class AuthConfig(
     companion object {
         fun Password(username: String, password: String): AuthConfig = AuthConfig(
             type = AuthType.PASSWORD,
+            username = username,
+            passwordEncrypted = password // Will be encrypted by CryptoManager
+        )
+
+        fun AppPassword(username: String, password: String): AuthConfig = AuthConfig(
+            type = AuthType.APP_PASSWORD,
             username = username,
             passwordEncrypted = password // Will be encrypted by CryptoManager
         )

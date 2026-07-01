@@ -3,13 +3,17 @@ package com.unifiedcomms.data.repository
 import com.unifiedcomms.data.db.dao.AccountDao
 import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.model.AccountType
+import com.unifiedcomms.security.CryptoManager
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
-class AccountRepositoryImpl(private val dao: AccountDao) : AccountRepository {
-    override suspend fun insert(account: Account): Long = dao.insert(account)
+class AccountRepositoryImpl(
+    private val dao: AccountDao,
+    private val crypto: CryptoManager
+) : AccountRepository {
+    override suspend fun insert(account: Account): Long = dao.insert(account.copy(authConfig = crypto.encryptAuthConfig(account.authConfig)))
 
-    override suspend fun update(account: Account): Int = dao.update(account)
+    override suspend fun update(account: Account): Int = dao.update(account.copy(authConfig = crypto.encryptAuthConfig(account.authConfig)))
 
     override suspend fun delete(accountId: String): Int = dao.deleteById(accountId)
 
