@@ -52,7 +52,7 @@ class SyncForegroundService : Service() {
         val calendarRepo = CalendarRepositoryImpl(calendarEventDao, calendarDao)
         val taskRepo = TaskRepositoryImpl(taskDao, taskListDao)
         val contactRepo = ContactRepositoryImpl(contactDao)
-        val accountRepo = AccountRepositoryImpl(db.accountDao())
+        val accountRepo = AccountRepositoryImpl(db.accountDao(), CryptoManagerImpl(this))
         val crypto = CryptoManagerImpl(this)
 
         val emailSync = EmailSyncEngineImpl(emailRepo, accountRepo, crypto, CoroutineScope(Dispatchers.IO))
@@ -74,7 +74,7 @@ class SyncForegroundService : Service() {
             NotificationHelper.showSyncNotification(this@SyncForegroundService, "Starting sync...", 0)
 
             // Get all active accounts and sync them
-            val accountRepo = AccountRepositoryImpl(UnifiedCommsDatabase.getInstance(this@SyncForegroundService).accountDao())
+            val accountRepo = AccountRepositoryImpl(UnifiedCommsDatabase.getInstance(this@SyncForegroundService).accountDao(), CryptoManagerImpl(this@SyncForegroundService))
             val accounts = accountRepo.getAllActive().first()
 
             var completed = 0

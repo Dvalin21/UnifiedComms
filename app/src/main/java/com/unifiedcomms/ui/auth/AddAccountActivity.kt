@@ -365,7 +365,7 @@ class AddAccountActivity : AppCompatActivity() {
             syncConfig = SyncConfig.Defaults(),
             uiConfig = UIConfig.Defaults()
         )
-        accountRepo.insert(account.copy(authConfig = crypto.encryptAuthConfig(account.authConfig)))
+        accountRepo.insert(account)
         accountRepo.setDefault(account.id)
         finishWithResult(account)
     }

@@ -60,7 +60,7 @@ class UnifiedCommsSyncAdapter(
         val taskListDao = db.taskListDao()
         val contactDao = db.contactDao()
 
-        accountRepo = AccountRepositoryImpl(accountDao)
+        accountRepo = AccountRepositoryImpl(accountDao, CryptoManagerImpl(context))
         val emailRepo = EmailRepositoryImpl(emailDao)
         val calendarRepo = CalendarRepositoryImpl(calendarEventDao, calendarDao)
         val taskRepo = TaskRepositoryImpl(taskDao, taskListDao)

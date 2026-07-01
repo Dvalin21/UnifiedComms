@@ -2,11 +2,10 @@ package com.unifiedcomms.data.repository
 
 import com.unifiedcomms.data.db.dao.AccountDao
 import com.unifiedcomms.data.model.Account
-import kotlinx.coroutines.flow.Flow
+import com.unifiedcomms.security.CryptoManager
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
-import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 import org.mockito.kotlin.any
@@ -17,12 +16,15 @@ import org.mockito.kotlin.whenever
 class AccountRepositoryImplTest {
 
     private lateinit var dao: AccountDao
+    private lateinit var crypto: CryptoManager
     private lateinit var repo: AccountRepositoryImpl
 
     @Before
     fun setUp() {
         dao = mock()
-        repo = AccountRepositoryImpl(dao)
+        crypto = mock()
+        whenever(crypto.encryptAuthConfig(any())).thenAnswer { it.arguments[0] }
+        repo = AccountRepositoryImpl(dao, crypto)
     }
 
     @Test
@@ -30,7 +32,7 @@ class AccountRepositoryImplTest {
         val account = Account.createGoogle("user@example.com")
         whenever(dao.getEmailSyncAccounts()).thenReturn(flowOf(listOf(account)))
         val result = repo.getEmailSyncAccounts().first()
-        assertEquals(listOf(account), result)
+        org.junit.Assert.assertEquals(listOf(account), result)
     }
 
     @Test
@@ -38,7 +40,7 @@ class AccountRepositoryImplTest {
         val account = Account.createGoogle("user@example.com")
         whenever(dao.getCalendarSyncAccounts()).thenReturn(flowOf(listOf(account)))
         val result = repo.getCalendarSyncAccounts().first()
-        assertEquals(listOf(account), result)
+        org.junit.Assert.assertEquals(listOf(account), result)
     }
 
     @Test
@@ -46,15 +48,15 @@ class AccountRepositoryImplTest {
         val account = Account.createGoogle("user@example.com")
         whenever(dao.getTaskSyncAccounts()).thenReturn(flowOf(listOf(account)))
         val result = repo.getTaskSyncAccounts().first()
-        assertEquals(listOf(account), result)
+        org.junit.Assert.assertEquals(listOf(account), result)
     }
 
     @Test
     fun `delegates insert and update`() = runTest {
         val account = Account.createGoogle("user@example.com")
         repo.insert(account)
-        verify(dao).insert(account)
+        verify(dao).insert(account.copy(authConfig = account.authConfig))
         repo.update(account)
-        verify(dao).update(account)
+        verify(dao).update(account.copy(authConfig = account.authConfig))
     }
 }
