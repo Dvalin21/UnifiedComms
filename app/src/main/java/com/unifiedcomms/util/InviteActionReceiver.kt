@@ -31,7 +31,7 @@ class InviteActionReceiver : BroadcastReceiver() {
         val calendarEventDao = db.calendarEventDao()
         val calendarDao = db.calendarDao()
         val calendarRepo = CalendarRepositoryImpl(calendarEventDao, calendarDao)
-        val accountRepo = AccountRepositoryImpl(db.accountDao())
+        val accountRepo = AccountRepositoryImpl(db.accountDao(), CryptoManagerImpl(context))
         val crypto = CryptoManagerImpl(context)
         val calendarSync = CalendarSyncEngineImpl(calendarRepo, accountRepo, crypto, CoroutineScope(Dispatchers.IO))
 

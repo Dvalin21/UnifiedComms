@@ -35,7 +35,7 @@ class MainViewModel(
     private val app: UnifiedCommsApplication = UnifiedCommsApplication.getInstance()
 ) : ViewModel() {
 
-    private val accountRepo: AccountRepository = AccountRepositoryImpl(app.database.accountDao())
+    private val accountRepo: AccountRepository = AccountRepositoryImpl(app.database.accountDao(), com.unifiedcomms.security.CryptoManagerImpl(app))
     private val emailRepo: EmailRepository = EmailRepositoryImpl(app.database.emailDao())
     private val calendarRepo: CalendarRepository = CalendarRepositoryImpl(
         app.database.calendarEventDao(),

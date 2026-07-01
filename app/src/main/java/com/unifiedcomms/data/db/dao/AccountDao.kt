@@ -31,6 +31,9 @@ interface AccountDao {
     @Query("SELECT * FROM accounts WHERE id = :id")
     suspend fun getById(id: String): Account?
 
+    @Query("SELECT * FROM accounts WHERE email = :email LIMIT 1")
+    suspend fun getByEmail(email: String): Account?
+
     @Query("SELECT * FROM accounts WHERE email = :email AND accountType = :type")
     suspend fun getByEmailAndType(email: String, type: AccountType): Account?
 
