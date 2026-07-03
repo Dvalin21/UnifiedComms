@@ -1,72 +1,33 @@
-# UnifiedComms — Handoff
+UnifiedComms — verified handoff state
+Generated: 2026-07-02
+Verified by: assembleDebug, testDebugUnitTest, emulator-5554 runtime walkthrough
 
-## Build
+Clean verified build/test
+- assembleDebug: BUILD SUCCESSFUL from clean no-cache/cache run on 2026-07-02
+- testDebugUnitTest: BUILD SUCCESSFUL
+- On-disk test-result XML count: 11 classes, 0 failures, 0 errors
 
-- `./gradlew assembleDebug`: **BUILD SUCCESSFUL**
-- `./gradlew testDebugUnitTest`: **BUILD SUCCESSFUL**
-- APK: `app/build/outputs/apk/debug/app-debug.apk`
-- Last-significant compiler errors removed:
-  - Restored `AccountDao.kt` interface shape to match generated `AccountDao_Impl.java`
-    - Added `suspend fun getByEmail(email: String): Account?`
-    - Kept `suspend fun getByEmailAndType(email: String, type: AccountType): Account?`
-  - Removed deprecated `package="com.unifiedcomms"` from `AndroidManifest.xml`
+Installed APK/runtime
+- Device: emulator-5554 (testAVD, API 34)
+- Package: com.unifiedcomms.debug
+- MainActivity: com.unifiedcomms.ui.main.MainActivity
+- dumpsys: resumed=true, stopped=false, finished=false; window focus confirmed
 
-## Tests
+Observed tab behavior on emulator-5554
+- UnifiedInbox: renders top bar + bottom nav; empty data state
+- Email: renders top bar + bottom nav; routed from inbox/tab
+- Calendar: renders populated month grid for 2026-07
+- Tasks: renders screen header + filter chips + FAB; empty data state
+- Messages: renders top bar + Messages header; empty data state
+- Settings: SettingsScreen renders with account block, toggles, About dialog, Clear-data confirmation
+- Bottom-nav tab switching confirmed via adb input tap; active tab highlights correctly
 
-Verified via `app/build/test-results/testDebugUnitTest/`:
-- `com.unifiedcomms.data.repository.AccountRepositoryImplTest`: 4 tests, 0 failures
-- `com.unifiedcomms.data.repository.CalendarRepositoryImplTest`: 4 tests, 0 failures
-- `com.unifiedcomms.data.repository.ContactRepositoryImplTest`: 2 tests, 0 failures
-- `com.unifiedcomms.data.repository.EmailRepositoryImplTest`: 5 tests, 0 failures
-- `com.unifiedcomms.data.repository.MessagingRepositoryImplTest`: 3 tests, 0 failures
-- `com.unifiedcomms.data.repository.TaskRepositoryImplTest`: 4 tests, 0 failures
-- `com.unifiedcomms.sync.EmailSyncEngineTest`: 2 tests, 0 failures
-- `com.unifiedcomms.data.db.ConvertersTest`: 3 tests, 0 failures
-- `com.unifiedcomms.data.db.DateTimeConverterTest`: 3 tests, 0 failures
-- `com.unifiedcomms.data.model.CalendarEventTest`: 4 tests, 0 failures
-- `com.unifiedcomms.util.IsOkTest`: 1 test, 0 failures
+Artifacts
+- APK: app/build/outputs/apk/debug/app-debug.apk
+- Screenshots: runtime_screens/runtime_inbox.png, runtime_screens/runtime_email.png, runtime_screens/runtime_calendar.png, runtime_screens/runtime_tasks.png, runtime_screens/runtime_messages.png, runtime_screens/runtime_settings.png
 
-## Runtime (emulator-5554)
-
-- Package: `com.unifiedcomms.debug`
-- Installed and launched successfully
-- Verified screenshots:
-  - `runtime_screens/01_home.png`
-  - `runtime_screens/02_calendar.png`
-  - `runtime_screens/03_messages.png`
-  - `runtime_screens/03_tasks.png`
-  - `runtime_screens/04_settings.png`
-  - `runtime_screens/05_tasks.png`
-  - `runtime_screens/06_messages_tab.png`
-  - `runtime_screens/07_add_account.png`
-  - `runtime_screens/08_inbox_tab.png`
-  - `runtime_screens/09_account_tap.png`
-  - `runtime_screens/10_account_open.png`
-  - `runtime_screens/11_conversation.png`
-
-## Key fixes landed
-
-- `AccountRepositoryImpl` constructor now requires `CryptoManager`; encryption happens on write in repository
-- All call sites updated:
-  - `SyncForegroundService`
-  - `SyncService`
-  - `InviteActionReceiver`
-  - `MainViewModel`
-  - `AddAccountActivity`
-  - `AccountRepositoryImplTest`
-- Removed double-encrypt wrapper in `AddAccountActivity`
-- `AccountDao.kt`: restored `getByEmail` so generated `AccountDao_Impl` compiles
-- `AndroidManifest.xml`: removed deprecated `package="com.unifiedcomms"` attribute
-
-## Known non-blocking warnings
-
-- Unused-param warnings in:
-  - `TaskSyncEngineImpl.kt`
-  - `CalendarScreen.kt`
-  - `EmailScreen.kt`
-  - `MessagesScreen.kt`
-
-## Repo
-
-- Remote: `git@github.com:Dvalin21/UnifiedComms.git`
-- Suggested branch: `fix/build-green-runtime-verified`
+Resolved since last handoff
+- AccountRepositoryImpl constructor now takes CryptoManager; all call sites updated
+- AddAccountActivity double-encrypt wrapper removed
+- assembleDebug clean no-cache rebuild green on first fresh run
+- MainActivity start is verified healthy on emulator-5554
