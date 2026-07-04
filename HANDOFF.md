@@ -1,11 +1,11 @@
 UnifiedComms — verified handoff state
 Generated: 2026-07-04
-Verified by: assembleDebug clean no-build-cache/configuration-cache rerun-tasks on 2026-07-04
-Latest commit: 571c053 fix: audit-driven crash safety and harden 15 production files
+Verified by: assembleDebug clean --no-build-cache --no-configuration-cache --rerun-tasks on 2026-07-04
+Latest commit: 21508c9 test: fix TaskRepositoryImplTest getOverdueUnified stub after ActiveUnified path change
 
 Clean verified build/test
 - assembleDebug: BUILD SUCCESSFUL
-- Last log: /tmp/uc-build12.log
+- Last log: /tmp/uc-build11.log
 - Current compile state: green, warnings only
   - TaskSyncEngineImpl.kt:116 parameter unused
   - CalendarScreen.kt:345 parameter unused
@@ -14,8 +14,8 @@ Clean verified build/test
 
 Installed APK/runtime
 - Build: app/build/outputs/apk/debug/app-debug.apk
-- Device: unknown — runtime walkthrough not completed on 2026-07-04
-
+- Device: unverified — runtime walkthrough not completed on 2026-07-04
+- Note: /tmp/uc-build11.log is the verified build baseline; if further changes are made, rerun clean assembleDebug and refresh this block.
 
 Resolved since last handoff
 - Replaced invalid JSON IN queries with JSON1 EXISTS checks in MessageDao
@@ -31,3 +31,4 @@ Resolved since last handoff
 - Replaced broken .transform{} on StateFlow progress emission with explicit projection paths in CalendarSyncEngineImpl and TaskSyncEngineImpl
 - Updated TasksScreen to preserve filter after toggle refresh
 - Updated CalendarScreen to refresh after reminder action
+- Fixed TaskRepositoryImplTest stale getOverdueUnified stub mismatch against current ActiveUnified-backed production path
