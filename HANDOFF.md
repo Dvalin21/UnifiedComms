@@ -1,7 +1,7 @@
 UnifiedComms — verified handoff state
 Generated: 2026-07-04
 Verified by: assembleDebug clean --no-build-cache --no-configuration-cache --rerun-tasks on 2026-07-04
-Latest commit: 21508c9 test: fix TaskRepositoryImplTest getOverdueUnified stub after ActiveUnified path change
+Latest commit: acebf3e docs: sync HANDOFF.md to verified 21508c9 build/test state
 
 Clean verified build/test
 - assembleDebug: BUILD SUCCESSFUL
