@@ -115,9 +115,11 @@ class PushManagerImpl(
     }
 
     override suspend fun sendPush(targetUserId: String, payload: PushPayload): PushResult = withContext(Dispatchers.IO) {
-        // Encrypt sensitive data in payload
         val encryptedData = payload.data.mapValues { (k, v) ->
-            if (k in setOf("message_id", "conversation_id", "sender_id")) k to v else k to v
+            if (k in setOf("message_id", "conversation_id", "sender_id")) {
+                val encrypted = crypto.encrypt(v.toByteArray(Charsets.UTF_8))
+                k to android.util.Base64.encodeToString(encrypted, android.util.Base64.NO_WRAP)
+            } else k to v
         }
 
         val json = JSONObject().apply {

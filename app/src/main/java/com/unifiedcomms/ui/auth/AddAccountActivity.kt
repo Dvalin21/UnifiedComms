@@ -62,8 +62,8 @@ class AddAccountActivity : AppCompatActivity() {
         crypto = CryptoManagerImpl(this)
         accountRepo = AccountRepositoryImpl(accountDao, crypto)
 
-        val intent = intent
-        accountType = AccountType.valueOf(intent.getStringExtra("accountType") ?: "")
+        accountType = runCatching { AccountType.valueOf(intent?.getStringExtra("accountType")?.ifBlank { null } ?: return showManualSetup()) }.getOrNull()
+            ?: AccountType.GENERIC_IMAP_SMTP
         @Suppress("DEPRECATION")
         pendingIntent = intent.getParcelableExtra(android.accounts.AccountManager.KEY_ACCOUNT_AUTHENTICATOR_RESPONSE)
 

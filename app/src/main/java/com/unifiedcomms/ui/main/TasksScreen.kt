@@ -125,7 +125,6 @@ fun TasksScreen(
                         onToggle = {
                             coroutineScope.launch {
                                 viewModel.taskRepository.markCompleted(task.id, !task.isCompleted)
-                                displayTasks = displayTasks.map { if (it.id == task.id) it.copy(isCompleted = !task.isCompleted) else it }
                             }
                         }
                     )

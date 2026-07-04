@@ -48,7 +48,7 @@ class SyncManager(
     }
 
     private fun schedulePeriodicSync(account: Account) {
-        val intervalMs = (account.syncConfig.syncIntervalMinutes * 60 * 1000L)
+        val intervalMs = (account.syncConfig.syncIntervalMinutes.coerceAtLeast(5) * 60_000L)
         val job = scope.launch(Dispatchers.IO) {
             while (true) {
                 delay(intervalMs)
@@ -145,12 +145,9 @@ class SyncManager(
     }
 
     private fun updateState(accountId: String, transform: (SyncState) -> SyncState) {
-        var done = false
-        while (!done) {
-            val current = _syncStates.value
-            val updated = current + (accountId to transform(current[accountId] ?: SyncState(accountId)))
-            done = _syncStates.compareAndSet(current, updated)
-        }
+        val current = _syncStates.value
+        val updated = current + (accountId to transform(current[accountId] ?: SyncState(accountId)))
+        _syncStates.value = updated
     }
 
     fun observeAccountSync(accountId: String): kotlinx.coroutines.flow.Flow<SyncState?> {

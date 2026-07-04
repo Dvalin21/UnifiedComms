@@ -112,6 +112,11 @@ class MainViewModel(
         _isSyncing.value = true
         _syncProgress.value = 0
         val accounts = getActiveAccounts()
+        if (accounts.isEmpty()) {
+            _isSyncing.value = false
+            _syncProgress.value = 100
+            return
+        }
         var completed = 0
 
         for (account in accounts) {

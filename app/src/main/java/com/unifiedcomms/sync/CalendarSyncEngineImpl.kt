@@ -14,7 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.transform
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
@@ -108,11 +108,16 @@ class CalendarSyncEngineImpl(
     private fun getCalendarsFromServer(account: Account): List<Calendar> {
         val caldavUrl = account.serverConfig.caldavUrl ?: return emptyList()
         return try {
+            val auth = crypto.decryptAuthConfig(account.authConfig)
+            val credentials = "${auth.username}:${auth.passwordEncrypted}"
+            val basic = android.util.Base64.encodeToString(credentials.toByteArray(java.nio.charset.StandardCharsets.UTF_8), android.util.Base64.NO_WRAP)
+
             val url = java.net.URL("$caldavUrl/")
             val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
                 requestMethod = "PROPFIND"
                 setRequestProperty("Depth", "1")
                 setRequestProperty("Content-Type", "application/xml; charset=utf-8")
+                setRequestProperty("Authorization", "Basic $basic")
                 doOutput = true
             }
             val body = """<?xml version="1.0" encoding="UTF-8"?><D:propfind xmlns:D="DAV:"><D:prop><D:displayname/><D:resourcetype/></D:prop></D:propfind>""".toByteArray()
@@ -123,12 +128,13 @@ class CalendarSyncEngineImpl(
             val hrefs = Regex("<[^>]*href([^>]*)?>([^<]*)</[^>]*href\\1?>", RegexOption.IGNORE_CASE).findAll(xml).map { it.groupValues.last().trim() }.toList()
             hrefs.mapIndexed { idx, href ->
                 Calendar(
-                    id = java.util.UUID.randomUUID().toString(),
+                    id = href.ifBlank { java.util.UUID.randomUUID().toString() },
                     accountId = account.id,
                     serverId = href,
                     name = href.substringAfterLast('/').ifBlank { "Calendar $idx" },
                     description = null,
-                    color = com.unifiedcomms.data.model.EventColor.Default()
+                    color = com.unifiedcomms.data.model.EventColor.Default(),
+                    isSelected = true
                 )
             }
         } catch (e: Exception) {
@@ -223,10 +229,10 @@ class CalendarSyncEngineImpl(
         }
     }
 
+    fun allProgress() = _syncProgress.map { it.values.toList() }.distinctUntilChanged()
+
     override fun observeSyncProgress(accountId: String): kotlinx.coroutines.flow.Flow<SyncProgress> {
-        return _syncProgress.transform { progressMap: Map<String, SyncProgress> ->
-            emit(progressMap[accountId] ?: SyncProgress(accountId, null, SyncStage.COMPLETED, 0, 0))
-        }.distinctUntilChanged()
+        return allProgress().map { list -> list.firstOrNull { it.accountId == accountId } ?: SyncProgress(accountId, null, SyncStage.COMPLETED, 0, 0) }
     }
 
     override suspend fun testConnection(account: Account): ConnectionTestResult {
@@ -242,7 +248,7 @@ class CalendarSyncEngineImpl(
     }
 
     override suspend fun getCalendars(account: Account): List<Calendar> {
-        return emptyList()
+        return getCalendarsFromServer(account)
     }
 
     private fun updateProgress(accountId: String, folder: String?, stage: SyncStage, current: Int, total: Int) {
