@@ -65,8 +65,8 @@ android {
         buildConfigField("String", "GOOGLE_CLIENT_ID", "\"${System.getenv("GOOGLE_CLIENT_ID") ?: ""}\"")
         buildConfigField("String", "MICROSOFT_CLIENT_ID", "\"${System.getenv("MICROSOFT_CLIENT_ID") ?: ""}\"")
         buildConfigField("String", "YAHOO_CLIENT_ID", "\"${System.getenv("YAHOO_CLIENT_ID") ?: ""}\"")
+        buildConfigField("String", "YAHOO_CLIENT_SECRET", "\"${System.getenv("YAHOO_CLIENT_SECRET") ?: ""}\"")
         buildConfigField("String", "APPLE_CLIENT_ID", "\"${System.getenv("APPLE_CLIENT_ID") ?: ""}\"")
-        buildConfigField("String", "PUSH_API_KEY", "\"${System.getenv("PUSH_API_KEY") ?: ""}\"")
     }
 
     buildTypes {

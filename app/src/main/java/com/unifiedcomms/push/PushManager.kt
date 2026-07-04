@@ -54,9 +54,11 @@ class PushManagerImpl(
 ) : PushManager {
 
     private val serverUrl = "https://push.unifiedcomms.app"
-    private val apiKey: String = try { 
-        Class.forName("com.unifiedcomms.BuildConfig").getField("PUSH_API_KEY").get(null) as String 
-    } catch (e: Exception) { "" }
+    private val apiKey = try {
+        Class.forName("com.unifiedcomms.BuildConfig").getField("PUSH_API_KEY").get(null) as String
+    } catch (e: Exception) {
+        ""
+    }
 
     private var deviceToken: String? = null
     private var deviceId: String? = null

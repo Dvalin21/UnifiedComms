@@ -304,14 +304,15 @@ class AddAccountActivity : AppCompatActivity() {
 
     private suspend fun exchangeYahooCode(code: String) {
         val clientId = getBuildConfigField("YAHOO_CLIENT_ID")
+        val clientSecret = (getBuildConfigField("YAHOO_CLIENT_SECRET") ?: "").ifBlank { null }
         val tokenUrl = "https://api.login.yahoo.com/oauth2/get_token"
-        val form = FormBody.Builder()
+        val formBuilder = FormBody.Builder()
             .add("code", code)
             .add("client_id", clientId)
             .add("redirect_uri", "unifiedcomms://oauth2redirect/yahoo")
             .add("grant_type", "authorization_code")
-            .add("client_secret", "")
-            .build()
+        clientSecret?.let { formBuilder.add("client_secret", it) }
+        val form = formBuilder.build()
         val req = Request.Builder().url(tokenUrl).post(form).build()
         val tokenResp = http.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) return
