@@ -46,6 +46,8 @@ fun AddAccountScreen(
     var email by remember { mutableStateOf("") }
     var serverUrl by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf(false) }
+    var saved by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
 
     val coroutineScope: CoroutineScope = rememberCoroutineScope()
 
@@ -91,42 +93,75 @@ fun AddAccountScreen(
                 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                        Button(
-                            onClick = {
-                                if (saving) return@Button
-                                saving = true
-                                val trimmed = email.trim()
-                                val account = when (selectedType) {
-                                    AccountType.GOOGLE -> Account.createGoogle(email = trimmed)
-                                    AccountType.MAILCOW -> Account.createMailcow(
-                                        email = trimmed,
-                                        serverUrl = serverUrl.trim()
-                                    )
-                                    AccountType.OUTLOOK -> Account.createExchange(
-                                        email = trimmed,
-                                        serverUrl = serverUrl.trim()
-                                    )
-                                    else -> Account(
-                                        name = trimmed,
-                                        email = trimmed,
-                                        accountType = selectedType,
-                                        serverConfig = ServerConfig(),
-                                        authConfig = AuthConfig.OAuth2(),
-                                        syncConfig = SyncConfig.Defaults(),
-                                        uiConfig = UIConfig.Defaults()
-                                    )
-                                }
-                                coroutineScope.launch {
-                                    viewModel.addAccount(account)
-                                    saving = false
-                                    onComplete()
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = !saving && email.isNotBlank()
-                        ) {
-                            Text(if (saving) "Saving..." else "Save")
+                if (saved) {
+                    Text(text = "Account saved.", color = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(onClick = onComplete) {
+                        Text("Done")
+                    }
+                } else if (!error.isNullOrBlank()) {
+                    Text(text = error!!, color = MaterialTheme.colorScheme.error)
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                Button(
+                    onClick = {
+                        if (saving || saved) return@Button
+                        saving = true
+                        error = null
+                        val trimmed = email.trim()
+                        val selected = selectedType
+                        val requiresServer = selected in setOf(
+                            AccountType.MAILCOW,
+                            AccountType.OUTLOOK,
+                            AccountType.EXCHANGE,
+                            AccountType.CUSTOM,
+                            AccountType.GENERIC_IMAP_SMTP,
+                            AccountType.GENERIC_CALDAV_CARDDAV
+                        )
+                        val server = serverUrl.trim()
+                        if (trimmed.isBlank() || (requiresServer && server.isBlank())) {
+                            error = "Email and server URL are required."
+                            saving = false
+                            return@Button
                         }
+                        val account = when (selected) {
+                            AccountType.GOOGLE -> Account.createGoogle(email = trimmed)
+                            AccountType.MAILCOW -> Account.createMailcow(email = trimmed, serverUrl = server)
+                            AccountType.OUTLOOK -> Account.createExchange(email = trimmed, serverUrl = server)
+                            AccountType.EXCHANGE -> Account.createExchange(email = trimmed, serverUrl = server)
+                            else -> Account(
+                                name = trimmed,
+                                email = trimmed,
+                                accountType = selected,
+                                serverConfig = ServerConfig(
+                                    imapHost = server,
+                                    smtpHost = server,
+                                    caldavUrl = "$server/dav/",
+                                    carddavUrl = "$server/dav/"
+                                ),
+                                authConfig = AuthConfig.OAuth2(),
+                                syncConfig = SyncConfig.Defaults(),
+                                uiConfig = UIConfig.Defaults()
+                            )
+                        }
+                        coroutineScope.launch {
+                            runCatching { viewModel.addAccount(account) }
+                                .onSuccess {
+                                    saving = false
+                                    saved = true
+                                }
+                                .onFailure { e ->
+                                    saving = false
+                                    error = e.localizedMessage ?: "Failed to save account."
+                                }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !saving && !saved
+                ) {
+                    Text(if (saving) "Saving..." else if (saved) "Saved" else "Save")
+                }
             }
         }
     }
