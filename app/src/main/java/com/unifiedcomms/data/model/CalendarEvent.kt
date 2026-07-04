@@ -110,9 +110,8 @@ data class EventDateTime(
     @Suppress("UNUSED_PARAMETER")
     fun toInstant(_tz: TimeZone = TimeZone.currentSystemDefault()): Instant {
         val zoneId = ZoneId.of(timeZone)
-        val d = date!!
         return when {
-            isAllDay -> Instant.fromEpochMilliseconds(JLocalDateTime.of(JLocalDate.of(d.year, d.monthNumber, d.dayOfMonth), JLocalTime.MIDNIGHT).atZone(zoneId).toInstant().toEpochMilli())
+            isAllDay && date != null -> Instant.fromEpochMilliseconds(JLocalDateTime.of(JLocalDate.of(date.year, date.monthNumber, date.dayOfMonth), JLocalTime.MIDNIGHT).atZone(zoneId).toInstant().toEpochMilli())
             dateTime != null -> Instant.fromEpochMilliseconds(JLocalDateTime.parse(dateTime.toString()).atZone(zoneId).toInstant().toEpochMilli())
             else -> Clock.System.now()
         }
