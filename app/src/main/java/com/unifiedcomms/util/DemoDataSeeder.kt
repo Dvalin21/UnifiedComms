@@ -89,10 +89,10 @@ object DemoDataSeeder {
             )
         )
 
-        val conversation = Conversation(participantIds = listOf("current_user", a1, a2), participantNames = mapOf("current_user" to "Demo User", a1 to "Alice Example", a2 to "Bob Example"), title = "Demo group")
-        val convId = db.conversationDao().insert(conversation)
-        db.messageDao().insert(Message(conversationId = convId.toString(), senderId = a1, recipientId = "current_user", content = "Welcome to UnifiedComms demo."))
-        db.messageDao().insert(Message(conversationId = convId.toString(), senderId = "current_user", recipientId = a1, content = "Demo account active. Calendar and tasks are visible on their tabs."))
+        var conversationId = java.util.UUID.randomUUID().toString()
+        db.conversationDao().insert(Conversation(id = conversationId, participantIds = listOf("current_user", a1, a2), participantNames = mapOf("current_user" to "Demo User", a1 to "Alice Example", a2 to "Bob Example"), title = "Demo group"))
+        db.messageDao().insert(Message(conversationId = conversationId, senderId = a1, recipientId = "current_user", content = "Welcome to UnifiedComms demo."))
+        db.messageDao().insert(Message(conversationId = conversationId, senderId = "current_user", recipientId = a1, content = "Demo account active. Calendar and tasks are visible on their tabs."))
     }
 
     private fun makeEvent(accountId: String, uid: String, title: String, start: String, end: String) = CalendarEvent(accountId = accountId, calendarId = "local", uid = uid, title = title, startAt = EventDateTime(LocalDateTime.parse(start)), endAt = EventDateTime(LocalDateTime.parse(end)), organizer = EventAttendee(email = "Demo User"))

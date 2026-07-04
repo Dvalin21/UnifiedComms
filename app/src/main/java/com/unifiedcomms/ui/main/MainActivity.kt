@@ -55,6 +55,7 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(pendingTab) {
                     if (pendingTab != null) {
                         navController.popBackStack("unified_inbox", false)
+                        viewModel.requestTab(pendingTab)
                     }
                 }
 

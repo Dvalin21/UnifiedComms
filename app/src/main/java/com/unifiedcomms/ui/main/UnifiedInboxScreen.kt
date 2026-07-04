@@ -47,6 +47,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -81,6 +82,13 @@ fun UnifiedInboxScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var selectedTab by rememberSaveable { mutableIntStateOf(initialTab?.coerceIn(0, 4) ?: 0) }
+    val pendingTab by viewModel.pendingTab.collectAsStateWithLifecycle()
+    LaunchedEffect(pendingTab) {
+        pendingTab?.let {
+            selectedTab = it.coerceIn(0, 4)
+            viewModel.clearPendingTab()
+        }
+    }
 
     Scaffold(
         topBar = {
