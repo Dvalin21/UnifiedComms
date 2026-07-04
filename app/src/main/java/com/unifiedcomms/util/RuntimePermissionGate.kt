@@ -27,18 +27,19 @@ object RuntimePermissionGate {
     }
 
     fun rationaleIfNeeded(activity: Activity, permission: String, rationaleText: CharSequence): Boolean {
-        var shown = false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
             activity.shouldShowRequestPermissionRationale(permission)
         ) {
-            shown = true
-            com.unifiedcomms.ui.dialog.SimpleInfoDialog.show(
-                activity,
-                "Permission required",
-                rationaleText.toString(),
-                "Grant"
-            ) { request(activity, arrayOf(permission), 9000 + permission.hashCode() % 1000) }
+            androidx.appcompat.app.AlertDialog.Builder(activity)
+                .setTitle("Permission required")
+                .setMessage(rationaleText.toString())
+                .setPositiveButton("Grant") { _, _ ->
+                    request(activity, arrayOf(permission), 9000 + permission.hashCode() % 1000)
+                }
+                .setCancelable(true)
+                .show()
+            return true
         }
-        return shown
+        return false
     }
 }
