@@ -42,10 +42,19 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                val pendingRoute = intent?.getStringExtra("navigate_to")
-                LaunchedEffect(pendingRoute) {
-                    if (!pendingRoute.isNullOrBlank()) {
-                        navController.navigate(pendingRoute)
+                val pendingTab = intent?.getStringExtra("navigate_to")?.let { raw ->
+                    when (raw) {
+                        "inbox", "unified_inbox" -> 0
+                        "email" -> 1
+                        "calendar" -> 2
+                        "tasks" -> 3
+                        "messages" -> 4
+                        else -> null
+                    }
+                }
+                LaunchedEffect(pendingTab) {
+                    if (pendingTab != null) {
+                        navController.popBackStack("unified_inbox", false)
                     }
                 }
 
@@ -60,7 +69,8 @@ class MainActivity : ComponentActivity() {
                             onNavigateToConversation = { conversationId -> navController.navigate("conversation/$conversationId") },
                             onNavigateToComposeMessage = { navController.navigate("compose_message") },
                             onNavigateToCreateEvent = { navController.navigate("create_event") },
-                            onEventClick = { eventId -> navController.navigate("event_detail/$eventId") }
+                            onEventClick = { eventId -> navController.navigate("event_detail/$eventId") },
+                            initialTab = pendingTab
                         )
                     }
                     composable(

@@ -203,7 +203,7 @@ class InstantListConverter {
     fun fromList(value: List<kotlinx.datetime.Instant>?): String? = value?.let { it.joinToString(",") { i -> i.toEpochMilliseconds().toString() } }
 
     @TypeConverter
-    fun toList(value: String?): List<kotlinx.datetime.Instant> = value?.split(",")?.map { kotlinx.datetime.Instant.fromEpochMilliseconds(it.toLong()) } ?: emptyList()
+    fun toList(value: String?): List<kotlinx.datetime.Instant> = if (value.isNullOrBlank()) emptyList() else value.split(",").map { kotlinx.datetime.Instant.fromEpochMilliseconds(it.toLong()) }
 }
 
 class EventAttendeeConverter {
