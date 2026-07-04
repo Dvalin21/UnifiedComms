@@ -147,6 +147,8 @@ fun ComposeEmailScreen(
     onSend: () -> Unit
 ) {
     var to by remember { mutableStateOf("") }
+    var cc by remember { mutableStateOf("") }
+    var bcc by remember { mutableStateOf("") }
     var subject by remember { mutableStateOf("") }
     var body by remember { mutableStateOf("") }
     val coroutineScope = rememberCoroutineScope()
@@ -164,14 +166,21 @@ fun ComposeEmailScreen(
                     IconButton(onClick = {
                         if (to.isNotBlank() && subject.isNotBlank()) {
                             coroutineScope.launch {
+                                val from = viewModel.getDefaultAccount()?.email.orEmpty()
+                                val sender = EmailAddress(name = from.substringBefore("@"), email = from)
+                                val recipients = EmailRecipients(
+                                    to = to.split(",").map { it.trim() }.filter { it.isNotBlank() }.map { EmailAddress(it, it) },
+                                    cc = cc.split(",").map { it.trim() }.filter { it.isNotBlank() }.map { EmailAddress(it, it) },
+                                    bcc = bcc.split(",").map { it.trim() }.filter { it.isNotBlank() }.map { EmailAddress(it, it) }
+                                )
                                 val email = Email(
                                     accountId = accountId,
                                     folder = "Sent",
                                     uid = java.util.UUID.randomUUID().toString(),
                                     messageId = java.util.UUID.randomUUID().toString(),
                                     threadId = java.util.UUID.randomUUID().toString(),
-                                    sender = EmailAddress(to, to),
-                                    recipients = EmailRecipients(to = listOf(EmailAddress(to, to))),
+                                    sender = sender,
+                                    recipients = recipients,
                                     subject = subject,
                                     bodyText = body,
                                     sentAt = kotlinx.datetime.Clock.System.now()
@@ -187,6 +196,8 @@ fun ComposeEmailScreen(
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).padding(16.dp).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             TextField(value = to, onValueChange = { to = it }, label = { Text("To") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            TextField(value = cc, onValueChange = { cc = it }, label = { Text("CC") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            TextField(value = bcc, onValueChange = { bcc = it }, label = { Text("BCC") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
             TextField(value = subject, onValueChange = { subject = it }, label = { Text("Subject") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
             TextField(value = body, onValueChange = { body = it }, label = { Text("Message") }, modifier = Modifier.fillMaxWidth(), minLines = 8)
         }

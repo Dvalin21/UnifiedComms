@@ -208,10 +208,10 @@ interface ContactDao {
     @Query("SELECT * FROM contacts WHERE unifiedCommsId = :id")
     suspend fun getByUnifiedCommsId(id: String): UnifiedContact?
 
-    @Query("SELECT * FROM contacts WHERE :email IN (emails)")
+    @Query("SELECT * FROM contacts WHERE EXISTS (SELECT 1 FROM json_each(contacts.emails) WHERE value = :email)")
     suspend fun getByEmail(email: String): UnifiedContact?
 
-    @Query("SELECT * FROM contacts WHERE :phone IN (phoneNumbers)")
+    @Query("SELECT * FROM contacts WHERE EXISTS (SELECT 1 FROM json_each(contacts.phoneNumbers) WHERE value = :phone)")
     suspend fun getByPhone(phone: String): UnifiedContact?
 
     @Query("SELECT * FROM contacts WHERE accountId = :accountId ORDER BY displayName ASC")
@@ -226,7 +226,7 @@ interface ContactDao {
     @Query("SELECT * FROM contacts WHERE isFavorite = 1 ORDER BY displayName ASC")
     fun getFavorites(): Flow<List<UnifiedContact>>
 
-    @Query("SELECT * FROM contacts WHERE (displayName LIKE :query OR :query IN (emails) OR :query IN (phoneNumbers)) LIMIT :limit")
+    @Query("SELECT * FROM contacts WHERE (displayName LIKE :query OR EXISTS (SELECT 1 FROM json_each(contacts.emails) WHERE value = :query) OR EXISTS (SELECT 1 FROM json_each(contacts.phoneNumbers) WHERE value = :query)) LIMIT :limit")
     fun search(query: String, limit: Int): Flow<List<UnifiedContact>>
 
     @Query("SELECT * FROM contacts WHERE needsSync = 1")

@@ -55,12 +55,8 @@ class CryptoManagerImpl(private val context: android.content.Context) : CryptoMa
 
     private fun decryptField(value: String?): String? {
         if (value == null) return null
-        return try {
-            val bytes = android.util.Base64.decode(value, android.util.Base64.DEFAULT)
-            String(decrypt(bytes), Charsets.UTF_8)
-        } catch (e: Exception) {
-            value
-        }
+        val bytes = android.util.Base64.decode(value, android.util.Base64.DEFAULT)
+        return String(decrypt(bytes), Charsets.UTF_8)
     }
 
     private fun encryptField(value: String): String {

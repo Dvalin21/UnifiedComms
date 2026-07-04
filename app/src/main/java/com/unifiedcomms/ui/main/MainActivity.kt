@@ -42,6 +42,13 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                val pendingRoute = intent?.getStringExtra("navigate_to")
+                LaunchedEffect(pendingRoute) {
+                    if (!pendingRoute.isNullOrBlank()) {
+                        navController.navigate(pendingRoute)
+                    }
+                }
+
                 NavHost(navController, startDestination = "unified_inbox") {
                     composable("unified_inbox") {
                         UnifiedInboxScreen(

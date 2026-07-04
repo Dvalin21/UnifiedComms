@@ -113,7 +113,12 @@ class EmailSyncEngineImpl(
 
                         for (msg in messages) {
                             try {
-                                val email = parseEmail(msg, account.id, folderName)
+                                val messageId = msg.getHeader("Message-ID").firstOrNull()
+                                if (messageId == null) {
+                                    totalFailed++
+                                    continue
+                                }
+                                val email = parseEmail(msg, account.id, folderName, messageId)
                                 if (email != null) {
                                     val existing = emailRepo.getByUid(account.id, email.uid, folderName)
                                     if (existing == null) {
@@ -161,10 +166,9 @@ class EmailSyncEngineImpl(
         }
     }
 
-    private fun parseEmail(msg: JMailMessage, accountId: String, folder: String): Email? {
+    private fun parseEmail(msg: JMailMessage, accountId: String, folder: String, messageId: String): Email? {
         try {
-            val messageId = msg.getHeader("Message-ID").firstOrNull() ?: return null
-            val uid = msg.getHeader("X-GM-LABELS").firstOrNull()?.let { msg.messageNumber.toString() } ?: msg.messageNumber.toString()
+            val uid = messageId
             val threadId = msg.getHeader("X-GM-THRID").firstOrNull() ?: messageId
             val inReplyTo = msg.getHeader("In-Reply-To").firstOrNull()
             val references = msg.getHeader("References").toList()
