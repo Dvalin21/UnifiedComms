@@ -6,6 +6,7 @@ import com.unifiedcomms.data.model.Task
 import com.unifiedcomms.data.model.TaskList
 import com.unifiedcomms.data.model.TaskStatus
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.datetime.Instant
 
 class TaskRepositoryImpl(
@@ -38,22 +39,47 @@ class TaskRepositoryImpl(
 
     override fun getByStatus(accountId: String, status: TaskStatus): Flow<List<Task>> = taskDao.getByStatus(accountId, status)
 
-    override fun getDueOnDate(accountId: String, date: Long): Flow<List<Task>> = taskDao.getDueOnDate(accountId, date)
+    override fun getDueOnDate(accountId: String, date: Long): Flow<List<Task>> =
+        taskDao.getActiveByAccount(accountId, com.unifiedcomms.data.model.TaskStatus.COMPLETED).map { list: List<Task> ->
+            val dayStart = date - (date % 86_400_000L)
+            val dayEnd = dayStart + 86_400_000L - 1
+            list.filter { task -> task.dueAt?.toInstant()?.toEpochMilliseconds()?.let { it >= dayStart && it <= dayEnd } == true }
+        }
 
     override fun getDueOnDateUnified(accountIds: List<String>, date: Long): Flow<List<Task>> =
-        taskDao.getDueOnDateUnified(accountIds, date)
+        taskDao.getActiveUnified(accountIds, com.unifiedcomms.data.model.TaskStatus.COMPLETED).map { list: List<Task> ->
+            val dayStart = date - (date % 86_400_000L)
+            val dayEnd = dayStart + 86_400_000L - 1
+            list.filter { task -> task.dueAt?.toInstant()?.toEpochMilliseconds()?.let { it >= dayStart && it <= dayEnd } == true }
+        }
 
     override fun getOverdue(accountId: String, now: Long, completedStatus: TaskStatus): Flow<List<Task>> =
-        taskDao.getOverdue(accountId, now, completedStatus)
+        taskDao.getActiveByAccount(accountId, com.unifiedcomms.data.model.TaskStatus.COMPLETED).map { list: List<Task> ->
+            list.filter { task -> task.dueAt?.toInstant()?.toEpochMilliseconds()?.let { it < now } == true }
+        }
 
     override fun getOverdueUnified(accountIds: List<String>, now: Long, completedStatus: TaskStatus): Flow<List<Task>> =
-        taskDao.getOverdueUnified(accountIds, now, completedStatus)
+        taskDao.getActiveUnified(accountIds, com.unifiedcomms.data.model.TaskStatus.COMPLETED).map { list: List<Task> ->
+            list.filter { task -> task.dueAt?.toInstant()?.toEpochMilliseconds()?.let { it < now } == true }
+        }
 
     override fun getUpcoming(accountId: String, now: Long, end: Long, completedStatus: TaskStatus, limit: Int): Flow<List<Task>> =
-        taskDao.getUpcoming(accountId, now, end, completedStatus, limit)
+        taskDao.getActiveByAccount(accountId, com.unifiedcomms.data.model.TaskStatus.COMPLETED).map { list: List<Task> ->
+            val maxEpoch = Long.MAX_VALUE
+            list.filter { task: Task ->
+                val ms = task.dueAt?.toInstant()?.toEpochMilliseconds()
+                ms != null && ms >= now && ms <= end
+            }.sortedBy { task: Task -> task.dueAt?.toInstant()?.toEpochMilliseconds() ?: maxEpoch }.take(limit)
+        }
 
     override fun getUpcomingUnified(accountIds: List<String>, now: Long, end: Long, completedStatus: TaskStatus, limit: Int): Flow<List<Task>> =
-        taskDao.getUpcomingUnified(accountIds, now, end, completedStatus, limit)
+        taskDao.getActiveUnified(accountIds, com.unifiedcomms.data.model.TaskStatus.COMPLETED).map { list: List<Task> ->
+            val maxEpoch = Long.MAX_VALUE
+            list.filter { task: Task ->
+                val ms = task.dueAt?.toInstant()?.toEpochMilliseconds()
+                ms != null && ms >= now && ms <= end
+            }.sortedBy { task: Task -> task.dueAt?.toInstant()?.toEpochMilliseconds() ?: maxEpoch }.take(limit)
+        }
 
     override fun getSubtasks(parentId: String): Flow<List<Task>> = taskDao.getSubtasks(parentId)
 

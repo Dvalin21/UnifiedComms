@@ -11,7 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.transform
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
@@ -200,10 +200,10 @@ class TaskSyncEngineImpl(
         }
     }
 
+    fun allProgress(): kotlinx.coroutines.flow.Flow<List<SyncProgress>> = _syncProgress.map { it.values.toList() }.distinctUntilChanged()
+
     override fun observeSyncProgress(accountId: String): kotlinx.coroutines.flow.Flow<SyncProgress> {
-        return _syncProgress.transform { progressMap: Map<String, SyncProgress> ->
-            emit(progressMap[accountId] ?: SyncProgress(accountId, null, SyncStage.COMPLETED, 0, 0))
-        }.distinctUntilChanged()
+        return allProgress().map { list -> list.firstOrNull { it.accountId == accountId } ?: SyncProgress(accountId, null, SyncStage.COMPLETED, 0, 0) }
     }
 
     override suspend fun testConnection(account: Account): ConnectionTestResult {

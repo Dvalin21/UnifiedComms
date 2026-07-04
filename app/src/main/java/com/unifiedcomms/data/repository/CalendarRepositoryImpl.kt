@@ -39,22 +39,54 @@ class CalendarRepositoryImpl(
         eventDao.getUnifiedCalendar(accountIds)
 
     override fun getEventsInRange(accountId: String, start: Long, end: Long): Flow<List<CalendarEvent>> =
-        eventDao.getInRange(accountId, start, end)
+        eventDao.getAllForAccount(accountId).map { list ->
+            list.filter { e ->
+                val ms = e.startAt.toInstant().toEpochMilliseconds()
+                ms >= start && ms <= end
+            }
+        }
 
     override fun getEventsInRangeUnified(accountIds: List<String>, start: Long, end: Long): Flow<List<CalendarEvent>> =
-        eventDao.getInRangeUnified(accountIds, start, end)
+        eventDao.getUnifiedCalendar(accountIds).map { list ->
+            list.filter { e ->
+                val ms = e.startAt.toInstant().toEpochMilliseconds()
+                ms >= start && ms <= end
+            }
+        }
 
     override fun getEventsForDate(accountId: String, date: Long): Flow<List<CalendarEvent>> =
-        eventDao.getForDate(accountId, date)
+        eventDao.getAllForAccount(accountId).map { list ->
+            val dayStart = date - (date % 86_400_000L)
+            val dayEnd = dayStart + 86_400_000L - 1
+            list.filter { e ->
+                val start = e.startAt.toInstant().toEpochMilliseconds()
+                start >= dayStart && start <= dayEnd
+            }
+        }
 
     override fun getEventsForDateUnified(accountIds: List<String>, date: Long): Flow<List<CalendarEvent>> =
-        eventDao.getForDateUnified(accountIds, date)
+        eventDao.getUnifiedCalendar(accountIds).map { list ->
+            val dayStart = date - (date % 86_400_000L)
+            val dayEnd = dayStart + 86_400_000L - 1
+            list.filter { e ->
+                val start = e.startAt.toInstant().toEpochMilliseconds()
+                start >= dayStart && start <= dayEnd
+            }
+        }
 
     override fun getUpcomingEvents(accountId: String, now: Long, limit: Int): Flow<List<CalendarEvent>> =
-        eventDao.getUpcoming(accountId, now, limit)
+        eventDao.getAllForAccount(accountId).map { list ->
+            list.filter { it.startAt.toInstant().toEpochMilliseconds() >= now }
+                .sortedBy { it.startAt.toInstant().toEpochMilliseconds() }
+                .take(limit)
+        }
 
     override fun getUpcomingEventsUnified(accountIds: List<String>, now: Long, limit: Int): Flow<List<CalendarEvent>> =
-        eventDao.getUpcomingUnified(accountIds, now, limit)
+        eventDao.getUnifiedCalendar(accountIds).map { list ->
+            list.filter { it.startAt.toInstant().toEpochMilliseconds() >= now }
+                .sortedBy { it.startAt.toInstant().toEpochMilliseconds() }
+                .take(limit)
+        }
 
     override fun getRecurringEvents(accountId: String): Flow<List<CalendarEvent>> =
         eventDao.getRecurringEvents(accountId)

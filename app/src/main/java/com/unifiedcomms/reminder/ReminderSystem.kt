@@ -35,13 +35,14 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         val launchIntent = Intent(context, FullScreenReminderActivity::class.java).apply {
             putExtra("event_id", eventId)
             putExtra("account_id", accountId)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
 
         // Turn on screen and show over lock screen
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            context.startForegroundService(launchIntent)
+            ContextCompat.startActivity(context, launchIntent, null)
         } else {
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(launchIntent)
         }
 
