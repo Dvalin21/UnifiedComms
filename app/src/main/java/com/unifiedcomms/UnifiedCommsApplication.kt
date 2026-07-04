@@ -5,9 +5,11 @@ import android.content.Context
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.unifiedcomms.data.db.UnifiedCommsDatabase
 import com.unifiedcomms.util.PreferencesManager
+import com.unifiedcomms.util.DemoDataSeeder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 // @HiltAndroidApp
 class UnifiedCommsApplication : Application() {
@@ -29,6 +31,7 @@ class UnifiedCommsApplication : Application() {
         PreferencesManager.initialize(this)
         database = UnifiedCommsDatabase.getInstance(this)
         initializeNotificationChannels()
+        DemoDataSeeder.seedIfNeeded(this, mainCoroutineScope)
     }
 
     private fun initializeNotificationChannels() {
