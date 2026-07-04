@@ -63,6 +63,12 @@ class MainViewModel(
     private val _accounts = MutableStateFlow<List<Account>>(emptyList())
     val accounts: StateFlow<List<Account>> = _accounts
 
+    private val _pendingTab = kotlinx.coroutines.flow.MutableStateFlow<Int?>(null)
+    val pendingTab: kotlinx.coroutines.flow.StateFlow<Int?> = _pendingTab
+
+    fun requestTab(tab: Int) { _pendingTab.value = tab }
+    fun clearPendingTab() { _pendingTab.value = null }
+
     private val _isSyncing = MutableStateFlow<Boolean>(false)
     val isSyncing: StateFlow<Boolean> = _isSyncing
 

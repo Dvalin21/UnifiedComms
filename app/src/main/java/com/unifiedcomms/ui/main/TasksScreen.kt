@@ -265,7 +265,7 @@ private fun com.unifiedcomms.data.model.Task.toMockTask(): MockTask = MockTask(
     description = description,
     isCompleted = status == com.unifiedcomms.data.model.TaskStatus.COMPLETED,
     isStarred = false,
-    dueDate = dueAt?.let { java.time.LocalDate.parse(it.date.toString()) }
+    dueDate = dueAt?.date?.let { java.time.LocalDate.parse(it.toString()) }
         ?: dueAt?.dateTime?.let { java.time.LocalDateTime.parse(it.toString()).toLocalDate() },
     priority = when (priority) {
         com.unifiedcomms.data.model.TaskPriority.LOW -> TaskPriority.LOW
