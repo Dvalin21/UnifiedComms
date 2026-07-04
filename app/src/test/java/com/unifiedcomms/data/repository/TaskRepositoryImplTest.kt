@@ -2,6 +2,7 @@ package com.unifiedcomms.data.repository
 
 import com.unifiedcomms.data.db.dao.TaskDao
 import com.unifiedcomms.data.model.Task
+import com.unifiedcomms.data.model.TaskDateTime
 import com.unifiedcomms.data.model.TaskStatus
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
@@ -54,8 +55,10 @@ class TaskRepositoryImplTest {
 
     @Test
     fun `getOverdueUnified delegates to dao`() = runTest {
-        val overdue = baseTask(id = "o", title = "Overdue")
-        whenever(taskDao.getOverdueUnified(any(), any(), any())).thenReturn(flowOf(listOf(overdue)))
+        val overdue = baseTask(id = "o", title = "Overdue", status = TaskStatus.COMPLETED)
+            .copy(dueAt = TaskDateTime.fromInstant(kotlinx.datetime.Instant.fromEpochMilliseconds(800L), hasTime = true))
+        whenever(taskDao.getActiveUnified(any(), any())).thenReturn(flowOf(listOf(overdue)))
+        whenever(taskDao.getByStatus(any(), any())).thenReturn(flowOf(emptyList()))
         val result = repo.getOverdueUnified(listOf("a1"), 1000L, TaskStatus.NEEDS_ACTION).first()
         assertEquals(listOf(overdue), result)
     }
