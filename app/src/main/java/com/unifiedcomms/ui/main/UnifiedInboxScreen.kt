@@ -130,7 +130,7 @@ fun UnifiedInboxScreen(
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
             when (selectedTab) {
-                0 -> UnifiedInboxContent(activeAccounts, onNavigateToEmail)
+                0 -> UnifiedInboxContent(activeAccounts, onNavigateToEmail, onAddAccount = onNavigateToAddAccount)
                 1 -> EmailOverviewScreen(activeAccounts, onNavigateToEmail)
                 2 -> CalendarScreen(viewModel, onNavigateToCalendar, onEventClick)
                 3 -> TasksScreen(viewModel, onCreateTask = { }, onTaskClick = { /* TODO: task detail */ })
@@ -146,13 +146,35 @@ data class NavigationItem(val label: String, val icon: ImageVector, val index: I
 @Composable
 fun UnifiedInboxContent(
     accounts: List<Account>,
-    onNavigateToEmail: (String, String) -> Unit
+    onNavigateToEmail: (String, String) -> Unit,
+    onAddAccount: () -> Unit = {}
 ) {
     Column(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        if (accounts.isEmpty()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(text = "No accounts yet", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Add an email, calendar, or messaging account to get started.",
+                    fontSize = 14.sp
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                androidx.compose.material3.Button(onClick = onAddAccount) {
+                    androidx.compose.material3.Text("Add Account")
+                }
+            }
+            return@Column
+        }
         accounts.forEachIndexed { _, account ->
             val color = AccountColors.getColorForAccount(account.id)
             AccountInboxCard(
