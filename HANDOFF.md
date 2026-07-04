@@ -1,33 +1,33 @@
 UnifiedComms — verified handoff state
-Generated: 2026-07-02
-Verified by: assembleDebug, testDebugUnitTest, emulator-5554 runtime walkthrough
+Generated: 2026-07-04
+Verified by: assembleDebug clean no-build-cache/configuration-cache rerun-tasks on 2026-07-04
+Latest commit: 571c053 fix: audit-driven crash safety and harden 15 production files
 
 Clean verified build/test
-- assembleDebug: BUILD SUCCESSFUL from clean no-cache/cache run on 2026-07-02
-- testDebugUnitTest: BUILD SUCCESSFUL
-- On-disk test-result XML count: 11 classes, 0 failures, 0 errors
+- assembleDebug: BUILD SUCCESSFUL
+- Last log: /tmp/uc-build12.log
+- Current compile state: green, warnings only
+  - TaskSyncEngineImpl.kt:116 parameter unused
+  - CalendarScreen.kt:345 parameter unused
+  - EmailScreen.kt:73 variable unused
+  - MessagesScreen.kt:72/77/419 unused params
 
 Installed APK/runtime
-- Device: emulator-5554 (testAVD, API 34)
-- Package: com.unifiedcomms.debug
-- MainActivity: com.unifiedcomms.ui.main.MainActivity
-- dumpsys: resumed=true, stopped=false, finished=false; window focus confirmed
+- Build: app/build/outputs/apk/debug/app-debug.apk
+- Device: unknown — runtime walkthrough not completed on 2026-07-04
 
-Observed tab behavior on emulator-5554
-- UnifiedInbox: renders top bar + bottom nav; empty data state
-- Email: renders top bar + bottom nav; routed from inbox/tab
-- Calendar: renders populated month grid for 2026-07
-- Tasks: renders screen header + filter chips + FAB; empty data state
-- Messages: renders top bar + Messages header; empty data state
-- Settings: SettingsScreen renders with account block, toggles, About dialog, Clear-data confirmation
-- Bottom-nav tab switching confirmed via adb input tap; active tab highlights correctly
-
-Artifacts
-- APK: app/build/outputs/apk/debug/app-debug.apk
-- Screenshots: runtime_screens/runtime_inbox.png, runtime_screens/runtime_email.png, runtime_screens/runtime_calendar.png, runtime_screens/runtime_tasks.png, runtime_screens/runtime_messages.png, runtime_screens/runtime_settings.png
 
 Resolved since last handoff
-- AccountRepositoryImpl constructor now takes CryptoManager; all call sites updated
-- AddAccountActivity double-encrypt wrapper removed
-- assembleDebug clean no-cache rebuild green on first fresh run
-- MainActivity start is verified healthy on emulator-5554
+- Replaced invalid JSON IN queries with JSON1 EXISTS checks in MessageDao
+- Replaced broken SQLite date() checks on TEXT JSON fields with Kotlin-side day/week-range filtering in CalendarRepositoryImpl and TaskRepositoryImpl
+- Fixed SyncManager StateFlow immutable-copy write path
+- Added BASIC auth basic-header support in CalendarSyncEngineImpl
+- Added stable calendar identity and server auth in calendar discovery
+- Added Message-ID-based IMAP UID mapping in EmailSyncEngineImpl
+- Fixed EmailScreen compose sender/recipient wiring; added CC/BCC
+- Fixed MainViewModel divide-by-zero with no active accounts
+- Fixed ReminderSystem PendingIntent lifecycle leak
+- Routed reminder openEventDetail action back to MainActivity
+- Replaced broken .transform{} on StateFlow progress emission with explicit projection paths in CalendarSyncEngineImpl and TaskSyncEngineImpl
+- Updated TasksScreen to preserve filter after toggle refresh
+- Updated CalendarScreen to refresh after reminder action
