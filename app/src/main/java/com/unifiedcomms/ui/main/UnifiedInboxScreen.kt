@@ -41,10 +41,12 @@ import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.MarkEmailUnread
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -71,13 +73,14 @@ fun UnifiedInboxScreen(
     onNavigateToConversation: (String) -> Unit = {},
     onNavigateToComposeMessage: () -> Unit = {},
     onNavigateToCreateEvent: () -> Unit = {},
-    onEventClick: (String) -> Unit = {}
+    onEventClick: (String) -> Unit = {},
+    initialTab: Int? = null
 ) {
     val accounts = viewModel.accounts.collectAsStateWithLifecycle()
     val activeAccounts = accounts.value.filter { it.isActive }
     val coroutineScope = rememberCoroutineScope()
 
-    var selectedTab by remember { mutableStateOf(0) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(initialTab?.coerceIn(0, 4) ?: 0) }
 
     Scaffold(
         topBar = {
