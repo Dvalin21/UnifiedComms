@@ -14,10 +14,9 @@ class CryptoManagerImpl(private val context: android.content.Context) : CryptoMa
     override fun encrypt(data: ByteArray): ByteArray {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         val secretKey = getOrCreateKey()
-        val iv = ByteArray(12).also { java.security.SecureRandom().nextBytes(it) }
-        val spec = javax.crypto.spec.GCMParameterSpec(128, iv)
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey, spec)
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey)
         val ciphertext = cipher.doFinal(data)
+        val iv = cipher.iv
         return iv + ciphertext
     }
 
