@@ -58,6 +58,19 @@ class PreferencesManager private constructor(
 
     fun getInt(key: String, default: Int = 0): Int = encryptedPrefs.getInt(key, default)
 
+    fun getSyncIntervalMinutes(default: Int = 15): Int {
+        val raw = encryptedPrefs.getString("sync_interval_minutes", null)
+        val parsed = raw?.toIntOrNull()
+        return when (parsed) {
+            15, 30, 60, 180, 360, 720, -1 -> parsed
+            else -> default
+        }
+    }
+
+    fun putSyncIntervalMinutes(value: Int) {
+        encryptedPrefs.edit().putInt("sync_interval_minutes", value).apply()
+    }
+
     fun putLong(key: String, value: Long) {
         encryptedPrefs.edit().putLong(key, value).apply()
     }

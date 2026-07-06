@@ -65,8 +65,14 @@ fun EmailScreen(
     onNavigateBack: () -> Unit,
     onCompose: () -> Unit
 ) {
+    val resolvedFolder = when (folder) {
+        "Sent" -> "Sent"
+        "Drafts" -> "Drafts"
+        "Trash" -> "Trash"
+        else -> "INBOX"
+    }
     val emails by viewModel.emailRepository
-        .getByAccountAndFolder(accountId, folder, 100, 0)
+        .getByAccountAndFolder(accountId, resolvedFolder, 100, 0)
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val messages = emails.map { it.toEmailMessage() }
 
