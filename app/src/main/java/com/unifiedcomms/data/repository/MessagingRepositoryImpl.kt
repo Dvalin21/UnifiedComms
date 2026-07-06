@@ -78,7 +78,7 @@ class MessagingRepositoryImpl(
 
     override fun getPinnedConversationsForUser(userId: String): Flow<List<Conversation>> = convDao.getPinnedForUser(userId)
 
-    override suspend fun findDirectConversation(participants: List<String>, type: ConversationType): Conversation? =
+    override suspend fun findDirectConversation(participants: List<String>, type: com.unifiedcomms.data.model.ConversationType): Conversation? =
         convDao.findDirectConversation(participants, com.unifiedcomms.data.model.ConversationType.valueOf(type.name))
 
     override suspend fun getConversationsWithUnread(userId: String): List<Conversation> = convDao.getWithUnread(userId)

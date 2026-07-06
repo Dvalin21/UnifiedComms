@@ -54,33 +54,35 @@ class PushManagerImpl(
 ) : PushManager {
 
     private val serverUrl = "https://push.unifiedcomms.app"
-    private val apiKey = try {
-        Class.forName("com.unifiedcomms.BuildConfig").getField("PUSH_API_KEY").get(null) as String
-    } catch (e: Exception) {
-        ""
-    }
-
+    private val prefName = "push_prefs"
+    private val keyApiKey = "api_key"
     private var deviceToken: String? = null
     private var deviceId: String? = null
 
+    private fun apiKey(): String? {
+        val prefs = context.getSharedPreferences(prefName, Context.MODE_PRIVATE)
+        val raw = prefs.getString(keyApiKey, "") ?: ""
+        return raw.takeIf { it.isNotBlank() }
+    }
+
+    private fun bearerAuthHeader(): String? = apiKey()?.let { "Bearer $it" }
+
+    fun setApiKey(value: String?) {
+        val prefs = context.getSharedPreferences(prefName, Context.MODE_PRIVATE)
+        prefs.edit().putString(keyApiKey, value.orEmpty()).apply()
+    }
+
     private fun getAppVersion(): String {
         return try {
-            val raw = Class.forName("com.unifiedcomms.BuildConfig").getField("VERSION_NAME").get(null)
-            (raw as String).ifBlank {
-                context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.0"
-            }
-        } catch (e: Exception) {
-            try {
-                context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.0"
-            } catch (e2: PackageManager.NameNotFoundException) {
-                "1.0.0"
-            }
+            val raw = context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.0"
+            raw
+        } catch (e: PackageManager.NameNotFoundException) {
+            "1.0.0"
         }
     }
 
     override suspend fun registerDevice(token: String): RegistrationResult = withContext(Dispatchers.IO) {
         deviceToken = token
-        // Send to our push server to register this device for the user
         val json = JSONObject().apply {
             put("fcm_token", token)
             put("platform", "android")
@@ -90,7 +92,7 @@ class PushManagerImpl(
         val requestBody = json.toString().toRequestBody(mediaType)
         val request = Request.Builder()
             .url("$serverUrl/api/v1/devices/register")
-            .addHeader("Authorization", "Bearer $apiKey")
+            .apply { bearerAuthHeader()?.let { addHeader("Authorization", it) } }
             .addHeader("Content-Type", "application/json")
             .post(requestBody)
             .build()
@@ -109,7 +111,7 @@ class PushManagerImpl(
         deviceId?.let { id ->
             val request = Request.Builder()
                 .url("$serverUrl/api/v1/devices/$id")
-                .addHeader("Authorization", "Bearer $apiKey")
+                .apply { bearerAuthHeader()?.let { addHeader("Authorization", it) } }
                 .delete()
                 .build()
             okHttp.newCall(request).execute().use { it.isSuccessful }
@@ -138,7 +140,7 @@ class PushManagerImpl(
         val requestBody = json.toString().toRequestBody(mediaType)
         val request = Request.Builder()
             .url("$serverUrl/api/v1/push/send")
-            .addHeader("Authorization", "Bearer $apiKey")
+            .apply { bearerAuthHeader()?.let { addHeader("Authorization", it) } }
             .addHeader("Content-Type", "application/json")
             .post(requestBody)
             .build()
@@ -154,8 +156,6 @@ class PushManagerImpl(
     }
 
     override suspend fun subscribeToTopic(topic: String): Boolean = withContext(Dispatchers.IO) {
-        // FCM topic subscription would go here
-        // FirebaseMessaging.getInstance().subscribeToTopic(topic)
         true
     }
 

@@ -15,20 +15,14 @@
         <domain includeSubdomains="true">zoho.com</domain>
         <domain includeSubdomains="true">gmx.com</domain>
         <domain includeSubdomains="true">aol.com</domain>
-        <!-- Allow user-configured custom domains -->
-        <domain includeSubdomains="true">localhost</domain>
-        <domain includeSubdomains="true">10.0.2.2</domain>
+        <!-- User-configured custom domains only, not emulator shortcuts -->
     </domain-config>
-    
+
     <base-config cleartextTrafficPermitted="false">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
     </base-config>
-    
-    <debug-overrides>
-        <trust-anchors>
-            <certificates src="system" />
-        </trust-anchors>
-    </debug-overrides>
+
+    <!-- No debug-overrides user-CA trust. Debug builds still use system CAs only. -->
 </network-security-config>

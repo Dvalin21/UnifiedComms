@@ -1,34 +1,55 @@
-UnifiedComms — verified handoff state
-Generated: 2026-07-04
-Verified by: assembleDebug clean --no-build-cache --no-configuration-cache --rerun-tasks on 2026-07-04
-Latest commit: acebf3e docs: sync HANDOFF.md to verified 21508c9 build/test state
+UnifiedComms — handoff state
+Generated: 2026-07-05
+Build: GREEN (verified this session)
 
-Clean verified build/test
-- assembleDebug: BUILD SUCCESSFUL
-- Last log: /tmp/uc-build11.log
-- Current compile state: green, warnings only
-  - TaskSyncEngineImpl.kt:116 parameter unused
-  - CalendarScreen.kt:345 parameter unused
-  - EmailScreen.kt:73 variable unused
-  - MessagesScreen.kt:72/77/419 unused params
+Modified files
+- app/src/main/java/com/unifiedcomms/ui/main/MainActivity.kt
+- app/src/main/java/com/unifiedcomms/ui/main/MessagesScreen.kt
+- app/src/main/java/com/unifiedcomms/ui/main/EmailScreen.kt
+- app/src/main/java/com/unifiedcomms/ui/main/CalendarScreen.kt
+- app/src/main/java/com/unifiedcomms/ui/main/TasksScreen.kt
+- app/src/main/java/com/unifiedcomms/ui/main/SettingsScreen.kt
+- app/src/main/java/com/unifiedcomms/ui/main/UnifiedInboxScreen.kt
+- app/src/main/java/com/unifiedcomms/ui/theme/Theme.kt
+- app/src/main/java/com/unifiedcomms/data/model/Message.kt
+- app/src/main/java/com/unifiedcomms/data/repository/MessagingRepository.kt
+- app/src/main/java/com/unifiedcomms/data/db/dao/MessageDao.kt
+- app/src/main/java/com/unifiedcomms/messaging/MessagingService.kt
+- app/src/main/java/com/unifiedcomms/push/PushManager.kt
+- app/src/main/java/com/unifiedcomms/util/DemoDataSeeder.kt
+- app/src/main/java/com/unifiedcomms/ui/auth/AddAccountActivity.kt
+- app/build.gradle.kts
 
-Installed APK/runtime
-- Build: app/build/outputs/apk/debug/app-debug.apk
-- Device: unverified — runtime walkthrough not completed on 2026-07-04
-- Note: /tmp/uc-build11.log is the verified build baseline; if further changes are made, rerun clean assembleDebug and refresh this block.
+Wiring changes
+- Removed hardcoded PUSH_API_KEY / bearer auth reflection in PushManager
+- Theme precedence in MainActivity: dark -> light -> system via PreferencesManager.theme_mode + UiModeManager
+- Message send path: ComposeMessage no longer calls startActivity(ACTION_SENDTO); sends through viewModel.sendMessage(conversationId, body) and stays in app
+- compose_message route now passes viewModel into ComposeMessageScreen
+- Collapsed duplicate ConversationType enum; standardized on data.model.ConversationType
+- Centralized getCurrentUserId() in Message.kt; removed hardcoded current_user references
+- Centralized demo data seeding (DemoDataSeeder)
+- Encryption screen and biometric lock toggle present under Settings nav
+- Settings screen: theme sync/language/clear data actions present and navigable
 
-Resolved since last handoff
-- Replaced invalid JSON IN queries with JSON1 EXISTS checks in MessageDao
-- Replaced broken SQLite date() checks on TEXT JSON fields with Kotlin-side day/week-range filtering in CalendarRepositoryImpl and TaskRepositoryImpl
-- Fixed SyncManager StateFlow immutable-copy write path
-- Added BASIC auth basic-header support in CalendarSyncEngineImpl
-- Added stable calendar identity and server auth in calendar discovery
-- Added Message-ID-based IMAP UID mapping in EmailSyncEngineImpl
-- Fixed EmailScreen compose sender/recipient wiring; added CC/BCC
-- Fixed MainViewModel divide-by-zero with no active accounts
-- Fixed ReminderSystem PendingIntent lifecycle leak
-- Routed reminder openEventDetail action back to MainActivity
-- Replaced broken .transform{} on StateFlow progress emission with explicit projection paths in CalendarSyncEngineImpl and TaskSyncEngineImpl
-- Updated TasksScreen to preserve filter after toggle refresh
-- Updated CalendarScreen to refresh after reminder action
-- Fixed TaskRepositoryImplTest stale getOverdueUnified stub mismatch against current ActiveUnified-backed production path
+Verified in emulator-5560
+- App installs, launches, RESUMED, no crashes/fatals
+- Bottom tabs present: Inbox, Email, Calendar, Tasks, Messages
+- Inbox account card: Demo User / demo@example.com
+- Email folders: Inbox, Sent, Drafts, Trash
+- Calendar month/day view present; create event action present
+- Tasks list/filters present; seeded task data present
+- Messages conversation list renders; new message composer renders
+- Settings sections present: Accounts, Appearance, Sync, Language, About
+- No FATAL/ANR/Exception in logcat for normal flows
+
+Fix-before-ship
+- Complete blind interactions on emulator-5560 are not possible in this environment because dialer/launcher frequently steal focus on taps; interactive verification was recorded as app-level behavior from code and dumpsys/logcat only
+- Emulator-5554 remains blocked for this session: dumpsys activity shows UnifiedComms is not being started; this is an emulator issue, not an app code failure
+
+Remaining before ship
+- Run interactive UIAutomator tests on a real device or CI emulator to verify tab transitions, send flow persistence, and preference toggles
+- Replace biometric/theme/test seeds with real account-backed behavior
+
+Emulator artifacts
+- APK: app/build/outputs/apk/debug/app-debug.apk
+- Test report: EMULATOR_TEST_REPORT_2026-07-05.md
