@@ -142,16 +142,17 @@ class MainViewModel(
     }
 
     suspend fun sendMessage(conversationId: String, content: String) {
+        val currentUserId = com.unifiedcomms.data.model.getCurrentUserId()
         val existing = messagingRepo.getConversationById(conversationId)
         val message = Message(
             conversationId = conversationId,
-            senderId = "current_user",
-            recipientId = existing?.participantIds?.firstOrNull { it != "current_user" }.orEmpty(),
+            senderId = currentUserId,
+            recipientId = existing?.participantIds?.firstOrNull { it != currentUserId }.orEmpty(),
             content = content,
             sentAt = kotlinx.datetime.Clock.System.now()
         )
         messagingRepo.insertMessage(message)
-        messagingRepo.updateLastMessage(conversationId, message, "current_user")
+        messagingRepo.updateLastMessage(conversationId, message, currentUserId)
     }
 
     suspend fun getEventById(eventId: String): CalendarEvent? = calendarRepo.getEventById(eventId)

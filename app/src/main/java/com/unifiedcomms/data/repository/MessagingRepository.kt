@@ -39,7 +39,7 @@ interface MessagingRepository {
     fun getActiveConversationsForUser(userId: String): Flow<List<Conversation>>
     fun getArchivedConversationsForUser(userId: String): Flow<List<Conversation>>
     fun getPinnedConversationsForUser(userId: String): Flow<List<Conversation>>
-    suspend fun findDirectConversation(participants: List<String>, type: ConversationType): Conversation?
+    suspend fun findDirectConversation(participants: List<String>, type: com.unifiedcomms.data.model.ConversationType): Conversation?
     suspend fun getConversationsWithUnread(userId: String): List<Conversation>
     suspend fun getTotalUnreadCount(userId: String): Int
     suspend fun updateLastMessage(conversationId: String, message: Message, currentUserId: String)
@@ -48,4 +48,3 @@ interface MessagingRepository {
     suspend fun toggleMute(conversationId: String, muteUntil: Instant?)
 }
 
-enum class ConversationType { DIRECT, GROUP, BROADCAST }
