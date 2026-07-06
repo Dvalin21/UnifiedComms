@@ -1,5 +1,7 @@
 package com.unifiedcomms.ui.main
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,7 +24,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -31,6 +32,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.Button
+import androidx.compose.material3.TextField
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -48,8 +52,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -59,22 +63,25 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.TextButton
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.unifiedcomms.data.model.Message
+import com.unifiedcomms.data.model.Conversation
+import com.unifiedcomms.data.model.ConversationType
+import com.unifiedcomms.data.model.getCurrentUserId
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 @Composable
+@Suppress("unused")
 fun MessagesScreen(
     viewModel: MainViewModel,
     onConversationClick: (String) -> Unit,
-    onNewMessage: () -> Unit,
-    onNavigateToCreateEvent: () -> Unit = {}
+    onNewMessage: () -> Unit
 ) {
-    val conversations by viewModel.messagingRepository.getAllConversationsForUser("current_user")
+    val currentUserId = com.unifiedcomms.data.model.getCurrentUserId()
+    val conversations by viewModel.messagingRepository.getAllConversationsForUser(currentUserId)
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val displayConversations = remember(conversations) { conversations.map { it.toMockConversation() } }
-    val coroutineScope: kotlinx.coroutines.CoroutineScope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
@@ -110,7 +117,7 @@ fun ConversationScreen(
     conversationId: String,
     onBack: () -> Unit
 ) {
-    var conversation by remember { mutableStateOf<com.unifiedcomms.data.model.Conversation?>(null) }
+    var conversation by remember { mutableStateOf<Conversation?>(null) }
     LaunchedEffect(conversationId) {
         conversation = viewModel.messagingRepository.getConversationById(conversationId)
     }
@@ -119,7 +126,7 @@ fun ConversationScreen(
     val displayMessages = remember(messages) { messages.map { it.toMockMessage() } }
     val displayConversation = remember(conversationId, conversation) {
         conversation?.toMockConversation(messages)
-            ?: MockConversation(conversationId, "Unknown", "", "No conversation", "", false, 0, com.unifiedcomms.data.model.ConversationType.DIRECT)
+            ?: MockConversation(conversationId, "Unknown", "", "No conversation", "", false, 0, ConversationType.DIRECT)
     }
     var messageText by remember { mutableStateOf("") }
     var showDialog by remember { mutableStateOf<String?>(null) }
@@ -275,10 +282,7 @@ fun ConversationListItem(
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            Column(
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
+            Column(modifier = Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(verticalAlignment = Alignment.Top) {
                     Column {
                         Text(
@@ -401,8 +405,8 @@ data class MockConversation(
     val lastMessage: String,
     val time: String,
     val isUnread: Boolean,
-    val unreadCount: Int,
-    val type: com.unifiedcomms.data.model.ConversationType
+    val unreadCount: Int = 0,
+    val type: ConversationType
 )
 
 data class MockMessage(
@@ -416,12 +420,82 @@ data class MockMessage(
 
 fun getMockConversations(): List<MockConversation> = emptyList()
 
-fun getMockMessages(conversationId: String): List<MockMessage> = emptyList()
+@Suppress("unused")
+fun getMockMessages(_conversationId: String): List<MockMessage> = emptyList()
 
-private fun com.unifiedcomms.data.model.Conversation.toMockConversation(messages: List<com.unifiedcomms.data.model.Message> = emptyList()): MockConversation = MockConversation(
+@Composable
+fun ComposeMessageScreen(
+    viewModel: MainViewModel,
+    conversationId: String? = null,
+    onSend: () -> Unit = {}
+) {
+    var recipient by remember { mutableStateOf("") }
+    var body by remember { mutableStateOf("") }
+    val coroutineScope = rememberCoroutineScope()
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("New Message") },
+                navigationIcon = {
+                    IconButton(onClick = onSend) {
+                        Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Cancel")
+                    }
+                }
+            )
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .padding(innerPadding)
+                .padding(16.dp)
+                .fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            TextField(
+                value = recipient,
+                onValueChange = { recipient = it },
+                label = { Text("To") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+            TextField(
+                value = body,
+                onValueChange = { body = it },
+                label = { Text("Message") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 6
+            )
+            Button(
+                onClick = {
+                    val trimmed = recipient.trim()
+                    if (trimmed.isBlank() || body.isBlank()) return@Button
+                    coroutineScope.launch {
+                        val targetConversationId = conversationId ?: run {
+                            val currentUserId = com.unifiedcomms.data.model.getCurrentUserId()
+                            val participants = listOf(currentUserId, trimmed)
+                            viewModel.messagingRepository.findDirectConversation(
+                                participants,
+                                ConversationType.DIRECT
+                            )?.id ?: trimmed
+                        }
+                        viewModel.sendMessage(targetConversationId, body)
+                    }
+                    onSend()
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = recipient.isNotBlank() && body.isNotBlank()
+            ) {
+                Text("Send")
+            }
+        }
+    }
+}
+
+private fun Conversation.toMockConversation(messages: List<Message> = emptyList()): MockConversation = MockConversation(
     id = id,
-    name = getDisplayName("current_user"),
-    email = getOtherParticipantNames("current_user").firstOrNull().orEmpty(),
+    name = getDisplayName(getCurrentUserId()),
+    email = getOtherParticipantNames(getCurrentUserId()).firstOrNull().orEmpty(),
     lastMessage = messages.lastOrNull()?.content.orEmpty(),
     time = java.time.Instant.ofEpochMilli(lastActivityAt.toEpochMilliseconds())
         .atZone(java.time.ZoneId.systemDefault()).toLocalTime().toString(),
@@ -430,7 +504,7 @@ private fun com.unifiedcomms.data.model.Conversation.toMockConversation(messages
     type = type
 )
 
-private fun com.unifiedcomms.data.model.Message.toMockMessage(): MockMessage = MockMessage(
+private fun Message.toMockMessage(): MockMessage = MockMessage(
     id = id,
     conversationId = conversationId,
     senderId = senderId,

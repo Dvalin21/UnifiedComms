@@ -165,7 +165,7 @@ class MessagingService : Service() {
         val allParticipants = (currentUserId?.let { listOf(it) } ?: emptyList()) + participantIds
         return repo.findDirectConversation(
             allParticipants,
-            com.unifiedcomms.data.repository.ConversationType.DIRECT
+            com.unifiedcomms.data.model.ConversationType.DIRECT
         ) ?: createConversation(allParticipants)
     }
 

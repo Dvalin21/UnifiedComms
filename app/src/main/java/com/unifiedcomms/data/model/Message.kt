@@ -268,7 +268,9 @@ data class TaskShareMessage(
     val priority: TaskPriority
 )
 
-private fun getCurrentUserId(): String {
-    // This will be replaced by actual user ID from preferences
-    return "current_user"
+const val CURRENT_USER = "current_user"
+
+fun getCurrentUserId(): String {
+    // TODO: wire to actual authenticated user id
+    return CURRENT_USER
 }

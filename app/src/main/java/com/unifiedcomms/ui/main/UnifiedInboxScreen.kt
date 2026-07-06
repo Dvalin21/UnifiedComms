@@ -73,7 +73,6 @@ fun UnifiedInboxScreen(
     onNavigateToAddAccount: () -> Unit,
     onNavigateToConversation: (String) -> Unit = {},
     onNavigateToComposeMessage: () -> Unit = {},
-    onNavigateToCreateEvent: () -> Unit = {},
     onEventClick: (String) -> Unit = {},
     initialTab: Int? = null
 ) {
@@ -145,7 +144,7 @@ fun UnifiedInboxScreen(
                 1 -> EmailOverviewScreen(activeAccounts, onNavigateToEmail)
                 2 -> CalendarScreen(viewModel, onNavigateToCalendar, onEventClick)
                 3 -> TasksScreen(viewModel, onCreateTask = { }, onTaskClick = { /* TODO: task detail */ })
-                4 -> MessagesScreen(viewModel, onConversationClick = onNavigateToConversation, onNewMessage = onNavigateToComposeMessage, onNavigateToCreateEvent = onNavigateToCreateEvent)
+                4 -> MessagesScreen(viewModel, onConversationClick = onNavigateToConversation, onNewMessage = onNavigateToComposeMessage)
             }
         }
     }
