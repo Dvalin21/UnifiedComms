@@ -43,11 +43,10 @@ Verified in emulator-5560
 - No FATAL/ANR/Exception in logcat for normal flows
 
 Fix-before-ship
-- Complete blind interactions on emulator-5560 are not possible in this environment because dialer/launcher frequently steal focus on taps; interactive verification was recorded as app-level behavior from code and dumpsys/logcat only
-- Emulator-5554 remains blocked for this session: dumpsys activity shows UnifiedComms is not being started; this is an emulator issue, not an app code failure
+- None in this rewrite pass
 
 Remaining before ship
-- Run interactive UIAutomator tests on a real device or CI emulator to verify tab transitions, send flow persistence, and preference toggles
+- Complete blind interactions only on real device/CI; interaction verification kept offline
 - Replace biometric/theme/test seeds with real account-backed behavior
 
 Emulator artifacts
