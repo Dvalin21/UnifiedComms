@@ -115,12 +115,13 @@ fun SettingsScreen(
                     },
                     icon = Icons.Default.DarkMode,
                     onClick = {
-                        themeMode = when (themeMode) {
+                        val next = when (themeMode) {
                             "light" -> "dark"
                             "dark" -> "system"
                             else -> "light"
                         }
-                        PreferencesManager.getInstance().putString("theme_mode", themeMode)
+                        themeMode = next
+                        PreferencesManager.getInstance().putString("theme_mode", next)
                     }
                 )
                 HorizontalDivider()
@@ -129,11 +130,29 @@ fun SettingsScreen(
 
             SettingsGroup(title = "Sync", icon = Icons.Default.Sync) {
                 var autoSync by remember { mutableStateOf(PreferencesManager.getInstance().getBoolean("auto_sync", true)) }
+                val syncIntervalMinutes = PreferencesManager.getInstance().getSyncIntervalMinutes(15)
+                val syncLabel = when (syncIntervalMinutes) {
+                    30 -> "Every 30 minutes"
+                    60 -> "Every 1 hour"
+                    180 -> "Every 3 hours"
+                    360 -> "Every 6 hours"
+                    720 -> "Every 12 hours"
+                    -1 -> "Manual only"
+                    else -> "Every 15 minutes"
+                }
                 SettingItem(
                     title = "Auto-sync",
-                    subtitle = "Every 15 minutes",
+                    subtitle = if (autoSync) syncLabel else "Off",
                     icon = Icons.Default.Sync,
-                    trailing = { Switch(checked = autoSync, onCheckedChange = { autoSync = it; PreferencesManager.getInstance().putBoolean("auto_sync", it) }) },
+                    trailing = {
+                        Switch(
+                            checked = autoSync,
+                            onCheckedChange = {
+                                autoSync = it
+                                PreferencesManager.getInstance().putBoolean("auto_sync", it)
+                            }
+                        )
+                    },
                     onClick = { }
                 )
                 HorizontalDivider()
@@ -144,6 +163,13 @@ fun SettingsScreen(
                     icon = Icons.Default.Wifi,
                     trailing = { Switch(checked = wifiOnly, onCheckedChange = { wifiOnly = it; PreferencesManager.getInstance().putBoolean("sync_wifi_only", it) }) },
                     onClick = { }
+                )
+                HorizontalDivider()
+                SettingItem(
+                    title = "Sync interval",
+                    subtitle = syncLabel,
+                    icon = Icons.Default.Alarm,
+                    onClick = { showReminderTime = true }
                 )
             }
 
@@ -196,19 +222,27 @@ fun SettingsScreen(
     }
 
     if (showReminderTime) {
-        val times = listOf("15 minutes", "30 minutes", "1 hour", "2 hours", "1 day")
+        val syncIntervals = listOf(
+            15 to "Every 15 minutes",
+            30 to "Every 30 minutes",
+            60 to "Every 1 hour",
+            180 to "Every 3 hours",
+            360 to "Every 6 hours",
+            720 to "Every 12 hours",
+            -1 to "Manual only"
+        )
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showReminderTime = false },
-            title = { Text("Default Reminder Time") },
+            title = { Text("Sync Interval") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    times.forEach { t ->
+                    syncIntervals.forEach { (minutes, label) ->
                         Text(
-                            text = t,
+                            text = label,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    PreferencesManager.getInstance().putString("default_reminder_time", t)
+                                    PreferencesManager.getInstance().putSyncIntervalMinutes(minutes)
                                     showReminderTime = false
                                 }
                                 .padding(vertical = 8.dp)

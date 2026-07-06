@@ -159,6 +159,15 @@ class AddAccountActivity : AppCompatActivity() {
                 val account = createManualAccount(accountType!!, email, password, server, name)
                 accountRepo.insert(account)
                 accountRepo.setDefault(account.id)
+
+                // Trigger immediate full sync for the newly connected account.
+                // Without this, the app shows empty folders and requires manual sync.
+                runCatching {
+                    val app = application as com.unifiedcomms.UnifiedCommsApplication
+                    val vm = com.unifiedcomms.ui.main.MainViewModel(app)
+                    vm.syncAccount(account)
+                }
+
                 finishWithResult(account)
             }
         }

@@ -141,7 +141,7 @@ fun UnifiedInboxScreen(
         Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
             when (selectedTab) {
                 0 -> UnifiedInboxContent(activeAccounts, onNavigateToEmail, onAddAccount = onNavigateToAddAccount)
-                1 -> EmailOverviewScreen(activeAccounts, onNavigateToEmail)
+                1 -> EmailOverviewScreen(activeAccounts, viewModel, onNavigateToEmail)
                 2 -> CalendarScreen(viewModel, onNavigateToCalendar, onEventClick)
                 3 -> TasksScreen(viewModel, onCreateTask = { }, onTaskClick = { /* TODO: task detail */ })
                 4 -> MessagesScreen(viewModel, onConversationClick = onNavigateToConversation, onNewMessage = onNavigateToComposeMessage)
@@ -255,14 +255,21 @@ fun AccountInboxCard(
 @Composable
 fun EmailOverviewScreen(
     accounts: List<Account>,
+    viewModel: MainViewModel,
     onNavigateToEmail: (String, String) -> Unit
 ) {
+    val repo = viewModel.emailRepository
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
         accounts.forEach { account ->
             val color = AccountColors.getColorForAccount(account.id)
+            val inbox by repo.getUnreadByAccountAndFolder(account.id, "INBOX").collectAsStateWithLifecycle(initialValue = emptyList())
+            val sent by repo.getByAccountAndFolder(account.id, "Sent", 300, 0).collectAsStateWithLifecycle(initialValue = emptyList())
+            val drafts by repo.getByAccountAndFolder(account.id, "Drafts", 300, 0).collectAsStateWithLifecycle(initialValue = emptyList())
+            val trash by repo.getByAccountAndFolder(account.id, "Trash", 300, 0).collectAsStateWithLifecycle(initialValue = emptyList())
+
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
@@ -280,10 +287,10 @@ fun EmailOverviewScreen(
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        FolderChip("Inbox", 5, color.container) { onNavigateToEmail(account.id, "INBOX") }
-                        FolderChip("Sent", 0, color.container) { onNavigateToEmail(account.id, "Sent") }
-                        FolderChip("Drafts", 2, color.container) { onNavigateToEmail(account.id, "Drafts") }
-                        FolderChip("Trash", 0, color.container) { onNavigateToEmail(account.id, "Trash") }
+                        FolderChip("Inbox", inbox.size, color.container, onClick = { onNavigateToEmail(account.id, "INBOX") })
+                        FolderChip("Sent", sent.size, color.container, onClick = { onNavigateToEmail(account.id, "Sent") })
+                        FolderChip("Drafts", drafts.size, color.container, onClick = { onNavigateToEmail(account.id, "Drafts") })
+                        FolderChip("Trash", trash.size, color.container, onClick = { onNavigateToEmail(account.id, "Trash") })
                     }
                 }
             }

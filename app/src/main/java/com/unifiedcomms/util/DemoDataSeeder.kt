@@ -28,17 +28,23 @@ import java.util.UUID
 object DemoDataSeeder {
     private const val PREFS_NAME = "unifiedcomms_demo_seed"
     private const val KEY_SEEDED = "demo_seeded"
-
+    private const val KEY_USER_REQUESTED_DEMO = "user_requested_demo"
     fun seedIfNeeded(context: Context, scope: CoroutineScope) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         if (prefs.getBoolean(KEY_SEEDED, false)) return
-        scope.launch(Dispatchers.IO) {
-            try {
-                seed(context)
-                prefs.edit().putBoolean(KEY_SEEDED, true).commit()
-            } catch (t: Throwable) {
-                Log.e("DemoDataSeeder", "seed failed", t)
-            }
+        // Do not seed demo data on fresh install anymore.
+        // Demo data should only appear if the user explicitly opts in via Help > Load demo data.
+        return
+    }
+
+    suspend fun seedIfUserRequested(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(KEY_USER_REQUESTED_DEMO, false)) return
+        try {
+            seed(context)
+            prefs.edit().putBoolean(KEY_SEEDED, true).commit()
+        } catch (t: Throwable) {
+            Log.e("DemoDataSeeder", "seed failed", t)
         }
     }
 
