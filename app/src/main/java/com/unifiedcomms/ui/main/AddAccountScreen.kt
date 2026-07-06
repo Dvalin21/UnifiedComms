@@ -44,7 +44,9 @@ fun AddAccountScreen(
 ) {
     var selectedType by remember { mutableStateOf(AccountType.GOOGLE) }
     var email by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf("") }
     var serverUrl by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf(false) }
     var saved by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -90,6 +92,22 @@ fun AddAccountScreen(
                     label = { Text("Server URL") },
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                Text(text = "Name", style = MaterialTheme.typography.bodyLarge)
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Display name") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Text(text = "Password / App Password", style = MaterialTheme.typography.bodyLarge)
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Password or app password") },
+                    modifier = Modifier.fillMaxWidth()
+                )
                 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -126,21 +144,22 @@ fun AddAccountScreen(
                             return@Button
                         }
                         val account = when (selected) {
-                            AccountType.GOOGLE -> Account.createGoogle(email = trimmed)
-                            AccountType.MAILCOW -> Account.createMailcow(email = trimmed, serverUrl = server)
-                            AccountType.OUTLOOK -> Account.createExchange(email = trimmed, serverUrl = server)
-                            AccountType.EXCHANGE -> Account.createExchange(email = trimmed, serverUrl = server)
+                            AccountType.MAILCOW -> Account.createMailcow(email = trimmed, serverUrl = server, name = name)
                             else -> Account(
-                                name = trimmed,
+                                name = name.ifBlank { trimmed },
                                 email = trimmed,
                                 accountType = selected,
                                 serverConfig = ServerConfig(
                                     imapHost = server,
+                                    imapPort = if (selected == AccountType.GENERIC_IMAP_SMTP) 993 else 143,
+                                    imapUseSsl = selected == AccountType.GENERIC_IMAP_SMTP,
                                     smtpHost = server,
+                                    smtpPort = if (selected == AccountType.GENERIC_IMAP_SMTP) 465 else 587,
+                                    smtpUseStartTls = selected == AccountType.GENERIC_IMAP_SMTP,
                                     caldavUrl = "$server/dav/",
                                     carddavUrl = "$server/dav/"
                                 ),
-                                authConfig = AuthConfig.OAuth2(),
+                                authConfig = AuthConfig.AppPassword(trimmed, password),
                                 syncConfig = SyncConfig.Defaults(),
                                 uiConfig = UIConfig.Defaults()
                             )
