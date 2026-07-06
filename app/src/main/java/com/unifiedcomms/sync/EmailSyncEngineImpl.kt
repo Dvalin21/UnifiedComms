@@ -66,22 +66,11 @@ class EmailSyncEngineImpl(
 
             try {
                 updateProgress(account.id, folder = null, SyncStage.CONNECTING, 0, 0)
-
-                val props = Properties().apply {
-                    put("mail.imap.host", config.imapHost)
-                    put("mail.imap.port", config.imapPort)
-                    put("mail.imap.ssl.enable", config.imapUseSsl)
-                    put("mail.imap.auth", true)
-                    put("mail.imap.connectiontimeout", 30000)
-                    put("mail.imap.timeout", 30000)
-                }
-
-                val session = Session.getInstance(props)
-                val store = session.getStore("imap")
+                val session = openImapSession(config)
+                val store = session.store
 
                 updateProgress(account.id, folder = null, SyncStage.AUTHENTICATING, 0, 0)
-
-                store.connect(config.imapHost, auth.username!!, auth.passwordEncrypted!!)
+                connectStoreWithRetry(store, config, auth)
 
                 for (folderName in folders) {
                     updateProgress(account.id, folderName, SyncStage.LISTING_FOLDERS, 0, 0)
@@ -89,69 +78,16 @@ class EmailSyncEngineImpl(
                     val folder = store.getFolder(folderName)
                     if (!folder.exists()) continue
 
-                    folder.open(Folder.READ_WRITE)
-
-                    val messageCount = folder.messageCount
-                    if (messageCount == 0) {
-                        folder.close(false)
-                        continue
-                    }
-
-                    updateProgress(account.id, folderName, SyncStage.FETCHING_HEADERS, 0, messageCount)
-
-                    // Fetch messages in batches
-                    val batchSize = 50
-                    for (start in 1..messageCount step batchSize) {
-                        val end = minOf(start + batchSize - 1, messageCount)
-                        val messages = folder.getMessages(start, end)
-
-                        val fp = FetchProfile()
-                        fp.add(FetchProfile.Item.ENVELOPE)
-                        fp.add(FetchProfile.Item.FLAGS)
-                        fp.add("X-GM-LABELS")
-                        folder.fetch(messages, fp)
-
-                        for (msg in messages) {
-                            try {
-                                val messageId = msg.getHeader("Message-ID").firstOrNull()
-                                if (messageId == null) {
-                                    totalFailed++
-                                    continue
-                                }
-                                val email = parseEmail(msg, account.id, folderName, messageId)
-                                if (email != null) {
-                                    val existing = emailRepo.getByUid(account.id, email.uid, folderName)
-                                    if (existing == null) {
-                                        emailRepo.insert(email)
-                                        newItems.add(email.id)
-                                    } else if (existing.etag != email.etag || existing.flags != email.flags) {
-                                        emailRepo.update(existing.copy(
-                                            flags = email.flags,
-                                            labels = email.labels,
-                                            systemLabels = email.systemLabels,
-                                            etag = email.etag,
-                                            updatedAt = Clock.System.now(),
-                                            needsSync = false
-                                        ))
-                                        updatedItems.add(existing.id)
-                                    }
-                                    totalSynced++
-                                }
-                            } catch (e: Exception) {
-                                totalFailed++
-                            }
-                        }
-
-                        updateProgress(account.id, folderName, SyncStage.FETCHING_HEADERS, end, messageCount)
-                    }
-
-                    folder.close(false)
+                    val folderResult = syncSingleFolder(account, folder)
+                    totalSynced += folderResult.first
+                    totalFailed += folderResult.second
+                    newItems.addAll(folderResult.third)
+                    updatedItems.addAll(folderResult.fourth)
                 }
 
                 store.close()
 
                 updateProgress(account.id, folder = null, SyncStage.COMPLETED, totalSynced, totalSynced)
-
                 return@withContext SyncResult.success(
                     itemsSynced = totalSynced,
                     newItems = newItems,
@@ -166,8 +102,113 @@ class EmailSyncEngineImpl(
         }
     }
 
+    private suspend fun syncSingleFolder(
+        account: Account,
+        folder: Folder
+    ): Tuple4 {
+        val folderName = folder.name
+        folder.open(Folder.READ_ONLY)
+
+        val messageCount = folder.messageCount
+        if (messageCount == 0) {
+            folder.close(false)
+            return Tuple4(0, 0, emptyList(), emptyList())
+        }
+
+        updateProgress(account.id, folderName, SyncStage.FETCHING_HEADERS, 0, messageCount)
+
+        var totalSynced = 0
+        var totalFailed = 0
+        val newItems = mutableListOf<String>()
+        val updatedItems = mutableListOf<String>()
+
+        val batchSize = 50
+        for (start in 1..messageCount step batchSize) {
+            val end = minOf(start + batchSize - 1, messageCount)
+            val messages = folder.getMessages(start, end)
+
+            val fp = FetchProfile()
+            fp.add(FetchProfile.Item.ENVELOPE)
+            fp.add(FetchProfile.Item.FLAGS)
+            fp.add("X-GM-LABELS")
+            folder.fetch(messages, fp)
+
+            for (msg in messages) {
+                if (!folder.isOpen) break // stop if folder was closed externally
+                try {
+                    val messageId = msg.getHeader("Message-ID").firstOrNull()
+                    if (messageId == null) {
+                        totalFailed++
+                        continue
+                    }
+                    val email = parseEmail(msg, account.id, folderName, messageId)
+                    if (email != null) {
+                        val existing = emailRepo.getByUid(account.id, email.uid, folderName)
+                        if (existing == null) {
+                            emailRepo.insert(email)
+                            newItems.add(email.id)
+                        } else if (existing.etag != email.etag || existing.flags != email.flags) {
+                            emailRepo.update(existing.copy(
+                                flags = email.flags,
+                                labels = email.labels,
+                                systemLabels = email.systemLabels,
+                                etag = email.etag,
+                                updatedAt = Clock.System.now(),
+                                needsSync = false
+                            ))
+                            updatedItems.add(existing.id)
+                        }
+                        totalSynced++
+                    }
+                } catch (e: Exception) {
+                    totalFailed++
+                }
+            }
+
+            updateProgress(account.id, folderName, SyncStage.FETCHING_HEADERS, end, messageCount)
+        }
+
+        if (folder.isOpen) {
+            folder.close(false)
+        }
+        return Tuple4(totalSynced, totalFailed, newItems, updatedItems)
+    }
+
+    private fun connectStoreWithRetry(
+        store: Store,
+        config: com.unifiedcomms.data.model.ServerConfig,
+        auth: com.unifiedcomms.data.model.AuthConfig
+    ) {
+        for (attempt in 1..2) {
+            try {
+                store.connect(
+                    config.imapHost,
+                    config.imapPort,
+                    auth.username!!,
+                    auth.passwordEncrypted!!
+                )
+                return
+            } catch (e: javax.mail.MessagingException) {
+                if (attempt == 2) throw e
+            }
+        }
+    }
+
+    private fun openImapSession(config: com.unifiedcomms.data.model.ServerConfig): Session {
+        val props = Properties().apply {
+            put("mail.imap.host", config.imapHost)
+            put("mail.imap.port", config.imapPort)
+            put("mail.imap.ssl.enable", config.imapUseSsl)
+            put("mail.imap.auth", true)
+            put("mail.imap.connectiontimeout", 30000)
+            put("mail.imap.timeout", 30000)
+            put("mail.imap.writetimeout", 30000)
+        }
+        return Session.getInstance(props)
+    }
+
     private fun parseEmail(msg: JMailMessage, accountId: String, folder: String, messageId: String): Email? {
-        try {
+        return try {
             val uid = messageId
             val threadId = msg.getHeader("X-GM-THRID").firstOrNull() ?: messageId
             val inReplyTo = msg.getHeader("In-Reply-To").firstOrNull()
@@ -210,7 +251,7 @@ class EmailSyncEngineImpl(
                 spam = folder.equals("Spam", ignoreCase = true) || folder.equals("Junk", ignoreCase = true)
             )
 
-            return Email(
+            Email(
                 accountId = accountId,
                 folder = folder,
                 uid = uid,
@@ -234,7 +275,7 @@ class EmailSyncEngineImpl(
                 mimeType = msg.contentType
             )
         } catch (e: Exception) {
-            return null
+            null
         }
     }
 
@@ -320,12 +361,12 @@ class EmailSyncEngineImpl(
                 }
             }
         } catch (e: Exception) {
-            // Ignore extraction errors
+            // ignore extraction errors
         }
     }
 
     override suspend fun fetchMessage(account: Account, folder: String, uid: String): Email? {
-        // Implementation for fetching a single message
+        // Future: per-message fetch by UID
         return null
     }
 
@@ -375,12 +416,12 @@ class EmailSyncEngineImpl(
     }
 
     override suspend fun moveToFolder(account: Account, uids: List<String>, fromFolder: String, toFolder: String): SyncResult {
-        // IMAP MOVE implementation
+        // stub: requires IMAP MOVE extension support
         return SyncResult.success()
     }
 
     override suspend fun deleteMessages(account: Account, folder: String, uids: List<String>): SyncResult {
-        // IMAP DELETE implementation
+        // stub: requires EXPUNGE implementation
         return SyncResult.success()
     }
 
@@ -396,7 +437,6 @@ class EmailSyncEngineImpl(
             try {
                 val config = account.serverConfig
                 val auth = crypto.decryptAuthConfig(account.authConfig)
-
                 val props = Properties().apply {
                     put("mail.imap.host", config.imapHost)
                     put("mail.imap.port", config.imapPort)
@@ -418,4 +458,11 @@ class EmailSyncEngineImpl(
     private fun updateProgress(accountId: String, folder: String?, stage: SyncStage, current: Int, total: Int) {
         _syncProgress.value = _syncProgress.value + (accountId to SyncProgress(accountId, folder, stage, current, total))
     }
+
+    private data class Tuple4(
+        val first: Int,
+        val second: Int,
+        val third: List<String>,
+        val fourth: List<String>
+    )
 }

@@ -77,17 +77,23 @@ class SyncManager(
     suspend fun performFullSync(account: Account): SyncResult {
         updateState(account.id) { it.copy(isSyncing = true, lastError = null) }
 
+        val maxEmailRetries = 2
         var totalSynced = 0
         val startTime = System.currentTimeMillis()
         var failed = false
         var errorMessage: String? = null
 
         if (account.syncConfig.syncEmail) {
-            val result = emailSync.syncAccount(account)
-            if (!result.success) {
+            var emailResult = emailSync.syncAccount(account)
+            var attempts = 1
+            while (!emailResult.success && attempts < maxEmailRetries) {
+                attempts++
+                emailResult = emailSync.syncAccount(account)
+            }
+            if (!emailResult.success) {
                 failed = true
-                errorMessage = result.errorMessage ?: "Email sync failed"
-            } else totalSynced += result.itemsSynced
+                errorMessage = emailResult.errorMessage ?: "Email sync failed"
+            } else totalSynced += emailResult.itemsSynced
         }
 
         if (account.syncConfig.syncCalendar) {
@@ -122,6 +128,10 @@ class SyncManager(
             )
         }
         return if (failed) SyncResult.failure(errorMessage ?: "Sync failed") else SyncResult.success(totalSynced)
+    }
+
+    suspend fun syncNow(account: Account): SyncResult {
+        return performFullSync(account)
     }
 
     suspend fun syncEmail(account: Account, folder: String? = null): SyncResult {
