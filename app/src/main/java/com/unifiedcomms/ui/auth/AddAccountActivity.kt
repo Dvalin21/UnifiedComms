@@ -72,8 +72,7 @@ class AddAccountActivity : AppCompatActivity() {
             AccountType.OUTLOOK -> startOutlookAuth()
             AccountType.YAHOO -> startYahooAuth()
             AccountType.ICLOUD -> startIcloudAuth()
-            AccountType.EXCHANGE -> startExchangeAuth()
-            AccountType.MAILCOW -> showManualSetup()
+            AccountType.EXCHANGE -> showManualSetup()
             else -> showManualSetup()
         }
     }
