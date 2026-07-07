@@ -141,6 +141,15 @@ class SyncManager(
         return performFullSync(account)
     }
 
+    suspend fun sendEmail(account: Account, email: com.unifiedcomms.data.model.Email): SendResult =
+        emailSync.sendEmail(account, email)
+
+    suspend fun moveEmail(account: Account, uids: List<String>, fromFolder: String, toFolder: String): SyncResult =
+        emailSync.moveToFolder(account, uids, fromFolder, toFolder)
+
+    suspend fun deleteEmail(account: Account, folder: String, uids: List<String>): SyncResult =
+        emailSync.deleteMessages(account, folder, uids)
+
     suspend fun syncEmail(account: Account, folder: String? = null): SyncResult {
         updateState(account.id) { it.copy(emailProgress = SyncProgress(account.id, folder, SyncStage.CONNECTING, 0, 0), isSyncing = true) }
         NotificationHelper.showSyncNotification(context, "Syncing email ${account.name}...", -1)

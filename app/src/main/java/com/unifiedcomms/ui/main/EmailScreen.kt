@@ -5,6 +5,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Search
 
@@ -123,10 +124,15 @@ fun EmailScreen(
                             androidx.compose.material3.Text(text = localMessage.body, maxLines = 2, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         IconButton(onClick = {
-                            coroutineScope.launch {
-                                viewModel.emailRepository.markAsRead(listOf(message.id))
-                            }
-                        }) { Icon(Icons.Default.Email, contentDescription = "Toggle read") }
+                                coroutineScope.launch {
+                                    viewModel.emailRepository.markAsRead(listOf(message.id))
+                                }
+                            }) { Icon(Icons.Default.Email, contentDescription = "Toggle read") }
+                            IconButton(onClick = {
+                                coroutineScope.launch {
+                                    viewModel.deleteEmails(listOf(message.id), resolvedFolder)
+                                }
+                            }) { Icon(Icons.Default.Delete, contentDescription = "Delete") }
                     }
                 }
                 HorizontalDivider()
@@ -157,6 +163,7 @@ fun ComposeEmailScreen(
     var bcc by remember { mutableStateOf("") }
     var subject by remember { mutableStateOf("") }
     var body by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
     val coroutineScope = rememberCoroutineScope()
 
     Scaffold(
@@ -183,7 +190,7 @@ fun ComposeEmailScreen(
                                     accountId = accountId,
                                     folder = "Sent",
                                     uid = java.util.UUID.randomUUID().toString(),
-                                    messageId = java.util.UUID.randomUUID().toString(),
+                                    messageId = "<${java.util.UUID.randomUUID()}@unifiedcomms.local>",
                                     threadId = java.util.UUID.randomUUID().toString(),
                                     sender = sender,
                                     recipients = recipients,
@@ -191,8 +198,12 @@ fun ComposeEmailScreen(
                                     bodyText = body,
                                     sentAt = kotlinx.datetime.Clock.System.now()
                                 )
-                                viewModel.emailRepository.insert(email)
-                                onSend()
+                                val result = viewModel.sendEmail(email)
+                                if (result.success) {
+                                    onSend()
+                                } else {
+                                    error = result.errorMessage ?: "Send failed"
+                                }
                             }
                         }
                     }) { Icon(Icons.AutoMirrored.Default.Send, contentDescription = "Send") }
@@ -206,6 +217,9 @@ fun ComposeEmailScreen(
             TextField(value = bcc, onValueChange = { bcc = it }, label = { Text("BCC") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
             TextField(value = subject, onValueChange = { subject = it }, label = { Text("Subject") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
             TextField(value = body, onValueChange = { body = it }, label = { Text("Message") }, modifier = Modifier.fillMaxWidth(), minLines = 8)
+            if (error != null) {
+                Text(text = error!!, color = MaterialTheme.colorScheme.error)
+            }
         }
     }
 }
