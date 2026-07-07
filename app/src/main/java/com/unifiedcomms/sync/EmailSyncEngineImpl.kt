@@ -416,13 +416,59 @@ class EmailSyncEngineImpl(
     }
 
     override suspend fun moveToFolder(account: Account, uids: List<String>, fromFolder: String, toFolder: String): SyncResult {
-        // stub: requires IMAP MOVE extension support
-        return SyncResult.success()
+        return withContext(Dispatchers.IO) {
+            try {
+                val config = account.serverConfig
+                val auth = crypto.decryptAuthConfig(account.authConfig)
+                val session = openImapSession(config)
+                val store = session.store
+                connectStoreWithRetry(store, config, auth)
+                val src = store.getFolder(fromFolder)
+                val dst = store.getFolder(toFolder)
+                if (!src.exists() || !dst.exists()) {
+                    store.close()
+                    return@withContext SyncResult.failure("Folder not found: $fromFolder -> $toFolder")
+                }
+                src.open(Folder.READ_WRITE)
+                val msgs = uids.mapNotNull { mid -> src.messages.firstOrNull { m -> m.getHeader("Message-ID").firstOrNull() == mid } }
+                if (msgs.isNotEmpty()) {
+                    dst.appendMessages(msgs.toTypedArray())
+                    msgs.forEach { it.setFlag(Flags.Flag.DELETED, true) }
+                    src.expunge()
+                }
+                src.close(false)
+                store.close()
+                SyncResult.success(itemsSynced = msgs.size)
+            } catch (e: Exception) {
+                SyncResult.failure(e.message ?: "Move failed")
+            }
+        }
     }
 
     override suspend fun deleteMessages(account: Account, folder: String, uids: List<String>): SyncResult {
-        // stub: requires EXPUNGE implementation
-        return SyncResult.success()
+        return withContext(Dispatchers.IO) {
+            try {
+                val config = account.serverConfig
+                val auth = crypto.decryptAuthConfig(account.authConfig)
+                val session = openImapSession(config)
+                val store = session.store
+                connectStoreWithRetry(store, config, auth)
+                val f = store.getFolder(folder)
+                if (!f.exists()) {
+                    store.close()
+                    return@withContext SyncResult.failure("Folder not found: $folder")
+                }
+                f.open(Folder.READ_WRITE)
+                val msgs = uids.mapNotNull { mid -> f.messages.firstOrNull { m -> m.getHeader("Message-ID").firstOrNull() == mid } }
+                msgs.forEach { it.setFlag(Flags.Flag.DELETED, true) }
+                f.expunge()
+                f.close(false)
+                store.close()
+                SyncResult.success(itemsSynced = msgs.size)
+            } catch (e: Exception) {
+                SyncResult.failure(e.message ?: "Delete failed")
+            }
+        }
     }
 
     override fun observeSyncProgress(accountId: String): kotlinx.coroutines.flow.Flow<SyncProgress> {
