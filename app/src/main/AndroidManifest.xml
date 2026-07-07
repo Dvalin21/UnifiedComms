@@ -112,12 +112,6 @@
 
         <!-- Services -->
         <service
-            android:name=".sync.SyncForegroundService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync"
-            android:permission="android.permission.BIND_JOB_SERVICE" />
-
-        <service
             android:name=".messaging.MessagingService"
             android:exported="true"
             android:permission="com.unifiedcomms.permission.MESSAGING">

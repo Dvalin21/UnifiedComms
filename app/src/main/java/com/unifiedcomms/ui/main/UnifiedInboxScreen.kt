@@ -140,7 +140,7 @@ fun UnifiedInboxScreen(
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
             when (selectedTab) {
-                0 -> UnifiedInboxContent(activeAccounts, onNavigateToEmail, onAddAccount = onNavigateToAddAccount)
+                0 -> UnifiedInboxContent(activeAccounts, onNavigateToEmail, onAddAccount = onNavigateToAddAccount, viewModel = viewModel)
                 1 -> EmailOverviewScreen(activeAccounts, viewModel, onNavigateToEmail)
                 2 -> CalendarScreen(viewModel, onNavigateToCalendar, onEventClick)
                 3 -> TasksScreen(viewModel, onCreateTask = { }, onTaskClick = { /* TODO: task detail */ })
@@ -157,7 +157,8 @@ data class NavigationItem(val label: String, val icon: ImageVector, val index: I
 fun UnifiedInboxContent(
     accounts: List<Account>,
     onNavigateToEmail: (String, String) -> Unit,
-    onAddAccount: () -> Unit = {}
+    onAddAccount: () -> Unit = {},
+    viewModel: MainViewModel
 ) {
     Column(
         modifier = Modifier.fillMaxSize(),
@@ -190,6 +191,7 @@ fun UnifiedInboxContent(
             AccountInboxCard(
                 account = account,
                 color = color,
+                viewModel = viewModel,
                 onClick = { onNavigateToEmail(account.id, "INBOX") }
             )
         }
@@ -201,6 +203,7 @@ fun UnifiedInboxContent(
 fun AccountInboxCard(
     account: Account,
     color: com.unifiedcomms.ui.theme.AccountColor,
+    viewModel: MainViewModel,
     onClick: () -> Unit
 ) {
     Surface(
@@ -238,6 +241,7 @@ fun AccountInboxCard(
                 Text(text = account.email, fontSize = 14.sp, color = color.onContainer.copy(alpha = 0.8f))
             }
             // Unread count badge
+            val inbox by viewModel.emailRepository.getUnreadByAccountAndFolder(account.id, "INBOX").collectAsStateWithLifecycle(initialValue = emptyList())
             androidx.compose.foundation.layout.Box(
                 modifier = Modifier
                     .padding(start = 8.dp)
@@ -245,7 +249,7 @@ fun AccountInboxCard(
                     .background(Color(0xFFE57373), RoundedCornerShape(12.dp))
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
-                Text(text = "5", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Text(text = inbox.size.toString(), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
             }
         }
     }

@@ -96,12 +96,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             val mainPrefs = remember { PreferencesManager.getInstance() }
-            val themeMode = mainPrefs.getString("theme_mode", "system")
-
-            var currentTheme by remember { mutableStateOf(themeMode) }
-            LaunchedEffect(themeMode) { currentTheme = themeMode }
+            val themeMode by mainPrefs.themeModeFlow.collectAsStateWithLifecycle(mainPrefs.getString("theme_mode", "system"))
             val systemDark = (getSystemService(Context.UI_MODE_SERVICE) as? android.app.UiModeManager)?.nightMode == android.app.UiModeManager.MODE_NIGHT_YES
-            val effectiveDark = when (currentTheme) {
+            val effectiveDark = when (themeMode) {
                 "dark" -> true
                 "light" -> false
                 else -> systemDark

@@ -57,7 +57,8 @@ class MainViewModel(
         TaskSyncEngineImpl(taskRepo, accountRepo, crypto, viewModelScope),
         ContactSyncEngineImpl(contactRepo, accountRepo, crypto, viewModelScope),
         accountRepo,
-        viewModelScope
+        viewModelScope,
+        app
     )
 
     private val _accounts = MutableStateFlow<List<Account>>(emptyList())
