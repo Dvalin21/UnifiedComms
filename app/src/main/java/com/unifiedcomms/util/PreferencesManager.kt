@@ -9,6 +9,11 @@ import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.plus
 import java.lang.reflect.Type
 
 class PreferencesManager private constructor(
@@ -42,6 +47,7 @@ class PreferencesManager private constructor(
 
     fun putString(key: String, value: String) {
         encryptedPrefs.edit().putString(key, value).apply()
+        if (key == "theme_mode") _themeMode.update { value }
     }
 
     fun getString(key: String, default: String = ""): String = encryptedPrefs.getString(key, default) ?: default
@@ -101,6 +107,13 @@ class PreferencesManager private constructor(
     }
 
     fun contains(key: String): Boolean = encryptedPrefs.contains(key)
+
+    private val _themeMode = MutableStateFlow(getString("theme_mode", "system"))
+    val themeModeFlow: Flow<String> = _themeMode.asStateFlow()
+
+    fun putThemeMode(value: String) {
+        putString("theme_mode", value)
+    }
 }
 
 inline fun <reified T> PreferencesManager.getObject(key: String, default: T): T {

@@ -1,4 +1,5 @@
 package com.unifiedcomms.ui.main
+
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 
 import androidx.compose.foundation.background
@@ -44,7 +45,6 @@ import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,7 +52,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.unifiedcomms.util.PreferencesManager
 import android.app.AlertDialog
-import androidx.compose.material3.TextButton
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -106,24 +105,23 @@ fun SettingsScreen(
 
             SettingsGroup(title = "Appearance", icon = Icons.Default.DarkMode) {
                 var themeMode by remember { mutableStateOf(PreferencesManager.getInstance().getString("theme_mode", "system")) }
-                SettingItem(
-                    title = "Theme",
-                    subtitle = when (themeMode) {
-                        "light" -> "Light"
-                        "dark" -> "Dark"
-                        else -> "System default"
-                    },
-                    icon = Icons.Default.DarkMode,
-                    onClick = {
-                        val next = when (themeMode) {
-                            "light" -> "dark"
-                            "dark" -> "system"
-                            else -> "light"
-                        }
-                        themeMode = next
-                        PreferencesManager.getInstance().putString("theme_mode", next)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("System" to "system", "Light" to "light", "Dark" to "dark").forEach { (label, value) ->
+                        androidx.compose.material3.FilterChip(
+                            selected = themeMode == value,
+                            onClick = {
+                                themeMode = value
+                                PreferencesManager.getInstance().putThemeMode(value)
+                            },
+                            label = { androidx.compose.material3.Text(label) },
+                            leadingIcon = when (value) {
+                                "light" -> { { androidx.compose.material3.Text("L", Modifier.size(18.dp), fontSize = 14.sp, fontWeight = FontWeight.Bold) } }
+                                "dark" -> { { androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Filled.DarkMode, null, Modifier.size(16.dp)) } }
+                                else -> null
+                            }
+                        )
                     }
-                )
+                }
                 HorizontalDivider()
                 SettingItem(title = "App Language", subtitle = "English (US)", icon = Icons.Default.Language, onClick = { /* TODO: locale picker */ })
             }
