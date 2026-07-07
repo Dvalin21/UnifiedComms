@@ -50,37 +50,20 @@ class TaskSyncEngineImpl(
     override suspend fun fetchTask(account: Account, listId: String, uid: String): Task? = null
 
     override suspend fun createTask(account: Account, task: Task): com.unifiedcomms.sync.CreateResult {
-        return try {
-            val serverId = java.util.UUID.randomUUID().toString()
-            val etag = "\"${System.currentTimeMillis()}\""
-            com.unifiedcomms.sync.CreateResult.success(serverId, task.uid, etag)
-        } catch (e: Exception) {
-            com.unifiedcomms.sync.CreateResult.failure(e.message ?: "Create failed")
-        }
+        // ponytail: unsupported — no task backend wired. Fail honestly; never claim success.
+        return com.unifiedcomms.sync.CreateResult.failure("Task sync backend not implemented")
     }
 
     override suspend fun updateTask(account: Account, task: Task): SyncResult {
-        return try {
-            SyncResult.success()
-        } catch (e: Exception) {
-            SyncResult.failure(e.message ?: "Update failed")
-        }
+        return SyncResult.failure("Task sync backend not implemented")
     }
 
     override suspend fun deleteTask(account: Account, listId: String, uid: String): SyncResult {
-        return try {
-            SyncResult.success()
-        } catch (e: Exception) {
-            SyncResult.failure(e.message ?: "Delete failed")
-        }
+        return SyncResult.failure("Task sync backend not implemented")
     }
 
     override suspend fun completeTask(account: Account, task: Task): SyncResult {
-        return try {
-            SyncResult.success()
-        } catch (e: Exception) {
-            SyncResult.failure(e.message ?: "Complete failed")
-        }
+        return SyncResult.failure("Task sync backend not implemented")
     }
 
     fun allProgress(): kotlinx.coroutines.flow.Flow<List<SyncProgress>> = _syncProgress.map { it.values.toList() }.distinctUntilChanged()

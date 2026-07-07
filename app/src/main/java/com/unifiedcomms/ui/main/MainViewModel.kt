@@ -24,6 +24,7 @@ import com.unifiedcomms.security.CryptoManagerImpl
 import com.unifiedcomms.sync.CalendarSyncEngineImpl
 import com.unifiedcomms.sync.ContactSyncEngineImpl
 import com.unifiedcomms.sync.EmailSyncEngineImpl
+import com.unifiedcomms.sync.SendResult
 import com.unifiedcomms.sync.SyncManager
 import com.unifiedcomms.sync.TaskSyncEngineImpl
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -154,6 +155,40 @@ class MainViewModel(
         )
         messagingRepo.insertMessage(message)
         messagingRepo.updateLastMessage(conversationId, message, currentUserId)
+    }
+
+    suspend fun sendEmail(email: com.unifiedcomms.data.model.Email): SendResult {
+        val account = accountRepo.getById(email.accountId) ?: return SendResult.failure("Account not found")
+        val result = syncManager.sendEmail(account, email)
+        if (result.success) {
+            val stored = emailRepo.getByMessageId(email.messageId)
+            if (stored != null) {
+                emailRepo.update(stored.copy(folder = "Sent", systemLabels = stored.systemLabels.copy(sent = true), needsSync = false))
+            } else {
+                emailRepo.insert(email.copy(folder = "Sent", systemLabels = email.systemLabels.copy(sent = true), needsSync = false))
+            }
+        }
+        return result
+    }
+
+    suspend fun moveEmails(emailIds: List<String>, fromFolder: String, toFolder: String) {
+        val first = emailRepo.getById(emailIds.first()) ?: return
+        val account = accountRepo.getById(first.accountId) ?: return
+        val uids = emailIds.mapNotNull { emailRepo.getById(it)?.messageId }
+        val result = syncManager.moveEmail(account, uids, fromFolder, toFolder)
+        if (result.success) {
+            emailRepo.moveToFolder(emailIds, toFolder)
+        }
+    }
+
+    suspend fun deleteEmails(emailIds: List<String>, folder: String) {
+        val first = emailRepo.getById(emailIds.first()) ?: return
+        val account = accountRepo.getById(first.accountId) ?: return
+        val uids = emailIds.mapNotNull { emailRepo.getById(it)?.messageId }
+        val result = syncManager.deleteEmail(account, folder, uids)
+        if (result.success) {
+            emailRepo.deletePermanently(emailIds)
+        }
     }
 
     suspend fun getEventById(eventId: String): CalendarEvent? = calendarRepo.getEventById(eventId)

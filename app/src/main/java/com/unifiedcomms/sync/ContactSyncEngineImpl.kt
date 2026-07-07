@@ -111,35 +111,16 @@ class ContactSyncEngineImpl(
     override suspend fun fetchContact(account: Account, serverId: String): UnifiedContact? = null
 
     override suspend fun createContact(account: Account, contact: UnifiedContact): CreateResult {
-        return withContext(Dispatchers.IO) {
-            try {
-                val serverId = java.util.UUID.randomUUID().toString()
-                val etag = "\"${System.currentTimeMillis()}\""
-                CreateResult.success(serverId, contact.id, etag)
-            } catch (e: Exception) {
-                CreateResult.failure(e.message ?: "Create failed")
-            }
-        }
+        // ponytail: unsupported — no contact write backend wired. Fail honestly.
+        return CreateResult.failure("Contact write backend not implemented")
     }
 
     override suspend fun updateContact(account: Account, contact: UnifiedContact): SyncResult {
-        return withContext(Dispatchers.IO) {
-            try {
-                SyncResult.success()
-            } catch (e: Exception) {
-                SyncResult.failure(e.message ?: "Update failed")
-            }
-        }
+        return SyncResult.failure("Contact write backend not implemented")
     }
 
     override suspend fun deleteContact(account: Account, serverId: String): SyncResult {
-        return withContext(Dispatchers.IO) {
-            try {
-                SyncResult.success()
-            } catch (e: Exception) {
-                SyncResult.failure(e.message ?: "Delete failed")
-            }
-        }
+        return SyncResult.failure("Contact write backend not implemented")
     }
 
     override fun observeSyncProgress(accountId: String): kotlinx.coroutines.flow.Flow<SyncProgress> {
