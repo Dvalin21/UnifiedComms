@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -37,7 +38,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -175,11 +175,6 @@ fun AddAccountScreen(
                             )
                             TextButton(onClick = { showAdvanced = !showAdvanced }) {
                                 Text(if (showAdvanced) "Hide" else "Show")
-                                Icon(
-                                    imageVector = if (showAdvanced) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
                             }
                         }
                         if (showAdvanced) {
@@ -338,7 +333,6 @@ private fun AdvancedServerFields(
                 onValueChange = onImapPortChange,
                 label = { Text("IMAP port") },
                 modifier = Modifier.weight(1f),
-                keyboardType = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number)
             )
             Surface(
                 modifier = Modifier
@@ -367,7 +361,6 @@ private fun AdvancedServerFields(
                 onValueChange = onSmtpPortChange,
                 label = { Text("SMTP port") },
                 modifier = Modifier.weight(1f),
-                keyboardType = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number)
             )
             Surface(
                 modifier = Modifier
