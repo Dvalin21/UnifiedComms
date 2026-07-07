@@ -5,6 +5,7 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.repository.AccountRepository
+import com.unifiedcomms.util.NotificationHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -21,7 +22,8 @@ class SyncManager(
     private val taskSync: TaskSyncEngine,
     private val contactSync: ContactSyncEngine,
     private val accountRepo: AccountRepository,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val context: Context
 ) : DefaultLifecycleObserver {
 
     private val _syncStates = MutableStateFlow<Map<String, SyncState>>(emptyMap())
@@ -76,7 +78,7 @@ class SyncManager(
 
     suspend fun performFullSync(account: Account): SyncResult {
         updateState(account.id) { it.copy(isSyncing = true, lastError = null) }
-
+        NotificationHelper.showSyncNotification(context, "Syncing ${account.name}...", -1)
         val maxEmailRetries = 2
         var totalSynced = 0
         val startTime = System.currentTimeMillis()
@@ -127,7 +129,12 @@ class SyncManager(
                 lastError = if (failed) errorMessage else null
             )
         }
-        return if (failed) SyncResult.failure(errorMessage ?: "Sync failed") else SyncResult.success(totalSynced)
+        if (failed) {
+            NotificationHelper.showSyncNotification(context, "Sync failed: ${errorMessage ?: "Unknown error"}", -1)
+            return SyncResult.failure(errorMessage ?: "Sync failed")
+        }
+        NotificationHelper.showSyncNotification(context, "Sync completed", 100)
+        return SyncResult.success(totalSynced)
     }
 
     suspend fun syncNow(account: Account): SyncResult {
@@ -136,16 +143,19 @@ class SyncManager(
 
     suspend fun syncEmail(account: Account, folder: String? = null): SyncResult {
         updateState(account.id) { it.copy(emailProgress = SyncProgress(account.id, folder, SyncStage.CONNECTING, 0, 0), isSyncing = true) }
+        NotificationHelper.showSyncNotification(context, "Syncing email ${account.name}...", -1)
         return if (folder != null) emailSync.syncFolder(account, folder) else emailSync.syncAccount(account)
     }
 
     suspend fun syncCalendar(account: Account): SyncResult {
         updateState(account.id) { it.copy(calendarProgress = SyncProgress(account.id, null, SyncStage.CONNECTING, 0, 0), isSyncing = true) }
+        NotificationHelper.showSyncNotification(context, "Syncing calendar ${account.name}...", -1)
         return calendarSync.syncAccount(account)
     }
 
     suspend fun syncTasks(account: Account): SyncResult {
         updateState(account.id) { it.copy(taskProgress = SyncProgress(account.id, null, SyncStage.CONNECTING, 0, 0), isSyncing = true) }
+        NotificationHelper.showSyncNotification(context, "Syncing tasks ${account.name}...", -1)
         return taskSync.syncAccount(account)
     }
 
