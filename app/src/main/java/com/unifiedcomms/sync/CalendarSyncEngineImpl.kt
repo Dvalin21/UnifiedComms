@@ -5,26 +5,23 @@ import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.model.Calendar
 import com.unifiedcomms.data.model.CalendarEvent
 import com.unifiedcomms.data.model.EventStatus
-import com.unifiedcomms.data.repository.CalendarRepository
 import com.unifiedcomms.data.repository.AccountRepository
+import com.unifiedcomms.data.repository.CalendarRepository
 import com.unifiedcomms.security.CryptoManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
-import okhttp3.Credentials
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
-import javax.xml.parsers.DocumentBuilderFactory
-import org.w3c.dom.Node
-import org.w3c.dom.NodeList
 
 class CalendarSyncEngineImpl(
     private val calendarRepo: CalendarRepository,
@@ -39,8 +36,75 @@ class CalendarSyncEngineImpl(
     override suspend fun syncAccount(account: Account): SyncResult {
         return withContext(Dispatchers.IO) {
             try {
-                updateProgress(account.id, null, SyncStage.COMPLETED, 0, 0)
-                SyncResult.success(0, emptyList(), emptyList())
+                updateProgress(account.id, null, SyncStage.CONNECTING, 0, 0)
+                val url = account.serverConfig.caldavUrl ?: return@withContext SyncResult.success(0, emptyList(), emptyList())
+                val auth = crypto.decryptAuthConfig(account.authConfig)
+                val client = OkHttpClient.Builder().connectTimeout(30, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
+                val calDav = CalDAVClient(url, requireNotNull(auth.username), requireNotNull(auth.passwordEncrypted), client)
+
+                val allCalendars = calDav.discoverCalendars()
+                updateProgress(account.id, null, SyncStage.LISTING_FOLDERS, 0, allCalendars.size)
+                if (allCalendars.isEmpty()) {
+                    Log.w("CalendarSyncEngineImpl", "No calendars discovered for ${account.email}")
+                    return@withContext SyncResult.success(0, emptyList(), emptyList())
+                }
+
+                val localEvents = calendarRepo.getAllEventsForAccount(account.id).first()
+                val localEventPaths = mutableMapOf<String, CalendarEvent>()
+                for (event in localEvents) {
+                    localEventPaths[event.calendarId] = event
+                }
+
+                val masterServerHrefs = mutableSetOf<String>()
+                var eventsImported = 0
+                val newItems = mutableListOf<String>()
+                val updatedItems = mutableListOf<String>()
+
+                for (cal in allCalendars) {
+                    val etagEntries = calDav.getETagList(cal.path)
+                    masterServerHrefs.addAll(etagEntries.map { localEt -> localEt.href })
+                    val toFetch = etagEntries.filter { entry ->
+                        val local = localEventPaths[entry.href]
+                        local == null || local.etag != entry.etag
+                    }.map { it.href }
+
+                    coroutineScope {
+                        toFetch.chunked(6).forEach { batch ->
+                            val fetched = batch.map { href -> async { calDav.fetchItem(account.id, href) } }.awaitAll()
+                            for (res in fetched) {
+                                if (res == null) continue
+                                val parsed = ICalParser.parse(res.ical, account.id, cal.path, res.href)
+                                for (event in parsed.events) {
+                                    val existing = calendarRepo.getEventByUid(event.uid, account.id)
+                                    val updated = event.copy(
+                                        id = existing?.id ?: event.id,
+                                        calendarId = res.href,
+                                        etag = res.etag,
+                                        color = existing?.color ?: event.color,
+                                        attendees = existing?.let { if (it.attendees.isNotEmpty()) it.attendees else event.attendees } ?: event.attendees
+                                    )
+                                    if (existing == null) {
+                                        calendarRepo.insertEvent(updated)
+                                        newItems.add(updated.id)
+                                    } else {
+                                        calendarRepo.updateEvent(updated)
+                                        updatedItems.add(updated.id)
+                                    }
+                                    eventsImported++
+                                }
+                            }
+                        }
+                    }
+                }
+
+                for (event in localEvents) {
+                    if (event.calendarId.isNotBlank() && event.calendarId !in masterServerHrefs) {
+                        calendarRepo.deleteEvent(event)
+                    }
+                }
+
+                updateProgress(account.id, null, SyncStage.COMPLETED, eventsImported, eventsImported)
+                SyncResult.success(eventsImported, newItems, updatedItems)
             } catch (e: Exception) {
                 Log.e("CalendarSyncEngineImpl", "sync failed for ${account.email}: ${e.message}", e)
                 updateProgress(account.id, null, SyncStage.ERROR, 0, 0)
@@ -58,14 +122,14 @@ class CalendarSyncEngineImpl(
 
     override suspend fun fetchEvent(account: Account, calendarId: String, uid: String): CalendarEvent? {
         return withContext(Dispatchers.IO) {
-            val calDav = account.serverConfig.caldavUrl ?: return@withContext null
+            val url = account.serverConfig.caldavUrl ?: return@withContext null
             val auth = crypto.decryptAuthConfig(account.authConfig)
             val client = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
-            val dav = CalDAVClient(client, calDav, requireNotNull(auth.username), requireNotNull(auth.passwordEncrypted))
-            val hrefs = dav.listCalendarItems(calendarId)
-            hrefs.firstOrNull { it.contains(uid, true) }?.let { href ->
-                val fetched = dav.fetchItem(account, href) ?: return@withContext null
-                ICalParser.parse(fetched.first, account.id, calendarId, href).events.firstOrNull()
+            val dav = CalDAVClient(url, requireNotNull(auth.username), requireNotNull(auth.passwordEncrypted), client)
+            val etagEntries = dav.getETagList(calendarId)
+            etagEntries.firstOrNull { entry -> entry.href.contains(uid, true) }?.let { entry ->
+                val fetched = dav.fetchItem(account.id, entry.href) ?: return@withContext null
+                ICalParser.parse(fetched.ical, account.id, calendarId, entry.href).events.firstOrNull()
             }
         }
     }
@@ -122,11 +186,11 @@ class CalendarSyncEngineImpl(
         return withContext(Dispatchers.IO) {
             val start = System.currentTimeMillis()
             try {
-                val calDav = account.serverConfig.caldavUrl ?: return@withContext com.unifiedcomms.sync.ConnectionTestResult(false, 0, emptyList(), "Missing CalDAV URL")
+                val url = account.serverConfig.caldavUrl ?: return@withContext com.unifiedcomms.sync.ConnectionTestResult(false, 0, emptyList(), "Missing CalDAV URL")
                 val auth = crypto.decryptAuthConfig(account.authConfig)
                 val client = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
-                CalDAVClient(client, calDav, requireNotNull(auth.username), requireNotNull(auth.passwordEncrypted))
-                    .listCalendars()
+                CalDAVClient(url, requireNotNull(auth.username), requireNotNull(auth.passwordEncrypted), client)
+                    .discoverCalendars()
                 com.unifiedcomms.sync.ConnectionTestResult(true, System.currentTimeMillis() - start, listOf("CalDAV"))
             } catch (e: Exception) {
                 com.unifiedcomms.sync.ConnectionTestResult(false, 0, emptyList(), e.message)
@@ -134,7 +198,27 @@ class CalendarSyncEngineImpl(
         }
     }
 
-    override suspend fun getCalendars(account: Account): List<Calendar> = emptyList()
+    override suspend fun getCalendars(account: Account): List<Calendar> = withContext(Dispatchers.IO) {
+        val url = account.serverConfig.caldavUrl ?: return@withContext emptyList()
+        val auth = crypto.decryptAuthConfig(account.authConfig)
+        val client = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
+        CalDAVClient(url, requireNotNull(auth.username), requireNotNull(auth.passwordEncrypted), client)
+            .discoverCalendars()
+            .map { info ->
+                Calendar(
+                    id = info.path,
+                    accountId = account.id,
+                    serverId = info.path,
+                    name = info.displayName,
+                    color = com.unifiedcomms.data.model.EventColor.Default(),
+                    isSelected = true,
+                    syncEnabled = true,
+                    supportedComponents = if (info.supportsVTODO) listOf("VEVENT", "VTODO") else listOf("VEVENT"),
+                    lastSyncedAt = kotlinx.datetime.Clock.System.now(),
+                    etag = info.ctag
+                )
+            }
+    }
 
     private fun updateProgress(accountId: String, calendar: String?, stage: SyncStage, current: Int, total: Int) {
         _syncProgress.value = _syncProgress.value + (accountId to SyncProgress(accountId, calendar, stage, current, total))
