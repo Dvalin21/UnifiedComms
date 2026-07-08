@@ -145,5 +145,45 @@ Remaining before ship
 - Live functional verification on emulator-5560 (add account, send/receive, sync, reminders).
 - Add automated UI/instrumented tests for core flows.
 
+=== PHASE 5 — E2E EMAIL SYNC (LIVE TEST, 2026-07-07) ===
+Drove the real sync engine against a live Ethereal IMAP/SMTP test account via a new
+instrumented test (app/src/androidTest/java/com/unifiedcomms/EtherealEmailSyncTest.kt).
+Ran ONLY on emulator-5560 (am instrument, single device) — did NOT touch the S22.
+
+Test: testConnection -> sendEmail (self-mail) -> syncAccount -> assert Room persisted rows.
+RESULT: PASS (OK 1 test). IMAP SSL login, SMTP STARTTLS send, IMAP fetch, Converters,
+and Room insert all confirmed working end-to-end against a real server.
+
+This E2E surfaced THREE real defects that compiled cleanly but broke email sync entirely:
+
+[#P1] CRYPTO BOUNDARY — SyncManager.performFullSync passed the in-memory plaintext
+  `account` straight to the engines; decryptAuthConfig only accepts the encrypted
+  (DB) form -> every UI-added account failed auth ("testConnection failed: null",
+  root cause: keystore2 INVALID_INPUT_LENGTH). FIXED: re-fetch stored account from
+  accountRepo before syncing (encrypt-on-write / decrypt-on-read now consistent).
+
+[#P2] IMAP PROTOCOL — openImapSession never set mail.store.protocol, so session.store
+  threw "Invalid protocol: null" during the real sync (testConnection passed only
+  because it explicitly calls getStore("imap")). FIXED: added mail.store.protocol=imap.
+
+[#P3] CATASTROPHIC PARSING — parseEmail called msg.getHeader("X").firstOrNull() on every
+  header. getHeader() returns a nullable Array<String>? and Kotlin's .firstOrNull()
+  extension is on the NON-NULL receiver, so ANY absent header (Subject, Date, References,
+  X-GM-THRID, From, Reply-To, etc.) threw "getHeader(...) must not be null" -> ZERO
+  emails ever parsed -> no mail ever synced. This was the core feature being 100% dead.
+  FIXED: getHeader("X")?.firstOrNull() at all 10 sites; also replaced the convenience
+  getters (msg.subject / sentDate / receivedDate / size / contentType) that throw on
+  missing headers with null-safe getHeader() access + parseDateHeader() helper.
+
+Verified stable: rebuilt clean, ran test on emulator-5560 -> still PASS with the
+diagnostic logs removed.
+
+NOTE: Ethereal folder names are INBOX / Sent Mail / Junk / Trash (not "Sent"/"Spam").
+  foldersToSync default ["INBOX","Sent","Drafts","Trash","Spam","Archive"] maps to
+  INBOX/Drafts/Trash only on Ethereal; "Sent Mail" and "Junk" are skipped. Not a bug,
+  but worth a folder-name alias map later for providers that diverge from the defaults.
+
 Emulator artifacts
 - APK: app/build/outputs/apk/debug/app-debug.apk
+- Test APK: app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+- Test account: Ethereal (ethereal.email) — ephemeral, credentials in the test file.
