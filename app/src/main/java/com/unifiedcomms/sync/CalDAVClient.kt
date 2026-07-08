@@ -141,32 +141,32 @@ class CalDAVClient(
 
         try {
             val body = propfind(normalized, xml, depth = "1")
-            val doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(body.byteInputStream())
-            val responses = doc.getElementsByTagName("response")
+            val doc = parseXml(body)
+            val responses = byLocalName(doc.documentElement, "response")
             for (i in 0 until responses.length) {
                 val resp = responses.item(i) as? Element ?: continue
-                val hrefNode = resp.getElementsByTagName("href").item(0)
+                val hrefNode = byLocalName(resp, "href").item(0)
                 val href = hrefNode?.textContent?.trim().orEmpty()
                 val fullUrl = if (href.startsWith("http://", true) || href.startsWith("https://", true)) href else "$baseUrl/${href.removePrefix("/")}"
                 val subUrl = fullUrl.trimEnd('/')
-                if (subUrl == normalized) continue
+                val isSelf = subUrl == normalized
 
                 val types = mutableListOf<String>()
-                var child = resp.getElementsByTagName("resourcetype").item(0) as? Element
+                var child = byLocalName(resp, "resourcetype").item(0) as? Element
                 var node = child?.firstChild
                 while (node != null) {
-                    if (node.nodeType == org.w3c.dom.Node.ELEMENT_NODE) types += node.localName.lowercase()
+                    if (node.nodeType == org.w3c.dom.Node.ELEMENT_NODE) types += (node.localName ?: node.nodeName.substringAfter(':')).lowercase()
                     node = node.nextSibling
                 }
-                if (!types.contains("calendar")) {
+                if (types.contains("calendar")) {
+                    val nameNode = byLocalName(resp, "displayname").item(0)
+                    val name = nameNode?.textContent?.trim().orEmpty().ifBlank { href.split("/").lastOrNull { it.isNotBlank() }.orEmpty() }
+                    val ctagNode = byLocalName(resp, "getctag").item(0)
+                    val ctag = ctagNode?.textContent?.trim().orEmpty()
+                    result += CalendarInfo(path = subUrl, displayName = name, ctag = ctag, supportsVTODO = false)
+                } else if (!isSelf) {
                     scanForCalendars(subUrl, result, visited)
-                    continue
                 }
-                val nameNode = resp.getElementsByTagName("displayname").item(0)
-                val name = nameNode?.textContent?.trim().orEmpty().ifBlank { href.split("/").lastOrNull { it.isNotBlank() }.orEmpty() }
-                val ctagNode = resp.getElementsByTagName("getctag").item(0)
-                val ctag = ctagNode?.textContent?.trim().orEmpty()
-                result += CalendarInfo(path = subUrl, displayName = name, ctag = ctag, supportsVTODO = false)
             }
         } catch (e: Exception) {
             Log.w(TAG, "calendar scan failed", e)
@@ -215,10 +215,10 @@ class CalDAVClient(
             val text = resp.body?.string().orEmpty()
             if (text.isBlank()) return@withContext emptyList()
             try {
-                val db = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(text.byteInputStream())
-                val responses = db.getElementsByTagName("response")
-                val hrefNodes = db.getElementsByTagName("href")
-                val etagNodes = db.getElementsByTagName("getetag")
+                val db = parseXml(text)
+                val responses = byLocalName(db.documentElement, "response")
+                val hrefNodes = byLocalName(db.documentElement, "href")
+                val etagNodes = byLocalName(db.documentElement, "getetag")
                 val out = mutableListOf<ETagEntry>()
                 for (i in 0 until responses.length) {
                     if (i >= hrefNodes.length || i >= etagNodes.length) break
@@ -271,29 +271,30 @@ class CalDAVClient(
         """.trimIndent()
         try {
             val body = propfind(normalized, xml, depth = "1")
-            val db = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(body.byteInputStream())
-            val responses = db.getElementsByTagName("response")
+            val db = parseXml(body)
+            val responses = byLocalName(db.documentElement, "response")
+            Log.d(TAG, "DIAG ab responses=${responses.length} rootLocal=${db.documentElement?.localName} rootNode=${db.documentElement?.nodeName}")
             for (i in 0 until responses.length) {
                 val resp = responses.item(i) as? Element ?: continue
-                val href = resp.getElementsByTagName("href").item(0)?.textContent?.trim().orEmpty()
+                val href = byLocalName(resp, "href").item(0)?.textContent?.trim().orEmpty()
                 val fullUrl = if (href.startsWith("http://", true) || href.startsWith("https://", true)) href else "$baseUrl/${href.removePrefix("/")}"
                 val subUrl = fullUrl.trimEnd('/')
-                if (subUrl == normalized) continue
+                val isSelf = subUrl == normalized
                 val types = mutableListOf<String>()
-                var rt = resp.getElementsByTagName("resourcetype").item(0) as? Element
+                var rt = byLocalName(resp, "resourcetype").item(0) as? Element
                 var node = rt?.firstChild
                 while (node != null) {
-                    if (node.nodeType == org.w3c.dom.Node.ELEMENT_NODE) types += node.localName.lowercase()
+                    if (node.nodeType == org.w3c.dom.Node.ELEMENT_NODE) types += (node.localName ?: node.nodeName.substringAfter(':')).lowercase()
                     node = node.nextSibling
                 }
                 val comps = componentSetOf(resp)
-                if (!types.contains("calendar") || !comps.contains("VTODO")) {
+                if (types.contains("calendar") && comps.contains("VTODO")) {
+                    val name = byLocalName(resp, "displayname").item(0)?.textContent?.trim().orEmpty()
+                        .ifBlank { subUrl.split("/").lastOrNull { it.isNotBlank() }.orEmpty() }
+                    result += CalendarInfo(path = subUrl, displayName = name, supportsVTODO = true)
+                } else if (!isSelf) {
                     scanForTaskLists(subUrl, result, visited)
-                    continue
                 }
-                val name = resp.getElementsByTagName("displayname").item(0)?.textContent?.trim().orEmpty()
-                    .ifBlank { subUrl.split("/").lastOrNull { it.isNotBlank() }.orEmpty() }
-                result += CalendarInfo(path = subUrl, displayName = name, supportsVTODO = true)
             }
         } catch (e: Exception) {
             Log.w(TAG, "task list scan failed", e)
@@ -301,8 +302,8 @@ class CalDAVClient(
     }
 
     private fun componentSetOf(response: Element): Set<String> {
-        val set = response.getElementsByTagName("supported-calendar-component-set").item(0) as? Element ?: return emptySet()
-        val comps = set.getElementsByTagName("comp")
+        val set = byLocalName(response, "supported-calendar-component-set").item(0) as? Element ?: return emptySet()
+        val comps = byLocalName(set, "comp")
         val out = mutableSetOf<String>()
         for (i in 0 until comps.length) {
             val name = (comps.item(i) as? Element)?.getAttribute("name")?.trim()?.uppercase().orEmpty()
@@ -342,9 +343,12 @@ class CalDAVClient(
 
     suspend fun discoverAddressBooks(): List<AddressBookInfo> = withContext(Dispatchers.IO) {
         val principal = tryFindPrincipalAt(baseUrl) ?: return@withContext emptyList()
+        Log.d(TAG, "DIAG disc principal=$principal base=$baseUrl")
         val homeSet = findAddressBookHomeSet(principal) ?: principal
+        Log.d(TAG, "DIAG disc homeSet=$homeSet")
         val out = mutableListOf<AddressBookInfo>()
         scanForAddressBooks(homeSet, out)
+        Log.d(TAG, "DIAG disc found=${out.size}")
         out
     }
 
@@ -378,26 +382,27 @@ class CalDAVClient(
         """.trimIndent()
         try {
             val body = propfind(normalized, xml, depth = "1")
-            val db = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(body.byteInputStream())
-            val responses = db.getElementsByTagName("response")
+            val db = parseXml(body)
+            val responses = byLocalName(db.documentElement, "response")
+            Log.d(TAG, "DIAG ab responses=${responses.length} rootLocal=${db.documentElement?.localName} rootNode=${db.documentElement?.nodeName}")
             for (i in 0 until responses.length) {
                 val resp = responses.item(i) as? Element ?: continue
-                val href = resp.getElementsByTagName("href").item(0)?.textContent?.trim().orEmpty()
+                val href = byLocalName(resp, "href").item(0)?.textContent?.trim().orEmpty()
                 val fullUrl = if (href.startsWith("http://", true) || href.startsWith("https://", true)) href else "$baseUrl/${href.removePrefix("/")}"
                 val subUrl = fullUrl.trimEnd('/')
-                if (subUrl == normalized) continue
+                val isSelf = subUrl == normalized
                 val types = mutableListOf<String>()
-                var rt = resp.getElementsByTagName("resourcetype").item(0) as? Element
+                var rt = byLocalName(resp, "resourcetype").item(0) as? Element
                 var node = rt?.firstChild
                 while (node != null) {
-                    if (node.nodeType == org.w3c.dom.Node.ELEMENT_NODE) types += node.localName.lowercase()
+                    if (node.nodeType == org.w3c.dom.Node.ELEMENT_NODE) types += (node.localName ?: node.nodeName.substringAfter(':')).lowercase()
                     node = node.nextSibling
                 }
                 if (types.contains("addressbook")) {
-                    val name = resp.getElementsByTagName("displayname").item(0)?.textContent?.trim().orEmpty()
+                    val name = byLocalName(resp, "displayname").item(0)?.textContent?.trim().orEmpty()
                         .ifBlank { subUrl.split("/").lastOrNull { it.isNotBlank() }.orEmpty() }
                     result += AddressBookInfo(path = subUrl, displayName = name)
-                } else {
+                } else if (!isSelf) {
                     scanForAddressBooks(subUrl, result, visited)
                 }
             }
@@ -420,10 +425,10 @@ class CalDAVClient(
             val text = resp.body?.string().orEmpty()
             if (text.isBlank()) return@use emptyList()
             try {
-                val db = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(text.byteInputStream())
-                val responses = db.getElementsByTagName("response")
-                val hrefNodes = db.getElementsByTagName("href")
-                val etagNodes = db.getElementsByTagName("getetag")
+                val db = parseXml(text)
+                val responses = byLocalName(db.documentElement, "response")
+                val hrefNodes = byLocalName(db.documentElement, "href")
+                val etagNodes = byLocalName(db.documentElement, "getetag")
                 val out = mutableListOf<ETagEntry>()
                 for (i in 0 until responses.length) {
                     if (i >= hrefNodes.length || i >= etagNodes.length) break
@@ -455,17 +460,48 @@ class CalDAVClient(
         """.trimIndent()
         try {
             val resp = propfind(target, xml, depth = "0")
-            val db = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(resp.byteInputStream())
-            val node = db.getElementsByTagName("getctag").item(0)
+            val db = parseXml(resp)
+            val node = byLocalName(db.documentElement, "getctag").item(0)
             node?.textContent?.trim().orEmpty()
         } catch (_: Exception) {
             ""
         }
     }
 
+    private fun parseXml(body: String): org.w3c.dom.Document =
+        DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+            .newDocumentBuilder().parse(body.byteInputStream())
+
+    // Harmony's DOM getElementsByTagNameNS("*", local) is unreliable; walk the tree
+    // by local name instead (requires namespace-aware parsing, which parseXml sets).
+    // Returns a NodeList so existing .length / .item(i) call sites keep working.
+    private fun byLocalName(root: org.w3c.dom.Node, local: String): org.w3c.dom.NodeList {
+        val out = mutableListOf<org.w3c.dom.Element>()
+        fun walk(n: org.w3c.dom.Node?) {
+            var c = n
+            while (c != null) {
+                if (c.nodeType == org.w3c.dom.Node.ELEMENT_NODE) {
+                    val e = c as org.w3c.dom.Element
+                    // Harmony's DOM may leave localName null even when namespace-aware;
+                    // fall back to stripping the prefix from nodeName (e.g. "D:response").
+                    val ln = e.localName ?: e.nodeName.substringAfter(':')
+                    if (ln.equals(local, ignoreCase = true)) out += e
+                }
+                walk(c.firstChild)
+                c = c.nextSibling
+            }
+        }
+        walk(root)
+        return object : org.w3c.dom.NodeList {
+            override fun getLength(): Int = out.size
+            override fun item(index: Int): org.w3c.dom.Node? = out.getOrNull(index)
+        }
+    }
+
     private fun propfind(url: String, body: String, depth: String = "1"): String {
+        val target = resolve(url)
         val req = Request.Builder()
-            .url(url)
+            .url(target)
             .method("PROPFIND", body.toRequestBody(XML_MEDIA_TYPE))
             .header("Depth", depth)
             .build()
@@ -475,10 +511,16 @@ class CalDAVClient(
         }
     }
 
+    // ponytail: DAV servers return either absolute or relative hrefs. Resolve relative
+    // ones against baseUrl so OkHttp always gets a fully-qualified URL.
+    private fun resolve(url: String): String =
+        if (url.startsWith("http://", true) || url.startsWith("https://", true)) url
+        else "$baseUrl/${url.removePrefix("/")}"
+
     private fun parseHrefs(xml: String): List<String> {
         return try {
-            val db = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(xml.byteInputStream())
-            val nodes = db.getElementsByTagName("href")
+            val db = parseXml(xml)
+            val nodes = byLocalName(db.documentElement, "href")
             List(nodes.length) { i -> nodes.item(i).textContent.trim() }
         } catch (t: Throwable) {
             Log.w(TAG, "parseHrefs failed", t)

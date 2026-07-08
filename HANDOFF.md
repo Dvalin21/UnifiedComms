@@ -295,12 +295,31 @@ Verification (THIS session, not trusted from prior handoff):
 - Committed: 2f7c94a "Phase 8: real CardDAV/Contact sync backend..." — pushed to origin/master.
 
 REMAINING CARRY-OVER (honest, post-Phase 8):
-- Contact write/delete round-trip (PUT/DELETE ETags) needs a live CardDAV account on
-  emulator-5560 to confirm — parser is unit-testable but the DAV round-trip is not yet
-  exercised end-to-end. Add a VCardParserTest + VCardSerializer round-trip test (recommended).
-- testConnection() in ContactSyncEngineImpl is a STUB (returns success without probing
-  server) — should actually hit discoverAddressBooks() like the email/calendar engines do.
-- OAuth refresh + search + messaging still verified by compile/install only.
+
+## Status as of 2026-07-08 (session restart boundary)
+- Phase 9 (VCardParser + VCardSerializer JVM unit tests, 7 tests): DONE + committed (92978f2).
+- Phase 10 (ContactSyncEngineImpl.testConnection() stub -> real discoverAddressBooks probe):
+  DONE. Committed earlier; carried in ContactSyncEngineImpl.kt diff (real probe, no longer a stub).
+- Phase 11 (Contact write/delete E2E on emulator-5560): CLIENT FIXES WRITTEN, NOT YET GREEN.
+  The E2E test (app/src/androidTest/.../ContactSyncE2ETest.kt) + mock server
+  (/tmp/carddav_mock.py) are in place. Running it surfaced and FIXED three real CalDAVClient
+  bugs (uncommitted, in CalDAVClient.kt):
+    1. cleartext blocked (app sets usesCleartextTraffic=false) -> added debug-only
+       network_security_config.xml permitting cleartext for the mock host.
+    2. relative hrefs ("/addressbook") passed to OkHttp with no scheme -> added resolve()
+       to prepend baseUrl.
+    3. DAV XML parse was not namespace-aware -> getElementsByTagName never matched
+       namespaced <D:response>/<C:addressbook> etc, so discovery returned EMPTY.
+       Fixed with namespace-aware parseXml() + byLocalName() tree-walk (Harmony leaves
+       localName null, so it falls back to nodeName prefix-strip).
+  Also: scanForAddressBooks/Calendars/TaskLists no longer skip the home-set collection itself.
+  BLOCKER at restart: test still red "No address book found"; in-run diagnostics emit no
+  logcat even after clean reinstall of both APKs, so the failure is unobservable. Routing is
+  solved (use 127.0.0.1 + `adb reverse tcp:8088 tcp:8088`, NOT 10.0.2.2 — that is a
+  WireGuard/loopback range and is not up). To finish: confirm the installed app APK actually
+  carries the fix (dexdump grep byLocalName, or Log.e + `logcat -d *:E`), get the E2E green,
+  then commit CalDAVClient.kt + debug net config + the test together.
+- OAuth refresh + search + messaging: verified by compile/install only (Phase 8 boundary).
 - RECURRENCE-ID / EXDATE server overrides not consumed (Phase 6 note stands).
-- PushManager still unreferenced (cleanup pass candidate).
-- Search does not cover Messages (Phase 4 note stands).
+- PushManager still unreferenced (cleanup pass candidate) -> Phase 12.
+- Search does not cover Messages (Phase 4 note stands) -> Phase 13.
