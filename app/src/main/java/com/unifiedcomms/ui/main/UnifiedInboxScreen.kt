@@ -71,6 +71,7 @@ fun UnifiedInboxScreen(
     onNavigateToCalendar: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToAddAccount: () -> Unit,
+    onNavigateToSearch: () -> Unit = {},
     onNavigateToConversation: (String) -> Unit = {},
     onNavigateToComposeMessage: () -> Unit = {},
     onEventClick: (String) -> Unit = {},
@@ -111,6 +112,9 @@ fun UnifiedInboxScreen(
                     }
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
+                    }
+                    IconButton(onClick = onNavigateToSearch) {
+                        Icon(Icons.Default.Search, contentDescription = "Search")
                     }
                 },
                 colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(

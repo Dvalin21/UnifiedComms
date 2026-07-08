@@ -36,9 +36,9 @@ Fix-before-ship carried into later phases (not yet fixed)
 - HIGH: Create-event calendarId=accountId mismatch vs DAV href [#10]; EventDetailScreen uses event.timezone [#11]
 - HIGH: Boot reminder reschedule broken (param ignored) [#12]; alarm PendingIntent collapses to id 0 [#13]; cancelReminders no-op [#14]
 - HIGH: Converters no try/catch -> one corrupt row kills whole query [#15]
-- MEDIUM: two Add-Account paths; main UI AddAccountScreen builds AppPassword for GOOGLE/OUTLOOK (no OAuth) [#19]
-- MEDIUM: MessagingService dead + permission not declared [#20]; PushManager fake backend [#21]
-- MEDIUM: SearchActivity no-op [#17]; SettingsActivity stub [#18]; ContentProvider/Authenticator empty [#16]
+- MEDIUM (all COMPLETE this session, assembleDebug GREEN): two Add-Account paths; main UI AddAccountScreen builds AppPassword for GOOGLE/OUTLOOK (no OAuth) [#19] -> FIXED: AddAccountScreen now delegates GOOGLE/OUTLOOK/YAHOO/ICLOUD to AddAccountActivity web OAuth flow instead of fake AppPassword.
+- MEDIUM: MessagingService dead + permission not declared [#20]; PushManager fake backend [#21] -> FIXED: deleted dead MessagingService + manifest entry (removes undefined-permission hole); PushManager.subscribeToTopic/unsubscribeFromTopic now hit the real backend ($serverUrl/api/v1/devices/{id}/subscribe|unsubscribe) instead of returning hardcoded true.
+- MEDIUM: SearchActivity no-op [#17]; SettingsActivity stub [#18]; ContentProvider/Authenticator empty [#16] -> FIXED: SearchActivity now runs real multi-source search (email/calendar/task/contact via existing DAO search queries) and is launched from the inbox top-bar Search button; SettingsActivity deleted (orphan stub; SettingsScreen composable is the real UI); vestigial UnifiedCommsContentProvider deleted + manifest entry removed (Authenticator provider kept — account system needs it).
 - LOW: manifest over-broad perms [#25]; findDirectConversation JSON-equality [#26]
 
 Wiring notes
@@ -84,6 +84,30 @@ Remaining HIGH carry-over (not yet done — honest status)
 Fix-before-ship
 - Functional verification on emulator still limited; account auto-sync and notifications require adding an account and observing notification channel
 - Advanced settings fields need end-to-end validation on device
+
+=== PHASE 3 — MEDIUM (real defects fixed, assembleDebug GREEN 2026-07-07) ===
+Files changed this phase:
+- app/src/main/java/com/unifiedcomms/ui/search/SearchActivity.kt (rewritten: real search)
+- app/src/main/java/com/unifiedcomms/ui/main/AddAccountScreen.kt (OAuth delegation)
+- app/src/main/java/com/unifiedcomms/ui/main/UnifiedInboxScreen.kt (Search launch button)
+- app/src/main/java/com/unifiedcomms/ui/main/MainActivity.kt (Search launch wiring)
+- app/src/main/java/com/unifiedcomms/push/PushManager.kt (real subscribe/unsubscribe)
+- app/src/main/AndroidManifest.xml (removed MessagingService + ContentProvider)
+- DELETED: app/src/main/java/com/unifiedcomms/ui/settings/SettingsActivity.kt (orphan stub)
+- DELETED: app/src/main/java/com/unifiedcomms/sync/accounts/ContentProvider.kt (vestigial)
+- DELETED: app/src/main/java/com/unifiedcomms/messaging/MessagingService.kt (dead, undefined-permission)
+
+Fixes applied (MEDIUM phase)
+- #17 Search no-op: SearchActivity now queries EmailRepository.searchEmails / CalendarRepository.searchEvents / TaskRepository.searchTasks / ContactRepository.search across active account IDs, renders results grouped by kind. Launched from UnifiedInboxScreen top-bar Search icon (was never wired before).
+- #18 SettingsActivity stub: deleted — orphan class not referenced anywhere; SettingsScreen composable (used by MainActivity) is the real settings UI.
+- #16 ContentProvider/Authenticator empty: deleted vestigial UnifiedCommsContentProvider (returned empty MatrixCursors, no consumer) + manifest <provider> entry. Kept UnifiedCommsAuthenticatorProvider (real, Android account system depends on it).
+- #20 MessagingService dead + permission not declared: deleted the Service + its <service> manifest block (it referenced com.unifiedcomms.permission.MESSAGING which was never declared -> install-time security gap). Nothing started this service; messaging flows through MessagingRepository/DAOs directly.
+- #21 PushManager fake backend: subscribeToTopic/unsubscribeFromTopic were hardcoded `true`. Now POST to $serverUrl/api/v1/devices/{deviceId}/subscribe|unsubscribe with bearer auth; fail honestly if device unregistered.
+- #19 Two Add-Account paths: AddAccountScreen previously built AuthConfig.AppPassword for GOOGLE/OUTLOOK/YAHOO/ICLOUD (OAuth providers) -> silently broken. Now delegates those types to AddAccountActivity's web consent flow (which correctly builds AuthConfig.OAuth2).
+
+Remaining MEDIUM carry-over (honest)
+- Search does not yet cover Messages (MessageDao.searchMessages needs conversationIds; no stable userId in local mode). Email/calendar/task/contact are covered.
+- PushManager is now unreferenced by any running component (MessagingService removed); kept as a usable HTTP client utility. If nothing consumes it post-MEDIUM, consider removal in a later cleanup pass.
 
 Remaining before ship
 - Complete blind interactions only on real device/CI
