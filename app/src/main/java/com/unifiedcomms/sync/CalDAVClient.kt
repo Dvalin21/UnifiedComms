@@ -142,7 +142,6 @@ class CalDAVClient(
             val body = propfind(normalized, xml, depth = "1")
             val doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(body.byteInputStream())
             val responses = doc.getElementsByTagName("response")
-            val allByName = doc.getElementsByTagName("displayname")
             for (i in 0 until responses.length) {
                 val resp = responses.item(i) as? Element ?: continue
                 val hrefNode = resp.getElementsByTagName("href").item(0)
@@ -233,7 +232,7 @@ class CalDAVClient(
         }
     }
 
-    suspend fun fetchItem(accountId: String, href: String): IcsResource? = withContext(Dispatchers.IO) {
+    suspend fun fetchItem(@Suppress("UNUSED_PARAMETER") accountId: String, href: String): IcsResource? = withContext(Dispatchers.IO) {
         val target = when {
             href.startsWith("http://", true) || href.startsWith("https://", true) -> href
             else -> "$baseUrl/${href.removePrefix("/")}"
@@ -244,6 +243,96 @@ class CalDAVClient(
             val ical = resp.body?.string().orEmpty()
             IcsResource(href, etag, ical)
         }
+    }
+
+    // ponytail: task lists are CalDAV collections that advertise VTODO in their component set.
+    suspend fun discoverTaskLists(): List<CalendarInfo> = withContext(Dispatchers.IO) {
+        val principal = tryFindPrincipalAt(baseUrl) ?: return@withContext emptyList()
+        val homeSet = findCalendarHomeSet(principal) ?: principal
+        val out = mutableListOf<CalendarInfo>()
+        scanForTaskLists(homeSet, out)
+        out
+    }
+
+    private suspend fun scanForTaskLists(url: String, result: MutableList<CalendarInfo>, visited: MutableSet<String> = mutableSetOf()) {
+        val normalized = url.trimEnd('/')
+        if (normalized in visited) return
+        visited += normalized
+        val xml = """
+            <?xml version="1.0" encoding="utf-8"?>
+            <D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+              <D:prop>
+                <D:displayname/>
+                <D:resourcetype/>
+                <C:supported-calendar-component-set/>
+              </D:prop>
+            </D:propfind>
+        """.trimIndent()
+        try {
+            val body = propfind(normalized, xml, depth = "1")
+            val db = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(body.byteInputStream())
+            val responses = db.getElementsByTagName("response")
+            for (i in 0 until responses.length) {
+                val resp = responses.item(i) as? Element ?: continue
+                val href = resp.getElementsByTagName("href").item(0)?.textContent?.trim().orEmpty()
+                val fullUrl = if (href.startsWith("http://", true) || href.startsWith("https://", true)) href else "$baseUrl/${href.removePrefix("/")}"
+                val subUrl = fullUrl.trimEnd('/')
+                if (subUrl == normalized) continue
+                val types = mutableListOf<String>()
+                var rt = resp.getElementsByTagName("resourcetype").item(0) as? Element
+                var node = rt?.firstChild
+                while (node != null) {
+                    if (node.nodeType == org.w3c.dom.Node.ELEMENT_NODE) types += node.localName.lowercase()
+                    node = node.nextSibling
+                }
+                val comps = componentSetOf(resp)
+                if (!types.contains("calendar") || !comps.contains("VTODO")) {
+                    scanForTaskLists(subUrl, result, visited)
+                    continue
+                }
+                val name = resp.getElementsByTagName("displayname").item(0)?.textContent?.trim().orEmpty()
+                    .ifBlank { subUrl.split("/").lastOrNull { it.isNotBlank() }.orEmpty() }
+                result += CalendarInfo(path = subUrl, displayName = name, supportsVTODO = true)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "task list scan failed", e)
+        }
+    }
+
+    private fun componentSetOf(response: Element): Set<String> {
+        val set = response.getElementsByTagName("supported-calendar-component-set").item(0) as? Element ?: return emptySet()
+        val comps = set.getElementsByTagName("comp")
+        val out = mutableSetOf<String>()
+        for (i in 0 until comps.length) {
+            val name = (comps.item(i) as? Element)?.getAttribute("name")?.trim()?.uppercase().orEmpty()
+            if (name.isNotBlank()) out += name
+        }
+        return out
+    }
+
+    // ponytail: generic PUT used for task writes (VTODO). Returns server ETag or null on failure.
+    suspend fun putResource(href: String, body: String, contentType: okhttp3.MediaType = ICAL_MEDIA_TYPE): String? = withContext(Dispatchers.IO) {
+        val target = when {
+            href.startsWith("http://", true) || href.startsWith("https://", true) -> href
+            else -> "$baseUrl/${href.removePrefix("/")}"
+        }
+        val req = Request.Builder().url(target).put(body.toRequestBody(contentType)).build()
+        internalClient.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) {
+                Log.w(TAG, "PUT $target failed: ${resp.code}")
+                return@use null
+            }
+            resp.header("ETag")?.trim('"')?.ifBlank { null }
+        }
+    }
+
+    suspend fun deleteResource(href: String): Boolean = withContext(Dispatchers.IO) {
+        val target = when {
+            href.startsWith("http://", true) || href.startsWith("https://", true) -> href
+            else -> "$baseUrl/${href.removePrefix("/")}"
+        }
+        val req = Request.Builder().url(target).delete().build()
+        internalClient.newCall(req).execute().use { resp -> resp.isSuccessful || resp.code == 404 }
     }
 
     suspend fun getCTag(calendarPath: String): String = withContext(Dispatchers.IO) {
