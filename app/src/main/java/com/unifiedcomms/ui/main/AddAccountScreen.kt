@@ -1,5 +1,6 @@
 package com.unifiedcomms.ui.main
 
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -47,6 +48,7 @@ import com.unifiedcomms.data.model.AuthConfig
 import com.unifiedcomms.data.model.ServerConfig
 import com.unifiedcomms.data.model.SyncConfig
 import com.unifiedcomms.data.model.UIConfig
+import com.unifiedcomms.ui.auth.AddAccountActivity
 import com.unifiedcomms.ui.theme.UnifiedCommsTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -213,6 +215,7 @@ fun AddAccountScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                 }
 
+                val ctx = androidx.compose.ui.platform.LocalContext.current
                 Button(
                     onClick = {
                         if (saving || saved) return@Button
@@ -220,6 +223,22 @@ fun AddAccountScreen(
                         error = null
                         val trimmed = email.trim()
                         val selected = selectedType
+                        // OAuth providers require the web consent flow in AddAccountActivity.
+                        // Building AppPassword locally here would silently break Google/Outlook/etc.
+                        val oauthProviders = setOf(
+                            AccountType.GOOGLE,
+                            AccountType.OUTLOOK,
+                            AccountType.YAHOO,
+                            AccountType.ICLOUD
+                        )
+                        if (selected in oauthProviders) {
+                            ctx.startActivity(
+                                Intent(ctx, AddAccountActivity::class.java)
+                                    .putExtra("accountType", selected.name)
+                            )
+                            saving = false
+                            return@Button
+                        }
                         val requiresServer = selected in setOf(
                             AccountType.MAILCOW,
                             AccountType.OUTLOOK,

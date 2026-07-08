@@ -111,15 +111,6 @@
             android:exported="false" />
 
         <!-- Services -->
-        <service
-            android:name=".messaging.MessagingService"
-            android:exported="true"
-            android:permission="com.unifiedcomms.permission.MESSAGING">
-            <intent-filter>
-                <action android:name="com.unifiedcomms.MESSAGING" />
-            </intent-filter>
-        </service>
-
         <receiver
             android:name=".sync.BootReceiver"
             android:exported="true"
@@ -140,14 +131,6 @@
             android:authorities="com.unifiedcomms.authenticator"
             android:exported="false"
             android:multiprocess="true"
-            android:syncable="true" />
-
-        <provider
-            android:name=".sync.accounts.UnifiedCommsContentProvider"
-            android:authorities="com.unifiedcomms.provider"
-            android:exported="false"
-            android:multiprocess="true"
-            android:grantUriPermissions="true"
             android:syncable="true" />
 
         <service
