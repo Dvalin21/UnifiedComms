@@ -132,8 +132,8 @@ interface ConversationDao {
     @Query("SELECT * FROM conversations WHERE :userId IN (participantIds) AND isPinned = 1 ORDER BY lastActivityAt DESC")
     fun getPinnedForUser(userId: String): Flow<List<Conversation>>
 
-    @Query("SELECT * FROM conversations WHERE participantIds = :participants AND type = :type")
-    suspend fun findDirectConversation(participants: List<String>, type: com.unifiedcomms.data.model.ConversationType): Conversation?
+    @Query("SELECT * FROM conversations WHERE (participantIds = :asc OR participantIds = :desc) AND type = :type")
+    suspend fun findDirectConversation(asc: List<String>, desc: List<String>, type: com.unifiedcomms.data.model.ConversationType): Conversation?
 
     @Query("SELECT * FROM conversations WHERE unreadCount > 0 AND :userId IN (participantIds)")
     suspend fun getWithUnread(userId: String): List<Conversation>

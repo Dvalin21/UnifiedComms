@@ -78,8 +78,13 @@ class MessagingRepositoryImpl(
 
     override fun getPinnedConversationsForUser(userId: String): Flow<List<Conversation>> = convDao.getPinnedForUser(userId)
 
-    override suspend fun findDirectConversation(participants: List<String>, type: com.unifiedcomms.data.model.ConversationType): Conversation? =
-        convDao.findDirectConversation(participants, com.unifiedcomms.data.model.ConversationType.valueOf(type.name))
+    override suspend fun findDirectConversation(participants: List<String>, type: com.unifiedcomms.data.model.ConversationType): Conversation? {
+        // ponytail: participantIds is stored as a serialised list; a plain `=` match is
+        // order-sensitive, so a stored conversation with reversed participant order is
+        // never found and a duplicate gets created. The DAO matches both orderings.
+        val t = com.unifiedcomms.data.model.ConversationType.valueOf(type.name)
+        return convDao.findDirectConversation(participants, participants.asReversed(), t)
+    }
 
     override suspend fun getConversationsWithUnread(userId: String): List<Conversation> = convDao.getWithUnread(userId)
 
