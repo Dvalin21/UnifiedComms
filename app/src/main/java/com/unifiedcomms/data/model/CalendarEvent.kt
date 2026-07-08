@@ -246,10 +246,52 @@ data class RecurrenceRule(
     }
 
     companion object {
-        @Suppress("UNUSED_PARAMETER")
-        fun parse(_rrule: String): RecurrenceRule? {
-            // Simplified parser - in production use ical4j
-            return null
+        // ponytail: minimal RFC5545 RRULE reader; covers FREQ/INTERVAL/COUNT/UNTIL/BYDAY/BYMONTHDAY.
+        // Instance expansion is a separate concern (stored on master, rendered by UI/sync).
+        fun parse(rrule: String): RecurrenceRule? {
+            val body = rrule.substringAfter("RRULE:").ifBlank { rrule }
+            if (body.isBlank()) return null
+            var freq: RecurrenceFrequency? = null
+            var interval = 1
+            var count: Int? = null
+            var until: Instant? = null
+            val byDay = mutableListOf<RecurrenceDay>()
+            val byMonthDay = mutableListOf<Int>()
+            for (part in body.split(';')) {
+                val eq = part.indexOf('=')
+                if (eq < 0) continue
+                val k = part.substring(0, eq).uppercase()
+                val v = part.substring(eq + 1).trim()
+                when (k) {
+                    "FREQ" -> freq = RecurrenceFrequency.values().firstOrNull { it.name == v.uppercase() }
+                    "INTERVAL" -> interval = v.toIntOrNull() ?: 1
+                    "COUNT" -> count = v.toIntOrNull()
+                    "UNTIL" -> until = parseUntil(v)
+                    "BYDAY" -> v.split(',').forEach { d -> parseDay(d)?.let { byDay.add(it) } }
+                    "BYMONTHDAY" -> v.split(',').forEach { m -> m.toIntOrNull()?.let { byMonthDay.add(it) } }
+                }
+            }
+            return freq?.let { RecurrenceRule(it, interval, count, until, byDay = byDay, byMonthDay = byMonthDay) }
+        }
+
+        private fun parseUntil(v: String): Instant? = runCatching {
+            val clean = v.trim()
+            val fmt = if (clean.endsWith("Z")) {
+                java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
+            } else {
+                java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss")
+            }
+            val ldt = java.time.LocalDateTime.parse(clean.trimEnd('Z'), fmt)
+            val zone = if (clean.endsWith("Z")) java.time.ZoneOffset.UTC else java.time.ZoneId.systemDefault()
+            Instant.fromEpochMilliseconds(ldt.atZone(zone).toInstant().toEpochMilli())
+        }.getOrNull()
+
+        private fun parseDay(s: String): RecurrenceDay? {
+            val m = Regex("([+-]?\\d*)\\s*(SU|MO|TU|WE|TH|FR|SA)", RegexOption.IGNORE_CASE).find(s)
+            val dayStr = m?.groupValues?.getOrNull(2)?.uppercase() ?: return null
+            val dow = DayOfWeek.values().firstOrNull { it.name == dayStr } ?: return null
+            val wk = m.groupValues[1].toIntOrNull()
+            return RecurrenceDay(dow, wk)
         }
     }
 }

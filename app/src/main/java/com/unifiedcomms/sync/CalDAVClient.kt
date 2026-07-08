@@ -22,7 +22,8 @@ class CalDAVClient(
     serverUrl: String,
     private val username: String,
     private val password: String,
-    private val client: OkHttpClient
+    private val client: OkHttpClient,
+    private val bearerToken: String? = null
 ) {
     companion object {
         private const val TAG = "CalDAVClient"
@@ -30,7 +31,7 @@ class CalDAVClient(
         val XML_MEDIA_TYPE = "application/xml; charset=utf-8".toMediaType()
     }
 
-    private val auth = Credentials.basic(username, password)
+    private val auth = if (bearerToken != null) "Bearer $bearerToken" else Credentials.basic(username, password)
     private val baseUrl: String = serverUrl.trimEnd('/')
     private val internalClient: OkHttpClient = client.newBuilder()
         .addInterceptor { chain ->

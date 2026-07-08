@@ -51,6 +51,36 @@ Compile status
 - Debug APK built: app/build/outputs/apk/debug/app-debug.apk
 - Emulator targets: emulator-5554 (occupied), emulator-5560 (free test target)
 
+=== PHASE 2 — HIGH (real defects fixed, assembleDebug GREEN 2026-07-07) ===
+Files changed this phase:
+- app/src/main/java/com/unifiedcomms/sync/OAuthTokenRefresher.kt (NEW)
+- app/src/main/java/com/unifiedcomms/data/db/converters/Converters.kt
+- app/src/main/java/com/unifiedcomms/sync/ICalParser.kt
+- app/src/main/java/com/unifiedcomms/data/model/CalendarEvent.kt
+- app/src/main/java/com/unifiedcomms/sync/CalDAVClient.kt
+- app/src/main/java/com/unifiedcomms/sync/CalendarSyncEngineImpl.kt
+- app/src/main/java/com/unifiedcomms/sync/EmailSyncEngineImpl.kt
+- app/src/main/java/com/unifiedcomms/sync/SyncManager.kt
+- app/src/main/java/com/unifiedcomms/reminder/ReminderSystem.kt
+- app/src/main/java/com/unifiedcomms/sync/BootReceiver.kt
+- app/src/main/java/com/unifiedcomms/ui/main/CalendarScreen.kt
+- app/src/main/java/com/unifiedcomms/ui/main/MainViewModel.kt
+
+Fixes applied (HIGH phase)
+- #7 OAuth refresh: OAuthTokenRefresher.refresh() now hits oauthTokenUrl with refresh_token when token missing/expiring<5min; SyncManager.performFullSync refreshes before dispatch. Email engine uses XOAUTH2 for IMAP/SMTP when AuthType.OAUTH2; CalDAVClient sends Bearer when OAuth. Accounts no longer die silently at expiry.
+- #8 Recurrence dropped on import: RecurrenceRule.Companion.parse() now reads FREQ/INTERVAL/COUNT/UNTIL/BYDAY/BYMONTHDAY; ICalParser sets event.recurrenceRule from RRULE. (Instance expansion still stored on master — UI/sync render pending, noted.)
+- #9 TZ corruption: ICalParser.tzIdFromKey() reads DTSTART;TZID= and parseDateTime applies that zone; startAt/endAt/timezone now carry the real TZID instead of forced system default.
+- #10 Local events wiped: locally-created events now marked isLocalOnly=true; CalendarSyncEngineImpl down-sync delete-sweep skips isLocalOnly. CreateEventScreen calendarId=accountId retained (harmless: not server-backed).
+- #11 EventDetailScreen used event.timezone (forced default); now reads startAt.timeZone/endAt.timeZone for correct display.
+- #12 Boot reschedule broken: BootReceiver + ReminderScheduler.scheduleReminders(null) now resolve "all" to every real account id via AccountRepository.
+- #13 Alarm collapse: notification full-screen PendingIntent now uses eventId.hashCode() as requestCode (was 0).
+- #14 cancelReminders no-op: now tracks scheduled intent keys and actually cancels them; added cancelAll().
+
+Remaining HIGH carry-over (not yet done — honest status)
+- Recurrence INSTANCE expansion (RECURRENCE-ID/EXDATE) not generated; masters carry rule but individual occurrences not materialized for UI.
+- Task/Contact sync backends still stubs (fail honestly, unchanged this phase).
+- OAuth refresh verified by compile only; needs a live OAuth account on emulator-5560 to confirm token round-trip.
+
 Fix-before-ship
 - Functional verification on emulator still limited; account auto-sync and notifications require adding an account and observing notification channel
 - Advanced settings fields need end-to-end validation on device

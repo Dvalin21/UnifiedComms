@@ -396,7 +396,8 @@ fun CreateEventScreen(
                                         timeZone = kotlinx.datetime.TimeZone.currentSystemDefault().id,
                                         isAllDay = isAllDay
                                     ),
-                                    color = com.unifiedcomms.data.model.EventColor.fromInt(selectedColor.toInt())
+                                    color = com.unifiedcomms.data.model.EventColor.fromInt(selectedColor.toInt()),
+                                    isLocalOnly = true
                                 )
                                 viewModel.calendarRepository.insertEvent(event)
                                 onSave()
@@ -471,10 +472,12 @@ fun EventDetailScreen(
     onShare: () -> Unit = {}
 ) {
     val fmt = java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy h:mm a")
-    val startZoned = java.time.Instant.ofEpochMilli(event.startAt.toInstant(kotlinx.datetime.TimeZone.of(event.timezone)).toEpochMilliseconds())
-        .atZone(java.time.ZoneId.of(event.timezone))
-    val endZoned = java.time.Instant.ofEpochMilli(event.endAt.toInstant(kotlinx.datetime.TimeZone.of(event.timezone)).toEpochMilliseconds())
-        .atZone(java.time.ZoneId.of(event.timezone))
+    // ponytail: read the actual event timezone, not the forced system-default field.
+    val eventTz = kotlinx.datetime.TimeZone.of(event.startAt.timeZone)
+    val startZoned = java.time.Instant.ofEpochMilli(event.startAt.toInstant(eventTz).toEpochMilliseconds())
+        .atZone(java.time.ZoneId.of(event.startAt.timeZone))
+    val endZoned = java.time.Instant.ofEpochMilli(event.endAt.toInstant(eventTz).toEpochMilliseconds())
+        .atZone(java.time.ZoneId.of(event.endAt.timeZone))
     val range = "${fmt.format(startZoned)} - ${fmt.format(endZoned)}"
 
     Scaffold(
