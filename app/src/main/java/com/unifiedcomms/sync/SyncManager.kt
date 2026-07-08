@@ -80,10 +80,15 @@ class SyncManager(
     )
 
     suspend fun performFullSync(account: Account): SyncResult {
-        updateState(account.id) { it.copy(isSyncing = true, lastError = null) }
-        NotificationHelper.showSyncNotification(context, "Syncing ${account.name}...", -1)
+        // ponytail: the in-memory account carries PLAINTEXT credentials (UI built it).
+        // The persisted record holds the encrypted form; re-fetch so the engines
+        // receive ciphertext they can decrypt. Skipping this made every UI-added
+        // account fail to auth.
+        val stored = accountRepo.getById(account.id) ?: account
+        updateState(stored.id) { it.copy(isSyncing = true, lastError = null) }
+        NotificationHelper.showSyncNotification(context, "Syncing ${stored.name}...", -1)
         // ponytail: refresh OAuth token before talking to servers so accounts don't die at expiry.
-        val fresh = tokenRefresher.ensureFreshToken(account)
+        val fresh = tokenRefresher.ensureFreshToken(stored)
         val maxEmailRetries = 2
         var totalSynced = 0
         val startTime = System.currentTimeMillis()
