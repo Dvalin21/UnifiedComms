@@ -77,7 +77,6 @@ class EmailSyncEngineImpl(
 
                     val folder = store.getFolder(folderName)
                     if (!folder.exists()) continue
-
                     val folderResult = syncSingleFolder(account, folder)
                     totalSynced += folderResult.first
                     totalFailed += folderResult.second
@@ -136,7 +135,7 @@ class EmailSyncEngineImpl(
             for (msg in messages) {
                 if (!folder.isOpen) break // stop if folder was closed externally
                 try {
-                    val messageId = msg.getHeader("Message-ID").firstOrNull()
+                    val messageId = msg.getHeader("Message-ID")?.firstOrNull()
                     if (messageId == null) {
                         totalFailed++
                         continue
@@ -210,6 +209,7 @@ class EmailSyncEngineImpl(
 
     private fun openImapSession(config: com.unifiedcomms.data.model.ServerConfig): Session {
         val props = Properties().apply {
+            put("mail.store.protocol", "imap")
             put("mail.imap.host", config.imapHost)
             put("mail.imap.port", config.imapPort)
             put("mail.imap.ssl.enable", config.imapUseSsl)
@@ -224,14 +224,14 @@ class EmailSyncEngineImpl(
     private fun parseEmail(msg: JMailMessage, accountId: String, folder: String, messageId: String): Email? {
         return try {
             val uid = messageId
-            val threadId = msg.getHeader("X-GM-THRID").firstOrNull() ?: messageId
-            val inReplyTo = msg.getHeader("In-Reply-To").firstOrNull()
-            val references = msg.getHeader("References").toList()
+            val threadId = msg.getHeader("X-GM-THRID")?.firstOrNull() ?: messageId
+            val inReplyTo = msg.getHeader("In-Reply-To")?.firstOrNull()
+            val references = msg.getHeader("References")?.toList() ?: emptyList()
 
             val sender = EmailAddress(
-                name = msg.getHeader("From").firstOrNull()?.takeIf { it.contains("<") }?.substringBefore("<")?.trim(),
-                email = msg.getHeader("From").firstOrNull()?.takeIf { it.contains("<") }?.substringAfter("<")?.substringBefore(">")?.trim()
-                    ?: msg.getHeader("From").firstOrNull()?.trim() ?: ""
+                name = msg.getHeader("From")?.firstOrNull()?.takeIf { it.contains("<") }?.substringBefore("<")?.trim(),
+                email = msg.getHeader("From")?.firstOrNull()?.takeIf { it.contains("<") }?.substringAfter("<")?.substringBefore(">")?.trim()
+                    ?: msg.getHeader("From")?.firstOrNull()?.trim() ?: ""
             )
 
             val recipients = EmailRecipients(
@@ -241,9 +241,9 @@ class EmailSyncEngineImpl(
                 replyTo = parseReplyToAddresses(msg)
             )
 
-            val subject = msg.subject ?: ""
-            val sentAt = msg.sentDate?.time ?: System.currentTimeMillis()
-            val receivedAt = msg.receivedDate?.time ?: System.currentTimeMillis()
+            val subject = msg.getHeader("Subject")?.firstOrNull() ?: ""
+            val sentAt = parseDateHeader(msg, "Date")
+            val receivedAt = parseDateHeader(msg, "Received") ?: sentAt
 
             val (bodyText, bodyHtml) = extractContent(msg)
             val attachments = mutableListOf<com.unifiedcomms.data.model.Attachment>()
@@ -251,9 +251,9 @@ class EmailSyncEngineImpl(
 
             val preview = bodyText?.take(200) ?: subject
             val flags = EmailFlags(
-                isRead = msg.isSet(Flags.Flag.SEEN),
-                isFlagged = msg.isSet(Flags.Flag.FLAGGED),
-                isAnswered = msg.isSet(Flags.Flag.ANSWERED),
+                isRead = runCatching { msg.isSet(Flags.Flag.SEEN) }.getOrDefault(false),
+                isFlagged = runCatching { msg.isSet(Flags.Flag.FLAGGED) }.getOrDefault(false),
+                isAnswered = runCatching { msg.isSet(Flags.Flag.ANSWERED) }.getOrDefault(false),
                 isForwarded = subject.startsWith("Fwd:") || subject.startsWith("Forwarded:")
             )
 
@@ -285,12 +285,20 @@ class EmailSyncEngineImpl(
                 labels = systemLabels.categorized.keys.toList(),
                 systemLabels = systemLabels,
                 attachments = attachments,
-                sizeBytes = msg.size.toLong(),
-                mimeType = msg.contentType
+                sizeBytes = msg.getHeader("Content-Length")?.firstOrNull()?.toLongOrNull()
+                    ?: runCatching { msg.size.toLong() }.getOrDefault(0L),
+                mimeType = msg.getHeader("Content-Type")?.firstOrNull() ?: "text/plain"
             )
         } catch (e: Exception) {
             null
         }
+    }
+
+    private fun parseDateHeader(msg: JMailMessage, name: String): Long {
+        val raw = msg.getHeader(name)?.firstOrNull() ?: return System.currentTimeMillis()
+        return runCatching {
+            javax.mail.internet.MailDateFormat().parse(raw).time
+        }.getOrDefault(System.currentTimeMillis())
     }
 
     private fun parseAddresses(msg: JMailMessage, type: RecipientType): List<EmailAddress> {
@@ -309,7 +317,7 @@ class EmailSyncEngineImpl(
 
     private fun parseReplyToAddresses(msg: JMailMessage): List<EmailAddress> {
         return try {
-            msg.getHeader("Reply-To").firstOrNull()?.let { header ->
+            msg.getHeader("Reply-To")?.firstOrNull()?.let { header ->
                 header.split(",").map { addr ->
                     EmailAddress(
                         name = addr.takeIf { it.contains("<") }?.substringBefore("<")?.trim(),
@@ -428,7 +436,7 @@ class EmailSyncEngineImpl(
                 }
 
                 Transport.send(mimeMessage)
-                SendResult.success(mimeMessage.getHeader("Message-ID").firstOrNull() ?: java.util.UUID.randomUUID().toString())
+                SendResult.success(mimeMessage.getHeader("Message-ID")?.firstOrNull() ?: java.util.UUID.randomUUID().toString())
             } catch (e: Exception) {
                 SendResult.failure(e.message ?: "Send failed")
             }
@@ -450,7 +458,7 @@ class EmailSyncEngineImpl(
                     return@withContext SyncResult.failure("Folder not found: $fromFolder -> $toFolder")
                 }
                 src.open(Folder.READ_WRITE)
-                val msgs = uids.mapNotNull { mid -> src.messages.firstOrNull { m -> m.getHeader("Message-ID").firstOrNull() == mid } }
+                val msgs = uids.mapNotNull { mid -> src.messages.firstOrNull { m -> m.getHeader("Message-ID")?.firstOrNull() == mid } }
                 if (msgs.isNotEmpty()) {
                     dst.appendMessages(msgs.toTypedArray())
                     msgs.forEach { it.setFlag(Flags.Flag.DELETED, true) }
@@ -479,7 +487,7 @@ class EmailSyncEngineImpl(
                     return@withContext SyncResult.failure("Folder not found: $folder")
                 }
                 f.open(Folder.READ_WRITE)
-                val msgs = uids.mapNotNull { mid -> f.messages.firstOrNull { m -> m.getHeader("Message-ID").firstOrNull() == mid } }
+                val msgs = uids.mapNotNull { mid -> f.messages.firstOrNull { m -> m.getHeader("Message-ID")?.firstOrNull() == mid } }
                 msgs.forEach { it.setFlag(Flags.Flag.DELETED, true) }
                 f.expunge()
                 f.close(false)
