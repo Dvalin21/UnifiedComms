@@ -323,3 +323,52 @@ REMAINING CARRY-OVER (honest, post-Phase 8):
 - RECURRENCE-ID / EXDATE server overrides not consumed (Phase 6 note stands).
 - PushManager still unreferenced (cleanup pass candidate) -> Phase 12.
 - Search does not cover Messages (Phase 4 note stands) -> Phase 13.
+
+=== PHASE 11 — CONTACT E2E GREEN (2026-07-08, resumed session) ===
+Status: RESOLVED. Commit 98dc8d4 pushed to origin/master.
+The Phase 11 E2E blocker was NOT the earlier suspects (cleartext / namespace parse).
+Three REAL root causes, all fixed and verified on emulator-5560:
+
+[#P1] CLEARTEXT ROUTING MISMATCH (debug net config).
+  The test + this host reach the mock at 127.0.0.1:8088 via `adb reverse
+  tcp:8088 tcp:8088`. The committed debug network_security_config.xml only
+  permitted cleartext for 10.0.2.2. Cleartext to 127.0.0.1 was blocked ->
+  OkHttp threw on connect -> discoverAddressBooks() caught it -> returned EMPTY
+  -> "No address book found". FIXED: debug config now permits cleartext for
+  127.0.0.1 / localhost / [::1] / 10.0.2.2.
+
+[#P2] HREF DOUBLING (CalDAVClient, REAL-PROD BUG not just mock).
+  resolve() + every inline "$baseUrl/${href.removePrefix("/")}" concatenated
+  base + absolute-path href -> doubled path (base+/addressbook + /addressbook/...).
+  For real DAV servers returning absolute-path hrefs this broke GET/PUT/DELETE.
+  FIXED: single resolve() uses URI(baseUrl).resolve(href); all call sites use it.
+
+[#P3] ETAG/HREF INDEX DESYNC (CalDAVClient, THE actual "0 contacts" blocker).
+  listAddressBookItems() and getETagList() paired href[i] with etag[i] from
+  FLATTENED global node lists. The collection <response> has href but NO getetag,
+  so indices desynced: collection href paired with item etag, and every real item
+  (href[1]=seed-1.vcf) paired with etag[1]=null -> filtered out. Contact sync and
+  task sync both returned 0 items. FIXED: new etagEntriesFromMultistatus() extracts
+  href+getetag from the SAME <response> element; both methods use it.
+
+Also: carddav_mock.py now answers current-user-principal / addressbook-home-set by
+REQUEST BODY at any path (real DAV servers do; the client issues them on baseUrl=
+/addressbook/, so path-gated branching hid the home-set). ContactSyncE2ETest.roomHas()
+now uses exact getBySourceId() instead of fuzzy search() LIKE (which never matched
+the literal sourceId).
+
+Verification (THIS session, real):
+- assembleDebug GREEN; testDebugUnitTest GREEN (no regressions).
+- ContactSyncE2ETest: PASS (1 test) on emulator-5560. Full round-trip against live
+  mock via adb reverse: testConnection -> createContact PUT seed-1 -> syncAccount
+  downloads it (Room contains seed-1) -> createContact PUT new-1 -> re-sync surfaces
+  new-1 -> deleteContact removes new-1 -> fetchContact returns null.
+- NOT pushed to physical S22 (R5CT32YG8CL); E2E ran only on emulator-5560.
+
+REMAINING CARRY-OVER (honest, post-Phase 11):
+- OAuth refresh + search + messaging: still verified by compile/install only.
+- RECURRENCE-ID / EXDATE server overrides not consumed (Phase 6 note stands).
+- PushManager still unreferenced (cleanup pass candidate) -> Phase 12.
+- Search does not cover Messages (Phase 4 note stands) -> Phase 13.
+- Contact/Tasks/Calendar DAV write-round-trip proven against mock only; a live
+  real-provider CalDAV/CardDAV account on emulator-5560 would confirm production.
