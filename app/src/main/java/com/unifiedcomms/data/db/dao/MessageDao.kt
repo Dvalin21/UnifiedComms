@@ -231,4 +231,10 @@ interface ContactDao {
 
     @Query("SELECT * FROM contacts WHERE needsSync = 1")
     suspend fun getNeedingSync(): List<UnifiedContact>
+
+    @Query("SELECT * FROM contacts WHERE accountId = :accountId AND sourceId = :sourceId LIMIT 1")
+    suspend fun getBySourceId(accountId: String, sourceId: String): UnifiedContact?
+
+    @Query("SELECT * FROM contacts WHERE accountId = :accountId AND source = :source")
+    suspend fun getAllByAccountAndSource(accountId: String, source: com.unifiedcomms.data.model.ContactSource): List<UnifiedContact>
 }

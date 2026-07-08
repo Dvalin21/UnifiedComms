@@ -29,6 +29,7 @@ class CalDAVClient(
         private const val TAG = "CalDAVClient"
         val ICAL_MEDIA_TYPE = "text/calendar; charset=utf-8".toMediaType()
         val XML_MEDIA_TYPE = "application/xml; charset=utf-8".toMediaType()
+        val VCARD_MEDIA_TYPE = "text/vcard; charset=utf-8".toMediaType()
     }
 
     private val auth = if (bearerToken != null) "Bearer $bearerToken" else Credentials.basic(username, password)
@@ -334,6 +335,115 @@ class CalDAVClient(
         val req = Request.Builder().url(target).delete().build()
         internalClient.newCall(req).execute().use { resp -> resp.isSuccessful || resp.code == 404 }
     }
+
+    // ponytail: CardDAV reuses the same DAV plumbing. An addressbook is a collection
+    // whose resourcetype contains "addressbook". vCard GET/PUT/DELETE use putResource/deleteResource.
+    data class AddressBookInfo(val path: String, val displayName: String)
+
+    suspend fun discoverAddressBooks(): List<AddressBookInfo> = withContext(Dispatchers.IO) {
+        val principal = tryFindPrincipalAt(baseUrl) ?: return@withContext emptyList()
+        val homeSet = findAddressBookHomeSet(principal) ?: principal
+        val out = mutableListOf<AddressBookInfo>()
+        scanForAddressBooks(homeSet, out)
+        out
+    }
+
+    private suspend fun findAddressBookHomeSet(principal: String): String? = withContext(Dispatchers.IO) {
+        return@withContext try {
+            val xml = """
+                <?xml version="1.0" encoding="utf-8"?>
+                <D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav">
+                  <D:prop><C:addressbook-home-set/></D:prop>
+                </D:propfind>
+            """.trimIndent()
+            val resp = propfind(principal, xml, depth = "0")
+            parseHrefsFromPropfind(resp).firstOrNull()
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private suspend fun scanForAddressBooks(url: String, result: MutableList<AddressBookInfo>, visited: MutableSet<String> = mutableSetOf()) {
+        val normalized = url.trimEnd('/')
+        if (normalized in visited) return
+        visited += normalized
+        val xml = """
+            <?xml version="1.0" encoding="utf-8"?>
+            <D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav">
+              <D:prop>
+                <D:displayname/>
+                <D:resourcetype/>
+              </D:prop>
+            </D:propfind>
+        """.trimIndent()
+        try {
+            val body = propfind(normalized, xml, depth = "1")
+            val db = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(body.byteInputStream())
+            val responses = db.getElementsByTagName("response")
+            for (i in 0 until responses.length) {
+                val resp = responses.item(i) as? Element ?: continue
+                val href = resp.getElementsByTagName("href").item(0)?.textContent?.trim().orEmpty()
+                val fullUrl = if (href.startsWith("http://", true) || href.startsWith("https://", true)) href else "$baseUrl/${href.removePrefix("/")}"
+                val subUrl = fullUrl.trimEnd('/')
+                if (subUrl == normalized) continue
+                val types = mutableListOf<String>()
+                var rt = resp.getElementsByTagName("resourcetype").item(0) as? Element
+                var node = rt?.firstChild
+                while (node != null) {
+                    if (node.nodeType == org.w3c.dom.Node.ELEMENT_NODE) types += node.localName.lowercase()
+                    node = node.nextSibling
+                }
+                if (types.contains("addressbook")) {
+                    val name = resp.getElementsByTagName("displayname").item(0)?.textContent?.trim().orEmpty()
+                        .ifBlank { subUrl.split("/").lastOrNull { it.isNotBlank() }.orEmpty() }
+                    result += AddressBookInfo(path = subUrl, displayName = name)
+                } else {
+                    scanForAddressBooks(subUrl, result, visited)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "addressbook scan failed", e)
+        }
+    }
+
+    suspend fun listAddressBookItems(addressBookPath: String): List<ETagEntry> = withContext(Dispatchers.IO) {
+        val target = if (addressBookPath.startsWith("http://", true) || addressBookPath.startsWith("https://", true)) addressBookPath else "$baseUrl/${addressBookPath.removePrefix("/")}"
+        val xml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <D:propfind xmlns:D="DAV:">
+              <D:prop><D:getetag/></D:prop>
+            </D:propfind>
+        """.trimIndent().toRequestBody(XML_MEDIA_TYPE)
+        val req = Request.Builder().url(target).method("PROPFIND", xml).headers(mapOf("Depth" to "1").toHeaders()).build()
+        internalClient.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) return@use emptyList()
+            val text = resp.body?.string().orEmpty()
+            if (text.isBlank()) return@use emptyList()
+            try {
+                val db = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(text.byteInputStream())
+                val responses = db.getElementsByTagName("response")
+                val hrefNodes = db.getElementsByTagName("href")
+                val etagNodes = db.getElementsByTagName("getetag")
+                val out = mutableListOf<ETagEntry>()
+                for (i in 0 until responses.length) {
+                    if (i >= hrefNodes.length || i >= etagNodes.length) break
+                    val href = hrefNodes.item(i)?.textContent?.trim().orEmpty()
+                    val etag = etagNodes.item(i)?.textContent?.trim('"').orEmpty()
+                    // ponytail: skip the collection itself (no .vcf extension).
+                    if (href.isNotBlank() && etag.isNotBlank() && href.endsWith(".vcf", true)) out += ETagEntry(href, etag)
+                }
+                out
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
+    }
+
+    // ponytail: GET a single vCard resource (text/vcard). Reuses fetchItem shape but tagged for clarity.
+    suspend fun fetchVCard(href: String): IcsResource? = fetchItem("", href)
+
+    // ponytail: PUT a vCard. Reuses putResource with the vCard media type.
+    suspend fun putVCard(href: String, body: String): String? = putResource(href, body, VCARD_MEDIA_TYPE)
 
     suspend fun getCTag(calendarPath: String): String = withContext(Dispatchers.IO) {
         val target = if (calendarPath.startsWith("http://", true) || calendarPath.startsWith("https://", true)) calendarPath else "$baseUrl/${calendarPath.removePrefix("/")}"
