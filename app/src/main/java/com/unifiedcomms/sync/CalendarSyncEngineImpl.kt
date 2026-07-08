@@ -40,7 +40,7 @@ class CalendarSyncEngineImpl(
                 val url = account.serverConfig.caldavUrl ?: return@withContext SyncResult.success(0, emptyList(), emptyList())
                 val auth = crypto.decryptAuthConfig(account.authConfig)
                 val client = OkHttpClient.Builder().connectTimeout(30, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
-                val calDav = CalDAVClient(url, requireNotNull(auth.username), requireNotNull(auth.passwordEncrypted), client)
+                val calDav = newCalDav(url, auth, client)
 
                 val allCalendars = calDav.discoverCalendars()
                 updateProgress(account.id, null, SyncStage.LISTING_FOLDERS, 0, allCalendars.size)
@@ -98,6 +98,8 @@ class CalendarSyncEngineImpl(
                 }
 
                 for (event in localEvents) {
+                    // ponytail: never delete locally-created events during a server down-sync.
+                    if (event.isLocalOnly) continue
                     if (event.calendarId.isNotBlank() && event.calendarId !in masterServerHrefs) {
                         calendarRepo.deleteEvent(event)
                     }
@@ -125,7 +127,7 @@ class CalendarSyncEngineImpl(
             val url = account.serverConfig.caldavUrl ?: return@withContext null
             val auth = crypto.decryptAuthConfig(account.authConfig)
             val client = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
-            val dav = CalDAVClient(url, requireNotNull(auth.username), requireNotNull(auth.passwordEncrypted), client)
+            val dav = newCalDav(url, auth, client)
             val etagEntries = dav.getETagList(calendarId)
             etagEntries.firstOrNull { entry -> entry.href.contains(uid, true) }?.let { entry ->
                 val fetched = dav.fetchItem(account.id, entry.href) ?: return@withContext null
@@ -189,7 +191,7 @@ class CalendarSyncEngineImpl(
                 val url = account.serverConfig.caldavUrl ?: return@withContext com.unifiedcomms.sync.ConnectionTestResult(false, 0, emptyList(), "Missing CalDAV URL")
                 val auth = crypto.decryptAuthConfig(account.authConfig)
                 val client = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
-                CalDAVClient(url, requireNotNull(auth.username), requireNotNull(auth.passwordEncrypted), client)
+                newCalDav(url, auth, client)
                     .discoverCalendars()
                 com.unifiedcomms.sync.ConnectionTestResult(true, System.currentTimeMillis() - start, listOf("CalDAV"))
             } catch (e: Exception) {
@@ -202,7 +204,7 @@ class CalendarSyncEngineImpl(
         val url = account.serverConfig.caldavUrl ?: return@withContext emptyList()
         val auth = crypto.decryptAuthConfig(account.authConfig)
         val client = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
-        CalDAVClient(url, requireNotNull(auth.username), requireNotNull(auth.passwordEncrypted), client)
+        newCalDav(url, auth, client)
             .discoverCalendars()
             .map { info ->
                 Calendar(
@@ -222,5 +224,11 @@ class CalendarSyncEngineImpl(
 
     private fun updateProgress(accountId: String, calendar: String?, stage: SyncStage, current: Int, total: Int) {
         _syncProgress.value = _syncProgress.value + (accountId to SyncProgress(accountId, calendar, stage, current, total))
+    }
+
+    // ponytail: build a CalDAVClient, preferring an OAuth bearer token when the account is OAUTH2.
+    private fun newCalDav(url: String, auth: com.unifiedcomms.data.model.AuthConfig, client: OkHttpClient): CalDAVClient {
+        val bearer = if (auth.type == com.unifiedcomms.data.model.AuthType.OAUTH2) auth.oauthAccessToken else null
+        return CalDAVClient(url, auth.username ?: "", auth.passwordEncrypted ?: "", client, bearer)
     }
 }

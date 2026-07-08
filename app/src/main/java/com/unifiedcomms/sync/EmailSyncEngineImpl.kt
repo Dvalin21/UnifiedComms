@@ -179,13 +179,19 @@ class EmailSyncEngineImpl(
         config: com.unifiedcomms.data.model.ServerConfig,
         auth: com.unifiedcomms.data.model.AuthConfig
     ) {
+        // For OAuth2, IMAP/SMTP use the XOAUTH2 token as the password.
+        val (user, pass) = if (auth.type == com.unifiedcomms.data.model.AuthType.OAUTH2) {
+            auth.username!! to buildXoauth2(auth.username!!, auth.oauthAccessToken.orEmpty())
+        } else {
+            auth.username!! to auth.passwordEncrypted!!
+        }
         for (attempt in 1..2) {
             try {
                 store.connect(
                     config.imapHost,
                     config.imapPort,
-                    auth.username!!,
-                    auth.passwordEncrypted!!
+                    user,
+                    pass
                 )
                 return
             } catch (e: javax.mail.MessagingException) {
@@ -193,6 +199,14 @@ class EmailSyncEngineImpl(
             }
         }
     }
+
+    private fun buildXoauth2(user: String, token: String): String {
+        val bare = "user=$user\u0001auth=Bearer $token\u0001\u0001"
+        return base64(bare)
+    }
+
+    private fun base64(s: String): String =
+        android.util.Base64.encodeToString(s.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
 
     private fun openImapSession(config: com.unifiedcomms.data.model.ServerConfig): Session {
         val props = Properties().apply {
@@ -386,7 +400,13 @@ class EmailSyncEngineImpl(
                 }
 
                 val session = Session.getInstance(props, object : javax.mail.Authenticator() {
-                    override fun getPasswordAuthentication() = javax.mail.PasswordAuthentication(auth.username!!, auth.passwordEncrypted!!)
+                    override fun getPasswordAuthentication(): javax.mail.PasswordAuthentication {
+                        return if (auth.type == com.unifiedcomms.data.model.AuthType.OAUTH2) {
+                            javax.mail.PasswordAuthentication(auth.username!!, buildXoauth2(auth.username!!, auth.oauthAccessToken.orEmpty()))
+                        } else {
+                            javax.mail.PasswordAuthentication(auth.username!!, auth.passwordEncrypted!!)
+                        }
+                    }
                 })
 
                 val mimeMessage = MimeMessage(session)

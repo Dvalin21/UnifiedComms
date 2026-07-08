@@ -17,6 +17,7 @@ import com.unifiedcomms.data.model.CalendarEvent
 import com.unifiedcomms.data.model.ReminderMethod
 import com.unifiedcomms.data.repository.CalendarRepository
 import com.unifiedcomms.data.repository.CalendarRepositoryImpl
+import com.unifiedcomms.data.repository.AccountRepository
 import com.unifiedcomms.data.db.dao.CalendarEventDao
 import com.unifiedcomms.data.db.dao.CalendarDao
 import com.unifiedcomms.data.db.UnifiedCommsDatabase
@@ -24,6 +25,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.datetime.TimeZone
 
 class ReminderAlarmReceiver : BroadcastReceiver() {
 
@@ -60,7 +63,7 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
             .setFullScreenIntent(
                 PendingIntent.getActivity(
                     context,
-                    0,
+                    eventId.hashCode(),
                     Intent(context, FullScreenReminderActivity::class.java).putExtra("event_id", eventId),
                     PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
                 ),
@@ -192,34 +195,44 @@ class FullScreenReminderActivity : Activity() {
 
 class ReminderScheduler(
     private val context: Context,
-    private val calendarRepo: CalendarRepository
+    private val calendarRepo: CalendarRepository,
+    private val accountRepo: AccountRepository? = null
 ) {
 
-    fun scheduleReminders(accountId: String) {
+    // ponytail: track scheduled intent keys so cancelReminders can actually cancel them.
+    private val scheduledKeys = mutableSetOf<String>()
+
+    fun scheduleReminders(accountId: String? = null) {
         CoroutineScope(Dispatchers.IO).launch {
-            val upcomingEvents = calendarRepo.getUpcomingEvents(accountId, System.currentTimeMillis(), 50).first()
-            upcomingEvents.forEach { event ->
-                scheduleEventReminder(event)
+            val accountIds = when {
+                accountId == null || accountId == "all" -> accountRepo?.getAllActive()?.firstOrNull()?.map { it.id } ?: emptyList()
+                else -> listOf(accountId)
+            }
+            accountIds.forEach { id ->
+                val upcomingEvents = calendarRepo.getUpcomingEvents(id, System.currentTimeMillis(), 50).first()
+                upcomingEvents.forEach { event -> scheduleEventReminder(event) }
             }
         }
     }
 
     private fun scheduleEventReminder(event: CalendarEvent) {
         event.reminders.forEach { reminder ->
-            val triggerTime = event.startAt.toInstant().toEpochMilliseconds() - (reminder.minutesBefore * 60 * 1000)
+            val triggerTime = event.startAt.toInstant(TimeZone.of(event.startAt.timeZone)).toEpochMilliseconds() - (reminder.minutesBefore * 60 * 1000)
 
             if (triggerTime > System.currentTimeMillis()) {
                 val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                val key = "${event.id}_${reminder.minutesBefore}"
                 val intent = Intent(context, ReminderAlarmReceiver::class.java).apply {
                     putExtra("event_id", event.id)
                     putExtra("account_id", event.accountId)
                 }
                 val pendingIntent = PendingIntent.getBroadcast(
                     context,
-                    "${event.id}_${reminder.minutesBefore}".hashCode(),
+                    key.hashCode(),
                     intent,
                     PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
                 )
+                synchronized(scheduledKeys) { scheduledKeys.add(key) }
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     alarmManager.setExactAndAllowWhileIdle(
@@ -234,10 +247,34 @@ class ReminderScheduler(
         }
     }
 
-    fun cancelReminders(@Suppress("UNUSED_PARAMETER") eventId: String) {
-        @Suppress("UNUSED_VARIABLE")
+    fun cancelReminders(eventId: String) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        // Cancel all reminders for this event
-        // Would need to track pending intent IDs
+        synchronized(scheduledKeys) {
+            scheduledKeys.filter { it.startsWith("${eventId}_") }.forEach { key ->
+                val intent = Intent(context, ReminderAlarmReceiver::class.java).apply {
+                    putExtra("event_id", eventId)
+                }
+                val pi = PendingIntent.getBroadcast(
+                    context,
+                    key.hashCode(),
+                    intent,
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                )
+                alarmManager.cancel(pi)
+                scheduledKeys.remove(key)
+            }
+        }
+    }
+
+    fun cancelAll() {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        synchronized(scheduledKeys) {
+            scheduledKeys.toList().forEach { key ->
+                val intent = Intent(context, ReminderAlarmReceiver::class.java)
+                val pi = PendingIntent.getBroadcast(context, key.hashCode(), intent, PendingIntent.FLAG_IMMUTABLE)
+                alarmManager.cancel(pi)
+            }
+            scheduledKeys.clear()
+        }
     }
 }

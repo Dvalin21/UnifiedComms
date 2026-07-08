@@ -7,6 +7,10 @@ import kotlinx.datetime.LocalDateTime
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import java.time.format.DateTimeParseException
+
+// ponytail: one corrupt row must not kill the whole query. Every decode is guarded.
+private inline fun <T> decodeOr(default: T, block: () -> T): T = runCatching(block).getOrElse { default }
 
 class DateTimeConverter {
     @TypeConverter
@@ -19,13 +23,13 @@ class DateTimeConverter {
     fun fromLocalDate(value: LocalDate?): String? = value?.toString()
 
     @TypeConverter
-    fun toLocalDate(value: String?): LocalDate? = value?.let { LocalDate.parse(it) }
+    fun toLocalDate(value: String?): LocalDate? = decodeOr(null) { value?.let { LocalDate.parse(it) } }
 
     @TypeConverter
     fun fromLocalDateTime(value: LocalDateTime?): String? = value?.toString()
 
     @TypeConverter
-    fun toLocalDateTime(value: String?): LocalDateTime? = value?.let { LocalDateTime.parse(it) }
+    fun toLocalDateTime(value: String?): LocalDateTime? = decodeOr(null) { value?.let { LocalDateTime.parse(it) } }
 }
 
 class StringListConverter {
@@ -35,7 +39,7 @@ class StringListConverter {
     fun fromList(value: List<String>?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toList(value: String?): List<String> = value?.let { json.decodeFromString(it) } ?: emptyList()
+    fun toList(value: String?): List<String> = decodeOr(emptyList()) { value?.let { json.decodeFromString(it) } ?: emptyList() }
 }
 
 class MapConverter {
@@ -45,7 +49,7 @@ class MapConverter {
     fun fromMap(value: Map<String, String>?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toMap(value: String?): Map<String, String> = value?.let { json.decodeFromString(value) } ?: emptyMap()
+    fun toMap(value: String?): Map<String, String> = decodeOr(emptyMap()) { value?.let { json.decodeFromString(value) } ?: emptyMap() }
 }
 
 class AttachmentListConverter {
@@ -55,7 +59,8 @@ class AttachmentListConverter {
     fun fromList(value: List<com.unifiedcomms.data.model.Attachment>?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toList(value: String?): List<com.unifiedcomms.data.model.Attachment> = value?.let { json.decodeFromString(value) } ?: emptyList()
+    fun toList(value: String?): List<com.unifiedcomms.data.model.Attachment> =
+        decodeOr(emptyList()) { value?.let { json.decodeFromString(value) } ?: emptyList() }
 }
 
 class EventAttachmentListConverter {
@@ -65,7 +70,8 @@ class EventAttachmentListConverter {
     fun fromList(value: List<com.unifiedcomms.data.model.EventAttachment>?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toList(value: String?): List<com.unifiedcomms.data.model.EventAttachment> = value?.let { json.decodeFromString(value) } ?: emptyList()
+    fun toList(value: String?): List<com.unifiedcomms.data.model.EventAttachment> =
+        decodeOr(emptyList()) { value?.let { json.decodeFromString(value) } ?: emptyList() }
 }
 
 class AttendeeListConverter {
@@ -75,7 +81,8 @@ class AttendeeListConverter {
     fun fromList(value: List<com.unifiedcomms.data.model.EventAttendee>?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toList(value: String?): List<com.unifiedcomms.data.model.EventAttendee> = value?.let { json.decodeFromString(value) } ?: emptyList()
+    fun toList(value: String?): List<com.unifiedcomms.data.model.EventAttendee> =
+        decodeOr(emptyList()) { value?.let { json.decodeFromString(value) } ?: emptyList() }
 }
 
 class RecurrenceExceptionListConverter {
@@ -85,7 +92,8 @@ class RecurrenceExceptionListConverter {
     fun fromList(value: List<com.unifiedcomms.data.model.RecurrenceException>?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toList(value: String?): List<com.unifiedcomms.data.model.RecurrenceException> = value?.let { json.decodeFromString(value) } ?: emptyList()
+    fun toList(value: String?): List<com.unifiedcomms.data.model.RecurrenceException> =
+        decodeOr(emptyList()) { value?.let { json.decodeFromString(value) } ?: emptyList() }
 }
 
 class EventColorConverter {
@@ -95,7 +103,8 @@ class EventColorConverter {
     fun fromColor(value: com.unifiedcomms.data.model.EventColor?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toColor(value: String?): com.unifiedcomms.data.model.EventColor = value?.let { json.decodeFromString(value) } ?: com.unifiedcomms.data.model.EventColor.Default()
+    fun toColor(value: String?): com.unifiedcomms.data.model.EventColor =
+        decodeOr(com.unifiedcomms.data.model.EventColor.Default()) { value?.let { json.decodeFromString(value) } ?: com.unifiedcomms.data.model.EventColor.Default() }
 }
 
 class EventDateTimeConverter {
@@ -105,7 +114,8 @@ class EventDateTimeConverter {
     fun fromDateTime(value: com.unifiedcomms.data.model.EventDateTime?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toDateTime(value: String?): com.unifiedcomms.data.model.EventDateTime = value?.let { json.decodeFromString(value) } ?: com.unifiedcomms.data.model.EventDateTime()
+    fun toDateTime(value: String?): com.unifiedcomms.data.model.EventDateTime =
+        decodeOr(com.unifiedcomms.data.model.EventDateTime()) { value?.let { json.decodeFromString(value) } ?: com.unifiedcomms.data.model.EventDateTime() }
 }
 
 class RecurrenceRuleConverter {
@@ -115,7 +125,8 @@ class RecurrenceRuleConverter {
     fun fromRule(value: com.unifiedcomms.data.model.RecurrenceRule?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toRule(value: String?): com.unifiedcomms.data.model.RecurrenceRule? = value?.let { json.decodeFromString(value) }
+    fun toRule(value: String?): com.unifiedcomms.data.model.RecurrenceRule? =
+        decodeOr(null) { value?.let { json.decodeFromString(value) } }
 }
 
 class EmailRecipientsConverter {
@@ -125,7 +136,8 @@ class EmailRecipientsConverter {
     fun fromRecipients(value: com.unifiedcomms.data.model.EmailRecipients?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toRecipients(value: String?): com.unifiedcomms.data.model.EmailRecipients = value?.let { json.decodeFromString(value) } ?: com.unifiedcomms.data.model.EmailRecipients()
+    fun toRecipients(value: String?): com.unifiedcomms.data.model.EmailRecipients =
+        decodeOr(com.unifiedcomms.data.model.EmailRecipients()) { value?.let { json.decodeFromString(value) } ?: com.unifiedcomms.data.model.EmailRecipients() }
 }
 
 class EmailAddressConverter {
@@ -135,7 +147,8 @@ class EmailAddressConverter {
     fun fromAddress(value: com.unifiedcomms.data.model.EmailAddress?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toAddress(value: String?): com.unifiedcomms.data.model.EmailAddress = value?.let { json.decodeFromString(value) } ?: com.unifiedcomms.data.model.EmailAddress(email = "")
+    fun toAddress(value: String?): com.unifiedcomms.data.model.EmailAddress =
+        decodeOr(com.unifiedcomms.data.model.EmailAddress(email = "")) { value?.let { json.decodeFromString(value) } ?: com.unifiedcomms.data.model.EmailAddress(email = "") }
 }
 
 class SystemLabelsConverter {
@@ -145,7 +158,8 @@ class SystemLabelsConverter {
     fun fromLabels(value: com.unifiedcomms.data.model.SystemLabels?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toLabels(value: String?): com.unifiedcomms.data.model.SystemLabels = value?.let { json.decodeFromString(value) } ?: com.unifiedcomms.data.model.SystemLabels()
+    fun toLabels(value: String?): com.unifiedcomms.data.model.SystemLabels =
+        decodeOr(com.unifiedcomms.data.model.SystemLabels()) { value?.let { json.decodeFromString(value) } ?: com.unifiedcomms.data.model.SystemLabels() }
 }
 
 class EmailFlagsConverter {
@@ -155,7 +169,8 @@ class EmailFlagsConverter {
     fun fromFlags(value: com.unifiedcomms.data.model.EmailFlags?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toFlags(value: String?): com.unifiedcomms.data.model.EmailFlags = value?.let { json.decodeFromString(value) } ?: com.unifiedcomms.data.model.EmailFlags()
+    fun toFlags(value: String?): com.unifiedcomms.data.model.EmailFlags =
+        decodeOr(com.unifiedcomms.data.model.EmailFlags()) { value?.let { json.decodeFromString(value) } ?: com.unifiedcomms.data.model.EmailFlags() }
 }
 
 class TaskDateTimeConverter {
@@ -165,7 +180,8 @@ class TaskDateTimeConverter {
     fun fromDateTime(value: com.unifiedcomms.data.model.TaskDateTime?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toDateTime(value: String?): com.unifiedcomms.data.model.TaskDateTime = value?.let { json.decodeFromString(value) } ?: com.unifiedcomms.data.model.TaskDateTime()
+    fun toDateTime(value: String?): com.unifiedcomms.data.model.TaskDateTime =
+        decodeOr(com.unifiedcomms.data.model.TaskDateTime()) { value?.let { json.decodeFromString(value) } ?: com.unifiedcomms.data.model.TaskDateTime() }
 }
 
 class MessageAttachmentListConverter {
@@ -175,7 +191,8 @@ class MessageAttachmentListConverter {
     fun fromList(value: List<com.unifiedcomms.data.model.MessageAttachment>?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toList(value: String?): List<com.unifiedcomms.data.model.MessageAttachment> = value?.let { json.decodeFromString(value) } ?: emptyList()
+    fun toList(value: String?): List<com.unifiedcomms.data.model.MessageAttachment> =
+        decodeOr(emptyList()) { value?.let { json.decodeFromString(value) } ?: emptyList() }
 }
 
 class GeoLocationConverter {
@@ -185,7 +202,8 @@ class GeoLocationConverter {
     fun fromGeo(value: com.unifiedcomms.data.model.GeoLocation?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toGeo(value: String?): com.unifiedcomms.data.model.GeoLocation? = value?.let { json.decodeFromString(it) }
+    fun toGeo(value: String?): com.unifiedcomms.data.model.GeoLocation? =
+        decodeOr(null) { value?.let { json.decodeFromString(it) } }
 }
 
 class EventReminderListConverter {
@@ -195,7 +213,8 @@ class EventReminderListConverter {
     fun fromList(value: List<com.unifiedcomms.data.model.EventReminder>?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toList(value: String?): List<com.unifiedcomms.data.model.EventReminder> = value?.let { json.decodeFromString(it) } ?: emptyList()
+    fun toList(value: String?): List<com.unifiedcomms.data.model.EventReminder> =
+        decodeOr(emptyList()) { value?.let { json.decodeFromString(value) } ?: emptyList() }
 }
 
 class InstantListConverter {
@@ -203,7 +222,9 @@ class InstantListConverter {
     fun fromList(value: List<kotlinx.datetime.Instant>?): String? = value?.let { it.joinToString(",") { i -> i.toEpochMilliseconds().toString() } }
 
     @TypeConverter
-    fun toList(value: String?): List<kotlinx.datetime.Instant> = if (value.isNullOrBlank()) emptyList() else value.split(",").map { kotlinx.datetime.Instant.fromEpochMilliseconds(it.toLong()) }
+    fun toList(value: String?): List<kotlinx.datetime.Instant> = decodeOr(emptyList()) {
+        if (value.isNullOrBlank()) emptyList() else value.split(",").map { kotlinx.datetime.Instant.fromEpochMilliseconds(it.toLong()) }
+    }
 }
 
 class EventAttendeeConverter {
@@ -213,7 +234,8 @@ class EventAttendeeConverter {
     fun fromAttendee(value: com.unifiedcomms.data.model.EventAttendee?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toAttendee(value: String?): com.unifiedcomms.data.model.EventAttendee? = value?.let { json.decodeFromString(it) }
+    fun toAttendee(value: String?): com.unifiedcomms.data.model.EventAttendee? =
+        decodeOr(null) { value?.let { json.decodeFromString(it) } }
 }
 
 class ConferenceDataConverter {
@@ -223,7 +245,8 @@ class ConferenceDataConverter {
     fun fromConference(value: com.unifiedcomms.data.model.ConferenceData?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toConference(value: String?): com.unifiedcomms.data.model.ConferenceData? = value?.let { json.decodeFromString(it) }
+    fun toConference(value: String?): com.unifiedcomms.data.model.ConferenceData? =
+        decodeOr(null) { value?.let { json.decodeFromString(it) } }
 }
 
 class TaskAssigneeConverter {
@@ -233,7 +256,8 @@ class TaskAssigneeConverter {
     fun fromAssignee(value: com.unifiedcomms.data.model.TaskAssignee?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toAssignee(value: String?): com.unifiedcomms.data.model.TaskAssignee? = value?.let { json.decodeFromString(it) }
+    fun toAssignee(value: String?): com.unifiedcomms.data.model.TaskAssignee? =
+        decodeOr(null) { value?.let { json.decodeFromString(it) } }
 }
 
 class TaskAttachmentListConverter {
@@ -243,7 +267,8 @@ class TaskAttachmentListConverter {
     fun fromList(value: List<com.unifiedcomms.data.model.TaskAttachment>?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toList(value: String?): List<com.unifiedcomms.data.model.TaskAttachment> = value?.let { json.decodeFromString(it) } ?: emptyList()
+    fun toList(value: String?): List<com.unifiedcomms.data.model.TaskAttachment> =
+        decodeOr(emptyList()) { value?.let { json.decodeFromString(value) } ?: emptyList() }
 }
 
 class ConversationSettingsConverter {
@@ -253,7 +278,8 @@ class ConversationSettingsConverter {
     fun fromSettings(value: com.unifiedcomms.data.model.ConversationSettings?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toSettings(value: String?): com.unifiedcomms.data.model.ConversationSettings = value?.let { json.decodeFromString(it) } ?: com.unifiedcomms.data.model.ConversationSettings()
+    fun toSettings(value: String?): com.unifiedcomms.data.model.ConversationSettings =
+        decodeOr(com.unifiedcomms.data.model.ConversationSettings()) { value?.let { json.decodeFromString(value) } ?: com.unifiedcomms.data.model.ConversationSettings() }
 }
 
 class ServerConfigConverter {
@@ -263,13 +289,8 @@ class ServerConfigConverter {
     fun fromConfig(value: com.unifiedcomms.data.model.ServerConfig?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toConfig(value: String?): com.unifiedcomms.data.model.ServerConfig = value?.let { json.decodeFromString(it) } ?: com.unifiedcomms.data.model.ServerConfig(
-        imapHost = null, imapPort = 993, imapUseSsl = true,
-        smtpHost = null, smtpPort = 587, smtpUseStartTls = true,
-        caldavUrl = null, carddavUrl = null, webdavUrl = null,
-        oauthTokenUrl = null, oauthAuthUrl = null, oauthClientId = null,
-        oauthScopes = emptyList(), supportsPush = false, pushConfig = null
-    )
+    fun toConfig(value: String?): com.unifiedcomms.data.model.ServerConfig =
+        decodeOr(com.unifiedcomms.data.model.ServerConfig()) { value?.let { json.decodeFromString(value) } ?: com.unifiedcomms.data.model.ServerConfig() }
 }
 
 class AuthConfigConverter {
@@ -279,9 +300,8 @@ class AuthConfigConverter {
     fun fromConfig(value: com.unifiedcomms.data.model.AuthConfig?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toConfig(value: String?): com.unifiedcomms.data.model.AuthConfig = value?.let { json.decodeFromString(it) } ?: com.unifiedcomms.data.model.AuthConfig(
-        type = com.unifiedcomms.data.model.AuthType.PASSWORD, username = null, passwordEncrypted = null
-    )
+    fun toConfig(value: String?): com.unifiedcomms.data.model.AuthConfig =
+        decodeOr(com.unifiedcomms.data.model.AuthConfig(type = com.unifiedcomms.data.model.AuthType.PASSWORD)) { value?.let { json.decodeFromString(value) } ?: com.unifiedcomms.data.model.AuthConfig(type = com.unifiedcomms.data.model.AuthType.PASSWORD) }
 }
 
 class SyncConfigConverter {
@@ -291,7 +311,8 @@ class SyncConfigConverter {
     fun fromConfig(value: com.unifiedcomms.data.model.SyncConfig?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toConfig(value: String?): com.unifiedcomms.data.model.SyncConfig = value?.let { json.decodeFromString(it) } ?: com.unifiedcomms.data.model.SyncConfig.Defaults()
+    fun toConfig(value: String?): com.unifiedcomms.data.model.SyncConfig =
+        decodeOr(com.unifiedcomms.data.model.SyncConfig.Defaults()) { value?.let { json.decodeFromString(value) } ?: com.unifiedcomms.data.model.SyncConfig.Defaults() }
 }
 
 class UIConfigConverter {
@@ -301,5 +322,6 @@ class UIConfigConverter {
     fun fromConfig(value: com.unifiedcomms.data.model.UIConfig?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toConfig(value: String?): com.unifiedcomms.data.model.UIConfig = value?.let { json.decodeFromString(it) } ?: com.unifiedcomms.data.model.UIConfig.Defaults()
+    fun toConfig(value: String?): com.unifiedcomms.data.model.UIConfig =
+        decodeOr(com.unifiedcomms.data.model.UIConfig.Defaults()) { value?.let { json.decodeFromString(value) } ?: com.unifiedcomms.data.model.UIConfig.Defaults() }
 }
