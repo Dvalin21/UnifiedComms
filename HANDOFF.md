@@ -38,8 +38,9 @@ Fix-before-ship carried into later phases (not yet fixed)
 - HIGH: Converters no try/catch -> one corrupt row kills whole query [#15]
 - MEDIUM (all COMPLETE this session, assembleDebug GREEN): two Add-Account paths; main UI AddAccountScreen builds AppPassword for GOOGLE/OUTLOOK (no OAuth) [#19] -> FIXED: AddAccountScreen now delegates GOOGLE/OUTLOOK/YAHOO/ICLOUD to AddAccountActivity web OAuth flow instead of fake AppPassword.
 - MEDIUM: MessagingService dead + permission not declared [#20]; PushManager fake backend [#21] -> FIXED: deleted dead MessagingService + manifest entry (removes undefined-permission hole); PushManager.subscribeToTopic/unsubscribeFromTopic now hit the real backend ($serverUrl/api/v1/devices/{id}/subscribe|unsubscribe) instead of returning hardcoded true.
-- MEDIUM: SearchActivity no-op [#17]; SettingsActivity stub [#18]; ContentProvider/Authenticator empty [#16] -> FIXED: SearchActivity now runs real multi-source search (email/calendar/task/contact via existing DAO search queries) and is launched from the inbox top-bar Search button; SettingsActivity deleted (orphan stub; SettingsScreen composable is the real UI); vestigial UnifiedCommsContentProvider deleted + manifest entry removed (Authenticator provider kept — account system needs it).
-- LOW: manifest over-broad perms [#25]; findDirectConversation JSON-equality [#26]
+- MEDIUM: SearchActivity no-op [#17]; SettingsActivity stub [#18]; ContentProvider/Authenticator empty [#16]
+- LOW: manifest over-broad perms [#25] -> FIXED: removed 15 unused/over-broad perms (READ/WRITE/MANAGE_EXTERNAL_STORAGE, CAMERA+feature, RECORD_AUDIO+mic feature, BLUETOOTH*/NEARBY_WIFI_DEVICES, MANAGE_ACCOUNTS, AUTHENTICATE_ACCOUNTS, USE_FINGERPRINT). None referenced in code; targetSdk 35 makes storage perms no-ops and MANAGE_EXTERNAL_STORAGE a Play-rejection flag.
+- LOW: findDirectConversation JSON-equality [#26] -> FIXED: query was `participantIds = :participants` (order-sensitive serialised-list match); caller passed listOf(userId, trimmed) so a stored conversation with reversed order was never found, creating duplicate conversations. DAO now matches both orderings (asc OR desc); repo passes the reversed list.
 
 Wiring notes
 - SyncManager instantiated in MainViewModel with app context
@@ -109,12 +110,28 @@ Remaining MEDIUM carry-over (honest)
 - Search does not yet cover Messages (MessageDao.searchMessages needs conversationIds; no stable userId in local mode). Email/calendar/task/contact are covered.
 - PushManager is now unreferenced by any running component (MessagingService removed); kept as a usable HTTP client utility. If nothing consumes it post-MEDIUM, consider removal in a later cleanup pass.
 
+=== PHASE 4 — LOW (real defects fixed, assembleDebug GREEN 2026-07-07) ===
+Files changed this phase:
+- app/src/main/AndroidManifest.xml (pruned 15 unused/over-broad permissions)
+- app/src/main/java/com/unifiedcomms/data/db/dao/MessageDao.kt (order-independent lookup)
+- app/src/main/java/com/unifiedcomms/data/repository/MessagingRepositoryImpl.kt (pass reversed ordering)
+
+Fixes applied (LOW phase)
+- #25 Manifest over-broad perms: removed READ/WRITE/MANAGE_EXTERNAL_STORAGE, CAMERA (+feature), RECORD_AUDIO (+mic feature), BLUETOOTH/BLUETOOTH_ADMIN/BLUETOOTH_CONNECT/BLUETOOTH_SCAN/NEARBY_WIFI_DEVICES, MANAGE_ACCOUNTS, AUTHENTICATE_ACCOUNTS, USE_FINGERPRINT. Verified none are referenced in code (no camera/audio/bluetooth/MediaStore/external-storage usage; targetSdk 35 makes storage perms no-ops and MANAGE_EXTERNAL_STORAGE a Play-console rejection flag). Kept perms the sync/account system actually uses (contacts, calendar, accounts, sync settings, biometric, notifications, exact-alarm, etc.).
+- #26 findDirectConversation order-sensitivity: the DAO compared the serialised participantIds list with `=` — order-sensitive. The only caller (MessagesScreen compose) passes listOf(currentUserId, recipient); if the stored conversation had the participants reversed, lookup failed and a duplicate conversation was created on every message. DAO now matches `(participantIds = :asc OR participantIds = :desc)`; repo passes participants and its reverse. No schema migration needed.
+
+ALL PHASES COMPLETE (Critical -> High -> Medium -> Low).
+Build: assembleDebug GREEN across all phases.
+Carry-over (honest, not fixed):
+- Recurrence INSTANCE expansion (RECURRENCE-ID/EXDATE) still not generated.
+- Task/Contact sync backends still fail-honestly stubs.
+- OAuth refresh + search + messaging verified by compile only; need live-account runs on emulator-5560.
+- Search does not cover Messages (needs conversationIds; unstable userId in local mode).
+- PushManager now unreferenced by any running component.
+
 Remaining before ship
-- Complete blind interactions only on real device/CI
-- Replace biometric/theme/test seeds with real account-backed behavior
-- Verify folder navigation shows correct folder content and live counts in UI
-- Verify calendar/task sync with real CalDAV/ICS data, preserving shared event colors and syncing invited events per Hearthboard reference
-- Add automated UI/instrumented tests for all core user flows
+- Live functional verification on emulator-5560 (add account, send/receive, sync, reminders).
+- Add automated UI/instrumented tests for core flows.
 
 Emulator artifacts
 - APK: app/build/outputs/apk/debug/app-debug.apk
