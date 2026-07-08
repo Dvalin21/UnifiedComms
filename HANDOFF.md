@@ -129,6 +129,18 @@ Carry-over (honest, not fixed):
 - Search does not cover Messages (needs conversationIds; unstable userId in local mode).
 - PushManager now unreferenced by any running component.
 
+=== VERIFICATION (emulator-5560, 2026-07-07) ===
+- Installed app-debug.apk on emulator-5560 (not the S22 physical device).
+- Boot smoke test: MainActivity launches, process alive (PID 6865), NO crash, no
+  permission denials from the pruned perms, no references to deleted components.
+- #17 Search: found + fixed a real crash — SearchScreen nested LazyColumn inside a
+  verticalScroll Column (IllegalStateException: infinity max height). Removed the
+  outer verticalScroll; LazyColumn now owns scrolling. Verified SearchActivity launches
+  as top resumed activity with no crash. Also added the missing <activity> manifest
+  declaration (was absent -> in-app launch would have thrown ActivityNotFoundException).
+- SearchActivity launch wired from UnifiedInboxScreen top-bar Search icon (content-desc
+  "Search", confirmed present in hierarchy).
+
 Remaining before ship
 - Live functional verification on emulator-5560 (add account, send/receive, sync, reminders).
 - Add automated UI/instrumented tests for core flows.
