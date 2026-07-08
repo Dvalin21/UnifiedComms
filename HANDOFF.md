@@ -187,3 +187,42 @@ Emulator artifacts
 - APK: app/build/outputs/apk/debug/app-debug.apk
 - Test APK: app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 - Test account: Ethereal (ethereal.email) — ephemeral, credentials in the test file.
+
+=== PHASE 6 — RECURRENCE INSTANCE EXPANSION (2026-07-08) ===
+Carry-over from Phase 2: recurring events were stored only as masters
+(recurrenceId==null, recurrenceRule!=null). The range/date/upcoming repo queries
+filtered on the master's single startAt, so every occurrence after DTSTART was
+invisible in the UI, day view, month view, and reminders.
+
+Fix: generate occurrences on the fly at the repository query boundary (NOT persisted
+as thousands of rows). New object RecurrenceExpander (pure Kotlin, java.time) expands a
+master into occurrences within [windowStart, windowEnd] for DAILY/WEEKLY(+BYDAY)/
+MONTHLY(+BYMONTHDAY,+BYDAY)/YEARLY. SECONDLY/MINUTELY/HOURLY ignored. COUNT/UNTIL honored.
+Wall-clock time preserved across DST via ZonedDateTime period arithmetic (not raw epoch
+deltas). Infinite recurrences (no UNTIL/COUNT) bounded by UPCOMING_LOOKAHEAD_MS (366d).
+
+Files changed:
+- app/src/main/java/com/unifiedcomms/sync/RecurrenceExpander.kt (NEW)
+- app/src/main/java/com/unifiedcomms/data/repository/CalendarRepositoryImpl.kt
+  (getEventsInRange / getEventsInRangeUnified / getEventsForDate / getEventsForDateUnified /
+   getUpcomingEvents / getUpcomingEventsUnified now expandInWindow(); non-recurring pass through)
+- app/src/test/java/com/unifiedcomms/sync/RecurrenceExpanderTest.kt (NEW, 10 JVM tests)
+
+Generated instances carry recurrenceId=master.uid (flagged via isInstance()); recurrenceRule
+on instances is null so they don't re-expand. Master remains the sync source of truth.
+
+Verification:
+- RecurrenceExpanderTest: 10/10 PASS (weekly BYDAY, DAILY interval, COUNT cap, UNTIL boundary,
+  MONTHLY BYMONTHDAY, YEARLY, window exclusion, DST wall-clock preservation, instance flags).
+- :app:assembleDebug GREEN.
+- NOTE: expansion runs at query time, not during CalDAV down-sync, so no DB migration needed.
+  Server-side RECURRENCE-ID/EXDATE overrides are still not consumed (not emitted by current
+  providers; honest carry-over). If a user edits/deletes one instance on the server, the master
+  still expands that slot — wire to recurrenceExceptions when a provider sends overridden UIDs.
+
+=== REMAINING CARRY-OVER (honest, not fixed) ===
+- Task/Contact sync backends still fail-honestly stubs.
+- OAuth refresh + search + messaging verified by compile/install only; need live-account runs on emulator-5560.
+- Search does not cover Messages (needs conversationIds; unstable userId in local mode).
+- PushManager now unreferenced by any running component (keep or drop in cleanup pass).
+- RECURRENCE-ID / EXDATE server overrides not consumed (see Phase 6 note).
