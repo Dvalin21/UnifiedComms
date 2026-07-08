@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug-only override: permits cleartext for the local CardDAV mock server
+     used by ContactSyncE2ETest (http://10.0.2.2:8088, the emulator's view of
+     host localhost). Release build uses the strict main config (cleartext off). -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">googleapis.com</domain>
+        <domain includeSubdomains="true">googleusercontent.com</domain>
+        <domain includeSubdomains="true">gmail.com</domain>
+        <domain includeSubdomains="true">outlook.com</domain>
+        <domain includeSubdomains="true">office365.com</domain>
+        <domain includeSubdomains="true">live.com</domain>
+        <domain includeSubdomains="true">yahoo.com</domain>
+        <domain includeSubdomains="true">icloud.com</domain>
+        <domain includeSubdomains="true">me.com</domain>
+        <domain includeSubdomains="true">fastmail.com</domain>
+        <domain includeSubdomains="true">protonmail.com</domain>
+        <domain includeSubdomains="true">zoho.com</domain>
+        <domain includeSubdomains="true">gmx.com</domain>
+        <domain includeSubdomains="true">aol.com</domain>
+    </domain-config>
+
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

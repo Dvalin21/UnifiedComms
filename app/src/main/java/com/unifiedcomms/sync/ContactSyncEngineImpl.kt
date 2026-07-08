@@ -177,7 +177,15 @@ class ContactSyncEngineImpl(
         return withContext(Dispatchers.IO) {
             val start = System.currentTimeMillis()
             try {
-                ConnectionTestResult(true, System.currentTimeMillis() - start, listOf("CardDAV", "Google People"))
+                val carddavUrl = account.serverConfig.carddavUrl
+                    ?: return@withContext ConnectionTestResult(false, 0, emptyList(), "Missing CardDAV URL")
+                val auth = crypto.decryptAuthConfig(account.authConfig)
+                val client = okhttp3.OkHttpClient.Builder()
+                    .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+                val books = newCardDav(carddavUrl, auth, client).discoverAddressBooks()
+                ConnectionTestResult(true, System.currentTimeMillis() - start, listOf("CardDAV", "${books.size} address book(s)"))
             } catch (e: Exception) {
                 ConnectionTestResult(false, 0, emptyList(), e.message)
             }
