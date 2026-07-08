@@ -220,9 +220,41 @@ Verification:
   providers; honest carry-over). If a user edits/deletes one instance on the server, the master
   still expands that slot — wire to recurrenceExceptions when a provider sends overridden UIDs.
 
+=== PHASE 7 — TASK SYNC BACKEND (2026-07-08) ===
+Carry-over: TaskSyncEngineImpl wrote/created/deleted with SyncResult.failure("not implemented")
+(lie-avoidance only — never fake success). Contact stays separate (needs vCard stack from zero).
+
+Fix: Task sync now real, reusing existing plumbing:
+- ICalParser already parsed VTODO -> Task (Phase 2). CalDAVClient already did PROPFIND/GET.
+- CalDAVClient: +discoverTaskLists() (CalDAV collections advertising VTODO in component-set,
+  recursive scan reusing scanForCalendars shape), +putResource(href, body) (generic CalDAV PUT,
+  returns server ETag), +deleteResource(href) (returns success|404).
+- VTaskSerializer (NEW, pure Kotlin): minimal RFC5545 VTODO emitter covering the fields
+  ICalParser reads back (UID, SUMMARY, DESCRIPTION, STATUS, DUE, PRIORITY, CATEGORIES).
+- TaskSyncEngineImpl rewritten: syncAccount discovers task lists, down-syncs VTODO by ETag,
+  inserts/updates Room rows, pushes isLocalOnly tasks via PUT, deletes local rows whose UID
+  vanished server-side. createTask/updateTask/deleteTask/completeTask now PUT/DELETE real
+  iCalendar. OAuth bearer honored via newCalDav().
+
+Files changed:
+- app/src/main/java/com/unifiedcomms/sync/CalDAVClient.kt (+discoverTaskLists, +putResource, +deleteResource)
+- app/src/main/java/com/unifiedcomms/sync/VTaskSerializer.kt (NEW)
+- app/src/main/java/com/unifiedcomms/sync/TaskSyncEngineImpl.kt (rewritten: real sync + writes)
+- app/src/test/java/com/unifiedcomms/sync/VTaskSerializerTest.kt (NEW, 6 JVM tests)
+
+Verification:
+- VTaskSerializerTest: 6/6 PASS (required fields, STATUS mapping, DUE->UTC Z, round-trip via
+  ICalParser, summary escaping).
+- :app:assembleDebug GREEN, full :app:testDebugUnitTest GREEN (no warnings).
+- ponytail: VTODO serializer intentionally omits PERCENT-COMPLETE/RRULE/attendees — those are
+  read-only display today; emitting them would be speculative. Extend when model needs write.
+
 === REMAINING CARRY-OVER (honest, not fixed) ===
-- Task/Contact sync backends still fail-honestly stubs.
+- Contact (CardDAV/vCard) sync backend still fail-honestly stub — needs vCard parser/serializer
+  from zero (separate phase). ContactSyncEngineImpl.syncAccount currently runs a broken
+  PROPFIND that returns empty contacts; create/update/delete still fail honestly.
 - OAuth refresh + search + messaging verified by compile/install only; need live-account runs on emulator-5560.
 - Search does not cover Messages (needs conversationIds; unstable userId in local mode).
 - PushManager now unreferenced by any running component (keep or drop in cleanup pass).
 - RECURRENCE-ID / EXDATE server overrides not consumed (see Phase 6 note).
+- Task write round-trip needs a live CalDAV account on emulator-5560 to confirm PUT/DELETE ETags.
