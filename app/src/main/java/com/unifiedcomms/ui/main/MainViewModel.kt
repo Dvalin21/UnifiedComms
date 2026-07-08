@@ -59,7 +59,8 @@ class MainViewModel(
         ContactSyncEngineImpl(contactRepo, accountRepo, crypto, viewModelScope),
         accountRepo,
         viewModelScope,
-        app
+        app,
+        crypto
     )
 
     private val _accounts = MutableStateFlow<List<Account>>(emptyList())

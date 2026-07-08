@@ -52,9 +52,10 @@ object ICalParser {
             val summary = map["SUMMARY"] ?: "(No title)"
             val dtstartEntry = map.entries.firstOrNull { it.key.startsWith("DTSTART") }
             val dtendEntry = map.entries.firstOrNull { it.key.startsWith("DTEND") } ?: map.entries.firstOrNull { it.key.startsWith("DURATION") }
+            val startTzId = tzIdFromKey(dtstartEntry?.key)
             val allDay = dtstartEntry?.key?.contains(";VALUE=DATE", true) == true && dtstartEntry.key.contains("DATE", true) && !dtstartEntry.key.contains("DATE-TIME", true)
-            val startMs = runCatching { parseDateTime(dtstartEntry!!.key, dtstartEntry.value) }.getOrNull() ?: 0L
-            val endMs = if (dtendEntry != null && dtendEntry.key.startsWith("DTEND")) parseDateTime(dtendEntry.key, dtendEntry.value)
+            val startMs = runCatching { parseDateTime(dtstartEntry!!.key, dtstartEntry.value, startTzId) }.getOrNull() ?: 0L
+            val endMs = if (dtendEntry != null && dtendEntry.key.startsWith("DTEND")) parseDateTime(dtendEntry.key, dtendEntry.value, tzIdFromKey(dtendEntry.key))
             else if (allDay) startMs + 86_400_000L else startMs + 3_600_000L
             val status = when ((map["STATUS"] ?: "").uppercase()) {
                 "CANCELLED" -> com.unifiedcomms.data.model.EventStatus.CANCELLED
@@ -71,9 +72,18 @@ object ICalParser {
                 title = summary,
                 description = map["DESCRIPTION"] ?: "",
                 location = map["LOCATION"] ?: "",
-                startAt = com.unifiedcomms.data.model.EventDateTime.fromInstant(kotlinx.datetime.Instant.fromEpochMilliseconds(startMs)),
-                endAt = com.unifiedcomms.data.model.EventDateTime.fromInstant(kotlinx.datetime.Instant.fromEpochMilliseconds(endMs)),
-                timezone = ZoneId.systemDefault().id,
+                startAt = com.unifiedcomms.data.model.EventDateTime.fromInstant(
+                    kotlinx.datetime.Instant.fromEpochMilliseconds(startMs),
+                    startTzId?.let { kotlinx.datetime.TimeZone.of(it) } ?: kotlinx.datetime.TimeZone.currentSystemDefault(),
+                    allDay
+                ),
+                endAt = com.unifiedcomms.data.model.EventDateTime.fromInstant(
+                    kotlinx.datetime.Instant.fromEpochMilliseconds(endMs),
+                    startTzId?.let { kotlinx.datetime.TimeZone.of(it) } ?: kotlinx.datetime.TimeZone.currentSystemDefault(),
+                    allDay
+                ),
+                timezone = startTzId ?: ZoneId.systemDefault().id,
+                recurrenceRule = map["RRULE"]?.let { com.unifiedcomms.data.model.RecurrenceRule.parse(it) },
                 color = if (colorHex.isNotBlank()) EventColor(colorHex, if (isLightColor(colorHex)) "#000000" else "#FFFFFF") else EventColor.Default(),
                 organizer = organizerEmail?.let { com.unifiedcomms.data.model.EventAttendee(email = it) },
                 etag = etag,
@@ -134,16 +144,25 @@ object ICalParser {
         return map
     }
 
-    private fun parseDateTime(key: String, value: String): Long {
+    private fun parseDateTime(key: String, value: String, tzId: String? = null): Long {
         val clean = value.trim()
+        val zone = tzId?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault()
         return when {
             clean.endsWith("Z") -> LocalDateTime.parse(clean.replace("Z", ""), DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss"))
                 .atZone(ZoneOffset.UTC).toInstant().toEpochMilli()
             clean.contains("T") -> LocalDateTime.parse(clean, DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss"))
-                .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                .atZone(zone).toInstant().toEpochMilli()
             else -> LocalDate.parse(clean, DateTimeFormatter.BASIC_ISO_DATE)
-                .atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                .atStartOfDay(zone).toInstant().toEpochMilli()
         }
+    }
+
+    // DTSTART;TZID=America/New_York:... -> "America/New_York"
+    private fun tzIdFromKey(key: String?): String? {
+        if (key == null) return null
+        val idx = key.indexOf("TZID=", ignoreCase = true)
+        if (idx < 0) return null
+        return key.substring(idx + 5).substringBefore(':').trim().takeIf { it.isNotBlank() }
     }
 
     private fun extractEmail(value: String?): String? {

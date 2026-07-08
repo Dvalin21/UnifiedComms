@@ -23,8 +23,11 @@ class SyncManager(
     private val contactSync: ContactSyncEngine,
     private val accountRepo: AccountRepository,
     private val scope: CoroutineScope,
-    private val context: Context
+    private val context: Context,
+    private val crypto: com.unifiedcomms.security.CryptoManager
 ) : DefaultLifecycleObserver {
+
+    private val tokenRefresher = OAuthTokenRefresher(accountRepo, crypto)
 
     private val _syncStates = MutableStateFlow<Map<String, SyncState>>(emptyMap())
     val syncStates: StateFlow<Map<String, SyncState>> = _syncStates
@@ -79,6 +82,8 @@ class SyncManager(
     suspend fun performFullSync(account: Account): SyncResult {
         updateState(account.id) { it.copy(isSyncing = true, lastError = null) }
         NotificationHelper.showSyncNotification(context, "Syncing ${account.name}...", -1)
+        // ponytail: refresh OAuth token before talking to servers so accounts don't die at expiry.
+        val fresh = tokenRefresher.ensureFreshToken(account)
         val maxEmailRetries = 2
         var totalSynced = 0
         val startTime = System.currentTimeMillis()
@@ -86,11 +91,11 @@ class SyncManager(
         var errorMessage: String? = null
 
         if (account.syncConfig.syncEmail) {
-            var emailResult = emailSync.syncAccount(account)
+            var emailResult = emailSync.syncAccount(fresh)
             var attempts = 1
             while (!emailResult.success && attempts < maxEmailRetries) {
                 attempts++
-                emailResult = emailSync.syncAccount(account)
+                emailResult = emailSync.syncAccount(fresh)
             }
             if (!emailResult.success) {
                 failed = true
@@ -99,7 +104,7 @@ class SyncManager(
         }
 
         if (account.syncConfig.syncCalendar) {
-            val result = calendarSync.syncAccount(account)
+            val result = calendarSync.syncAccount(fresh)
             if (!result.success) {
                 failed = true
                 errorMessage = (errorMessage ?: "") + if (errorMessage.isNullOrBlank().not()) "; Calendar sync failed: ${result.errorMessage}" else "Calendar sync failed: ${result.errorMessage}"
@@ -107,7 +112,7 @@ class SyncManager(
         }
 
         if (account.syncConfig.syncTasks) {
-            val result = taskSync.syncAccount(account)
+            val result = taskSync.syncAccount(fresh)
             if (!result.success) {
                 failed = true
                 errorMessage = (errorMessage ?: "") + if (errorMessage.isNullOrBlank().not()) "; Task sync failed: ${result.errorMessage}" else "Task sync failed: ${result.errorMessage}"
@@ -115,7 +120,7 @@ class SyncManager(
         }
 
         if (account.syncConfig.syncContacts) {
-            val result = contactSync.syncAccount(account)
+            val result = contactSync.syncAccount(fresh)
             if (!result.success) {
                 failed = true
                 errorMessage = (errorMessage ?: "") + if (errorMessage.isNullOrBlank().not()) "; Contact sync failed: ${result.errorMessage}" else "Contact sync failed: ${result.errorMessage}"
