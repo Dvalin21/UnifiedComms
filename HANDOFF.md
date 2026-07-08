@@ -258,3 +258,49 @@ Verification:
 - PushManager now unreferenced by any running component (keep or drop in cleanup pass).
 - RECURRENCE-ID / EXDATE server overrides not consumed (see Phase 6 note).
 - Task write round-trip needs a live CalDAV account on emulator-5560 to confirm PUT/DELETE ETags.
+
+=== PHASE 8 — CONTACT SYNC BACKEND (2026-07-08) ===
+Carry-over from Phase 7: ContactSyncEngineImpl.syncAccount ran a broken PROPFIND returning
+empty contacts; create/update/delete failed honestly. Needed vCard stack from zero.
+
+Fix: Contact sync now REAL, reusing CalDAV plumbing (same DAV session shape as Task/Calendar):
+- VCardParser (NEW, pure Kotlin): RFC 6350 (v4) / RFC 2426 (v3) parse. Handles FN, N,
+  EMAIL, TEL, ADR, URL, ORG, TITLE, NOTE, UID. Line-unfolding (space/tab continuations)
+  + minimal unescape (\\, \\; \\n \\\\). Unknown props ignored.
+- VCardSerializer (NEW, pure Kotlin): RFC 2426 emit covering fields parser reads back
+  (UID, FN, N, EMAIL, TEL, ORG, TITLE, ADR, URL, NOTE). vCard 3.0 escaping.
+  ponytail: deliberately omits PHOTO/binary, typed TEL/EMAIL, structured ADR sub-fields —
+  not in the model; don't emit what we can't parse back.
+- CalDAVClient: +discoverAddressBooks() (carddav addressbook-home-set + recursive scan),
+  +listAddressBookItems(), +fetchVCard() (reuses fetchItem), +putVCard()
+  (reuses putResource with VCARD_MEDIA_TYPE). AddressBookInfo data class.
+- ContactSyncEngineImpl rewritten: syncAccount discovers address books, down-syncs vCards
+  (parse via VCardParser), inserts/updates Room rows by email/phone match; createContact/
+  updateContact/deleteContact now PUT/DELETE real vCard via CalDAVClient. OAuth bearer
+  honored via newCardDav().
+- ContactRepository(+Impl): +getBySourceId, +getAllByAccountAndSource.
+- ContactDao (lives in MessageDao.kt, with MessageDao/ConversationDao): +getBySourceId,
+  +getAllByAccountAndSource.
+
+BUILD FIXES APPLIED THIS SESSION (in-progress edits were RED):
+- MessageDao.kt: missing closing '}' on ContactDao interface (edit truncated it) -> restored.
+- CalDAVClient.kt: duplicate companion object (VCARD_MEDIA_TYPE added as 2nd companion)
+  -> merged into the single existing companion.
+- ContactSyncEngineImpl.kt: missing import com.unifiedcomms.data.model.ContactSource -> added.
+- ContactSyncEngineImpl.updateContact: unused 'etag' binding -> simplified to if-null check.
+
+Verification (THIS session, not trusted from prior handoff):
+- assembleDebug: BUILD SUCCESSFUL (no errors, no warnings).
+- testDebugUnitTest: BUILD SUCCESSFUL (all unit tests pass).
+- Committed: 2f7c94a "Phase 8: real CardDAV/Contact sync backend..." — pushed to origin/master.
+
+REMAINING CARRY-OVER (honest, post-Phase 8):
+- Contact write/delete round-trip (PUT/DELETE ETags) needs a live CardDAV account on
+  emulator-5560 to confirm — parser is unit-testable but the DAV round-trip is not yet
+  exercised end-to-end. Add a VCardParserTest + VCardSerializer round-trip test (recommended).
+- testConnection() in ContactSyncEngineImpl is a STUB (returns success without probing
+  server) — should actually hit discoverAddressBooks() like the email/calendar engines do.
+- OAuth refresh + search + messaging still verified by compile/install only.
+- RECURRENCE-ID / EXDATE server overrides not consumed (Phase 6 note stands).
+- PushManager still unreferenced (cleanup pass candidate).
+- Search does not cover Messages (Phase 4 note stands).
