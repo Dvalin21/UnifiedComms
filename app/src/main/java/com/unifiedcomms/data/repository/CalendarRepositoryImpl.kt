@@ -1,12 +1,16 @@
 package com.unifiedcomms.data.repository
 
-import com.unifiedcomms.data.db.dao.CalendarDao
 import com.unifiedcomms.data.db.dao.CalendarEventDao
+import com.unifiedcomms.data.db.dao.CalendarDao
 import com.unifiedcomms.data.model.Calendar
 import com.unifiedcomms.data.model.CalendarEvent
+import com.unifiedcomms.sync.RecurrenceExpander
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.datetime.Instant
+
+// ponytail: bound how far "upcoming" expands infinite recurrences (no UNTIL/COUNT).
+private const val UPCOMING_LOOKAHEAD_MS = 366L * 86_400_000L
 
 class CalendarRepositoryImpl(
     private val eventDao: CalendarEventDao,
@@ -39,54 +43,46 @@ class CalendarRepositoryImpl(
         eventDao.getUnifiedCalendar(accountIds)
 
     override fun getEventsInRange(accountId: String, start: Long, end: Long): Flow<List<CalendarEvent>> =
-        eventDao.getAllForAccount(accountId).map { list ->
-            list.filter { e ->
-                val ms = e.startAt.toInstant().toEpochMilliseconds()
-                ms >= start && ms <= end
-            }
-        }
+        eventDao.getAllForAccount(accountId).map { list -> expandInWindow(list, start, end) }
 
     override fun getEventsInRangeUnified(accountIds: List<String>, start: Long, end: Long): Flow<List<CalendarEvent>> =
-        eventDao.getUnifiedCalendar(accountIds).map { list ->
-            list.filter { e ->
-                val ms = e.startAt.toInstant().toEpochMilliseconds()
-                ms >= start && ms <= end
-            }
-        }
+        eventDao.getUnifiedCalendar(accountIds).map { list -> expandInWindow(list, start, end) }
 
     override fun getEventsForDate(accountId: String, date: Long): Flow<List<CalendarEvent>> =
         eventDao.getAllForAccount(accountId).map { list ->
             val dayStart = date - (date % 86_400_000L)
             val dayEnd = dayStart + 86_400_000L - 1
-            list.filter { e ->
-                val start = e.startAt.toInstant().toEpochMilliseconds()
-                start >= dayStart && start <= dayEnd
-            }
+            expandInWindow(list, dayStart, dayEnd)
         }
 
     override fun getEventsForDateUnified(accountIds: List<String>, date: Long): Flow<List<CalendarEvent>> =
         eventDao.getUnifiedCalendar(accountIds).map { list ->
             val dayStart = date - (date % 86_400_000L)
             val dayEnd = dayStart + 86_400_000L - 1
-            list.filter { e ->
-                val start = e.startAt.toInstant().toEpochMilliseconds()
-                start >= dayStart && start <= dayEnd
-            }
+            expandInWindow(list, dayStart, dayEnd)
         }
 
     override fun getUpcomingEvents(accountId: String, now: Long, limit: Int): Flow<List<CalendarEvent>> =
         eventDao.getAllForAccount(accountId).map { list ->
-            list.filter { it.startAt.toInstant().toEpochMilliseconds() >= now }
+            expandInWindow(list, now, now + UPCOMING_LOOKAHEAD_MS)
+                .filter { it.startAt.toInstant().toEpochMilliseconds() >= now }
                 .sortedBy { it.startAt.toInstant().toEpochMilliseconds() }
                 .take(limit)
         }
 
     override fun getUpcomingEventsUnified(accountIds: List<String>, now: Long, limit: Int): Flow<List<CalendarEvent>> =
         eventDao.getUnifiedCalendar(accountIds).map { list ->
-            list.filter { it.startAt.toInstant().toEpochMilliseconds() >= now }
+            expandInWindow(list, now, now + UPCOMING_LOOKAHEAD_MS)
+                .filter { it.startAt.toInstant().toEpochMilliseconds() >= now }
                 .sortedBy { it.startAt.toInstant().toEpochMilliseconds() }
                 .take(limit)
         }
+
+    // ponytail: expand recurring masters into occurrences within [start,end]; non-recurring pass through.
+    private fun expandInWindow(events: List<CalendarEvent>, start: Long, end: Long): List<CalendarEvent> =
+        events.flatMap { e ->
+            if (e.isMaster()) RecurrenceExpander.expand(e, start, end) else listOf(e)
+        }.filter { it.startAt.toInstant().toEpochMilliseconds() in start..end }
 
     override fun getRecurringEvents(accountId: String): Flow<List<CalendarEvent>> =
         eventDao.getRecurringEvents(accountId)
