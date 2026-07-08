@@ -1,9 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Debug-only override: permits cleartext for the local CardDAV mock server
-     used by ContactSyncE2ETest (http://10.0.2.2:8088, the emulator's view of
-     host localhost). Release build uses the strict main config (cleartext off). -->
+     used by ContactSyncE2ETest. The test reaches the host mock from the emulator
+     at 127.0.0.1:PORT via `adb reverse tcp:PORT tcp:PORT` (NOT 10.0.2.2 on this
+     host). Release build uses the strict main config (cleartext off). -->
 <network-security-config>
     <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">[::1]</domain>
         <domain includeSubdomains="false">10.0.2.2</domain>
     </domain-config>
 

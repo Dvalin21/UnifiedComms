@@ -13,6 +13,7 @@ import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 import java.io.IOException
 import java.io.StringReader
+import java.net.URI
 import java.util.concurrent.TimeUnit
 import javax.xml.parsers.DocumentBuilderFactory
 import org.w3c.dom.Document
@@ -147,7 +148,7 @@ class CalDAVClient(
                 val resp = responses.item(i) as? Element ?: continue
                 val hrefNode = byLocalName(resp, "href").item(0)
                 val href = hrefNode?.textContent?.trim().orEmpty()
-                val fullUrl = if (href.startsWith("http://", true) || href.startsWith("https://", true)) href else "$baseUrl/${href.removePrefix("/")}"
+                val fullUrl = if (href.startsWith("http://", true) || href.startsWith("https://", true)) href else resolve(href)
                 val subUrl = fullUrl.trimEnd('/')
                 val isSelf = subUrl == normalized
 
@@ -174,7 +175,7 @@ class CalDAVClient(
     }
 
     suspend fun listCalendarItems(calendarPath: String): List<String> = withContext(Dispatchers.IO) {
-        val target = if (calendarPath.startsWith("http://", true) || calendarPath.startsWith("https://", true)) calendarPath else "$baseUrl/${calendarPath.removePrefix("/")}"
+        val target = if (calendarPath.startsWith("http://", true) || calendarPath.startsWith("https://", true)) calendarPath else resolve(calendarPath)
         val body = """
             <?xml version="1.0" encoding="UTF-8"?>
             <D:propfind xmlns:D="DAV:">
@@ -196,7 +197,7 @@ class CalDAVClient(
     }
 
     suspend fun getETagList(calendarPath: String): List<ETagEntry> = withContext(Dispatchers.IO) {
-        val target = if (calendarPath.startsWith("http://", true) || calendarPath.startsWith("https://", true)) calendarPath else "$baseUrl/${calendarPath.removePrefix("/")}"
+        val target = if (calendarPath.startsWith("http://", true) || calendarPath.startsWith("https://", true)) calendarPath else resolve(calendarPath)
         val body = """
             <?xml version="1.0" encoding="UTF-8"?>
             <D:propfind xmlns:D="DAV:">
@@ -216,17 +217,7 @@ class CalDAVClient(
             if (text.isBlank()) return@withContext emptyList()
             try {
                 val db = parseXml(text)
-                val responses = byLocalName(db.documentElement, "response")
-                val hrefNodes = byLocalName(db.documentElement, "href")
-                val etagNodes = byLocalName(db.documentElement, "getetag")
-                val out = mutableListOf<ETagEntry>()
-                for (i in 0 until responses.length) {
-                    if (i >= hrefNodes.length || i >= etagNodes.length) break
-                    val href = hrefNodes.item(i)?.textContent?.trim().orEmpty()
-                    val etag = etagNodes.item(i)?.textContent?.trim('"').orEmpty()
-                    if (href.isNotBlank() && etag.isNotBlank()) out += ETagEntry(href, etag)
-                }
-                out
+                etagEntriesFromMultistatus(db)
             } catch (e: Exception) {
                 emptyList()
             }
@@ -236,7 +227,7 @@ class CalDAVClient(
     suspend fun fetchItem(@Suppress("UNUSED_PARAMETER") accountId: String, href: String): IcsResource? = withContext(Dispatchers.IO) {
         val target = when {
             href.startsWith("http://", true) || href.startsWith("https://", true) -> href
-            else -> "$baseUrl/${href.removePrefix("/")}"
+            else -> resolve(href)
         }
         internalClient.newCall(Request.Builder().url(target).get().build()).execute().use { resp ->
             if (!resp.isSuccessful) return@withContext null
@@ -277,7 +268,7 @@ class CalDAVClient(
             for (i in 0 until responses.length) {
                 val resp = responses.item(i) as? Element ?: continue
                 val href = byLocalName(resp, "href").item(0)?.textContent?.trim().orEmpty()
-                val fullUrl = if (href.startsWith("http://", true) || href.startsWith("https://", true)) href else "$baseUrl/${href.removePrefix("/")}"
+                val fullUrl = if (href.startsWith("http://", true) || href.startsWith("https://", true)) href else resolve(href)
                 val subUrl = fullUrl.trimEnd('/')
                 val isSelf = subUrl == normalized
                 val types = mutableListOf<String>()
@@ -316,7 +307,7 @@ class CalDAVClient(
     suspend fun putResource(href: String, body: String, contentType: okhttp3.MediaType = ICAL_MEDIA_TYPE): String? = withContext(Dispatchers.IO) {
         val target = when {
             href.startsWith("http://", true) || href.startsWith("https://", true) -> href
-            else -> "$baseUrl/${href.removePrefix("/")}"
+            else -> resolve(href)
         }
         val req = Request.Builder().url(target).put(body.toRequestBody(contentType)).build()
         internalClient.newCall(req).execute().use { resp ->
@@ -331,7 +322,7 @@ class CalDAVClient(
     suspend fun deleteResource(href: String): Boolean = withContext(Dispatchers.IO) {
         val target = when {
             href.startsWith("http://", true) || href.startsWith("https://", true) -> href
-            else -> "$baseUrl/${href.removePrefix("/")}"
+            else -> resolve(href)
         }
         val req = Request.Builder().url(target).delete().build()
         internalClient.newCall(req).execute().use { resp -> resp.isSuccessful || resp.code == 404 }
@@ -388,7 +379,7 @@ class CalDAVClient(
             for (i in 0 until responses.length) {
                 val resp = responses.item(i) as? Element ?: continue
                 val href = byLocalName(resp, "href").item(0)?.textContent?.trim().orEmpty()
-                val fullUrl = if (href.startsWith("http://", true) || href.startsWith("https://", true)) href else "$baseUrl/${href.removePrefix("/")}"
+                val fullUrl = if (href.startsWith("http://", true) || href.startsWith("https://", true)) href else resolve(href)
                 val subUrl = fullUrl.trimEnd('/')
                 val isSelf = subUrl == normalized
                 val types = mutableListOf<String>()
@@ -411,8 +402,23 @@ class CalDAVClient(
         }
     }
 
+    // ponytail: href/etag must come from the SAME <response> element. Flattened
+    // global index lists desync when one <response> (e.g. the collection) has no
+    // getetag — the collection href then pairs with the item's etag. Walk per-response.
+    private fun etagEntriesFromMultistatus(doc: org.w3c.dom.Document): List<ETagEntry> {
+        val responses = byLocalName(doc.documentElement, "response")
+        val out = mutableListOf<ETagEntry>()
+        for (i in 0 until responses.length) {
+            val resp = responses.item(i) as? Element ?: continue
+            val href = byLocalName(resp, "href").item(0)?.textContent?.trim().orEmpty()
+            val etag = byLocalName(resp, "getetag").item(0)?.textContent?.trim('"').orEmpty()
+            if (href.isNotBlank() && etag.isNotBlank()) out += ETagEntry(href, etag)
+        }
+        return out
+    }
+
     suspend fun listAddressBookItems(addressBookPath: String): List<ETagEntry> = withContext(Dispatchers.IO) {
-        val target = if (addressBookPath.startsWith("http://", true) || addressBookPath.startsWith("https://", true)) addressBookPath else "$baseUrl/${addressBookPath.removePrefix("/")}"
+        val target = if (addressBookPath.startsWith("http://", true) || addressBookPath.startsWith("https://", true)) addressBookPath else resolve(addressBookPath)
         val xml = """
             <?xml version="1.0" encoding="UTF-8"?>
             <D:propfind xmlns:D="DAV:">
@@ -426,18 +432,9 @@ class CalDAVClient(
             if (text.isBlank()) return@use emptyList()
             try {
                 val db = parseXml(text)
-                val responses = byLocalName(db.documentElement, "response")
-                val hrefNodes = byLocalName(db.documentElement, "href")
-                val etagNodes = byLocalName(db.documentElement, "getetag")
-                val out = mutableListOf<ETagEntry>()
-                for (i in 0 until responses.length) {
-                    if (i >= hrefNodes.length || i >= etagNodes.length) break
-                    val href = hrefNodes.item(i)?.textContent?.trim().orEmpty()
-                    val etag = etagNodes.item(i)?.textContent?.trim('"').orEmpty()
-                    // ponytail: skip the collection itself (no .vcf extension).
-                    if (href.isNotBlank() && etag.isNotBlank() && href.endsWith(".vcf", true)) out += ETagEntry(href, etag)
-                }
-                out
+                val all = etagEntriesFromMultistatus(db)
+                // ponytail: skip the collection itself (no .vcf extension).
+                all.filter { it.href.endsWith(".vcf", true) }
             } catch (e: Exception) {
                 emptyList()
             }
@@ -451,7 +448,7 @@ class CalDAVClient(
     suspend fun putVCard(href: String, body: String): String? = putResource(href, body, VCARD_MEDIA_TYPE)
 
     suspend fun getCTag(calendarPath: String): String = withContext(Dispatchers.IO) {
-        val target = if (calendarPath.startsWith("http://", true) || calendarPath.startsWith("https://", true)) calendarPath else "$baseUrl/${calendarPath.removePrefix("/")}"
+        val target = if (calendarPath.startsWith("http://", true) || calendarPath.startsWith("https://", true)) calendarPath else resolve(calendarPath)
         val xml = """
             <?xml version="1.0" encoding="UTF-8"?>
             <D:propfind xmlns:D="DAV:" xmlns:CS="http://calendarserver.org/ns/">
@@ -511,11 +508,12 @@ class CalDAVClient(
         }
     }
 
-    // ponytail: DAV servers return either absolute or relative hrefs. Resolve relative
-    // ones against baseUrl so OkHttp always gets a fully-qualified URL.
+    // ponytail: DAV servers return absolute-path or absolute-URL hrefs. URI.resolve()
+    // correctly joins base + path WITHOUT doubling the path segment (naive
+    // resolve(href) concatenated base+path -> doubled path).
     private fun resolve(url: String): String =
         if (url.startsWith("http://", true) || url.startsWith("https://", true)) url
-        else "$baseUrl/${url.removePrefix("/")}"
+        else URI(baseUrl).resolve(url).toString()
 
     private fun parseHrefs(xml: String): List<String> {
         return try {

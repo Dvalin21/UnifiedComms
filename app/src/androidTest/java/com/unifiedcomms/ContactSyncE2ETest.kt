@@ -55,8 +55,8 @@ class ContactSyncE2ETest : kotlinx.coroutines.CoroutineScope {
         )
     }
 
-    private suspend fun roomHas(contactRepo: ContactRepositoryImpl, sourceId: String): Boolean =
-        contactRepo.search(sourceId, 50).first().any { it.sourceId == sourceId }
+    private suspend fun roomHas(contactRepo: ContactRepositoryImpl, accountId: String, sourceId: String): Boolean =
+        contactRepo.getBySourceId(accountId, sourceId) != null
 
     @Test
     fun fullContactSyncRoundTrip(): Unit = runBlocking {
@@ -97,7 +97,7 @@ class ContactSyncE2ETest : kotlinx.coroutines.CoroutineScope {
         // 3) syncAccount downloads from the server -> Room must contain seed-1 (proves GET)
         val syncResult = engine.syncAccount(stored)
         assertTrue("syncAccount should succeed: ${syncResult.errorMessage}", syncResult.success)
-        assertTrue("downloaded seed-1 should be present in Room", roomHas(contactRepo, "seed-1"))
+        assertTrue("downloaded seed-1 should be present in Room", roomHas(contactRepo, account.id, "seed-1"))
 
         // 4) createContact PUTs a second vCard (new-1)
         val newContact = UnifiedContact(
@@ -116,7 +116,7 @@ class ContactSyncE2ETest : kotlinx.coroutines.CoroutineScope {
 
         // 5) re-sync must surface new-1 (proves the PUT actually landed on the server)
         engine.syncAccount(stored)
-        assertTrue("created new-1 should be downloadable after PUT (server round-trip)", roomHas(contactRepo, "new-1"))
+        assertTrue("created new-1 should be downloadable after PUT (server round-trip)", roomHas(contactRepo, account.id, "new-1"))
 
         // 6) deleteContact removes the vCard from the server
         val delResult = engine.deleteContact(stored, "new-1")
