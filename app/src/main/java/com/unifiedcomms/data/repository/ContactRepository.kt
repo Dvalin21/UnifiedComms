@@ -20,5 +20,7 @@ interface ContactRepository {
     fun getFavorites(): Flow<List<UnifiedContact>>
     fun search(query: String, limit: Int): Flow<List<UnifiedContact>>
     suspend fun getNeedingSync(): List<UnifiedContact>
+    suspend fun getBySourceId(accountId: String, sourceId: String): UnifiedContact?
+    suspend fun getAllByAccountAndSource(accountId: String, source: ContactSource): List<UnifiedContact>
     suspend fun mergeContacts(primaryId: String, secondaryIds: List<String>)
 }

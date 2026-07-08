@@ -37,6 +37,11 @@ class ContactRepositoryImpl(private val dao: ContactDao) : ContactRepository {
 
     override suspend fun getNeedingSync(): List<UnifiedContact> = dao.getNeedingSync()
 
+    override suspend fun getBySourceId(accountId: String, sourceId: String): UnifiedContact? = dao.getBySourceId(accountId, sourceId)
+
+    override suspend fun getAllByAccountAndSource(accountId: String, source: ContactSource): List<UnifiedContact> =
+        dao.getAllByAccountAndSource(accountId, source)
+
     override suspend fun mergeContacts(primaryId: String, secondaryIds: List<String>) {
         val primary = getById(primaryId) ?: return
         secondaryIds.forEach { secondaryId ->

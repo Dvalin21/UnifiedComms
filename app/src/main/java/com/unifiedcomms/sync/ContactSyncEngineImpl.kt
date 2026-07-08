@@ -1,6 +1,7 @@
 package com.unifiedcomms.sync
 
 import com.unifiedcomms.data.model.Account
+import com.unifiedcomms.data.model.ContactSource
 import com.unifiedcomms.data.model.UnifiedContact
 import com.unifiedcomms.data.repository.ContactRepository
 import com.unifiedcomms.data.repository.AccountRepository
@@ -77,50 +78,93 @@ class ContactSyncEngineImpl(
         }
     }
 
-    private fun fetchContactsFromServer(account: Account): List<UnifiedContact> {
-        val carddavUrl = account.serverConfig.carddavUrl ?: return emptyList()
-        return try {
-            val url = java.net.URL("$carddavUrl/")
-            val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
-                requestMethod = "PROPFIND"
-                setRequestProperty("Depth", "1")
-                setRequestProperty("Content-Type", "application/xml; charset=utf-8")
-                doOutput = true
+    private suspend fun fetchContactsFromServer(account: Account): List<UnifiedContact> = withContext(Dispatchers.IO) {
+        val carddavUrl = account.serverConfig.carddavUrl ?: return@withContext emptyList()
+        val auth = crypto.decryptAuthConfig(account.authConfig)
+        val client = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+        val dav = newCardDav(carddavUrl, auth, client)
+        val books = dav.discoverAddressBooks()
+        if (books.isEmpty()) return@withContext emptyList()
+        val out = mutableListOf<UnifiedContact>()
+        for (book in books) {
+            val items = dav.listAddressBookItems(book.path)
+            for (entry in items) {
+                val res = dav.fetchVCard(entry.href) ?: continue
+                val uid = entry.href.substringAfterLast('/').substringBeforeLast('.')
+                out += VCardParser.parse(res.ical, account.id, ContactSource.CARDDAV, uid)
             }
-            val body = """<?xml version="1.0" encoding="UTF-8"?><D:propfind xmlns:D="DAV:"><D:prop><D:displayname/><D:resourcetype/></D:prop></D:propfind>""".toByteArray()
-            conn.outputStream.use { it.write(body) }
-            val code = conn.responseCode
-            if (code !in 200..299) return emptyList()
-            val xml = conn.inputStream.bufferedReader().use { it.readText() }
-            val hrefs = Regex("<[^>]*href([^>]*)?>([^<]*)</[^>]*href\\1?>", RegexOption.IGNORE_CASE).findAll(xml).map { it.groupValues.last().trim() }.toList()
-            hrefs.mapIndexed { idx, href ->
-                UnifiedContact(
-                    id = java.util.UUID.randomUUID().toString(),
-                    emails = emptyList(),
-                    phoneNumbers = emptyList(),
-                    displayName = href.substringAfterLast('/').ifBlank { "Contact $idx" },
-                    source = com.unifiedcomms.data.model.ContactSource.CARDDAV,
-                    accountId = account.id
-                )
-            }
-        } catch (e: Exception) {
-            emptyList()
         }
+        out
     }
 
-    override suspend fun fetchContact(account: Account, serverId: String): UnifiedContact? = null
-
-    override suspend fun createContact(account: Account, contact: UnifiedContact): CreateResult {
-        // ponytail: unsupported — no contact write backend wired. Fail honestly.
-        return CreateResult.failure("Contact write backend not implemented")
+    private fun newCardDav(url: String, auth: com.unifiedcomms.data.model.AuthConfig, client: okhttp3.OkHttpClient): CalDAVClient {
+        val bearer = if (auth.type == com.unifiedcomms.data.model.AuthType.OAUTH2) auth.oauthAccessToken else null
+        return CalDAVClient(url, auth.username ?: "", auth.passwordEncrypted ?: "", client, bearer)
     }
 
-    override suspend fun updateContact(account: Account, contact: UnifiedContact): SyncResult {
-        return SyncResult.failure("Contact write backend not implemented")
+    override suspend fun fetchContact(account: Account, serverId: String): UnifiedContact? = withContext(Dispatchers.IO) {
+        val carddavUrl = account.serverConfig.carddavUrl ?: return@withContext null
+        val auth = crypto.decryptAuthConfig(account.authConfig)
+        val client = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+        val dav = newCardDav(carddavUrl, auth, client)
+        val href = if (serverId.contains('/')) serverId else "${carddavUrl.trimEnd('/')}/${serverId.removePrefix("/")}"
+        val res = dav.fetchVCard(href) ?: return@withContext null
+        val uid = href.substringAfterLast('/').substringBeforeLast('.')
+        VCardParser.parse(res.ical, account.id, ContactSource.CARDDAV, uid)
     }
 
-    override suspend fun deleteContact(account: Account, serverId: String): SyncResult {
-        return SyncResult.failure("Contact write backend not implemented")
+    override suspend fun createContact(account: Account, contact: UnifiedContact): CreateResult = withContext(Dispatchers.IO) {
+        val carddavUrl = account.serverConfig.carddavUrl ?: return@withContext CreateResult.failure("No CardDAV URL")
+        val auth = crypto.decryptAuthConfig(account.authConfig)
+        val client = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+        val dav = newCardDav(carddavUrl, auth, client)
+        val books = dav.discoverAddressBooks()
+        val bookPath = books.firstOrNull()?.path ?: return@withContext CreateResult.failure("No address book found")
+        val uid = contact.sourceId?.takeIf { it.isNotBlank() } ?: java.util.UUID.randomUUID().toString()
+        val href = "${bookPath.trimEnd('/')}/${uid}.vcf"
+        val vcard = VCardSerializer.toVCard(contact, uid)
+        val etag = dav.putVCard(href, vcard) ?: return@withContext CreateResult.failure("Contact write failed")
+        CreateResult.success(href, uid, etag)
+    }
+
+    override suspend fun updateContact(account: Account, contact: UnifiedContact): SyncResult = withContext(Dispatchers.IO) {
+        val carddavUrl = account.serverConfig.carddavUrl ?: return@withContext SyncResult.failure("No CardDAV URL")
+        val sourceId = contact.sourceId ?: return@withContext SyncResult.failure("Contact has no sourceId")
+        val auth = crypto.decryptAuthConfig(account.authConfig)
+        val client = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+        val dav = newCardDav(carddavUrl, auth, client)
+        val books = dav.discoverAddressBooks()
+        val bookPath = books.firstOrNull()?.path ?: return@withContext SyncResult.failure("No address book found")
+        val href = "${bookPath.trimEnd('/')}/${sourceId.removeSuffix(".vcf")}.vcf"
+        val vcard = VCardSerializer.toVCard(contact, sourceId)
+        if (dav.putVCard(href, vcard) == null) return@withContext SyncResult.failure("Contact write failed")
+        contactRepo.update(contact.copy(needsSync = false))
+        SyncResult.success(1, emptyList(), listOf(contact.id))
+    }
+
+    override suspend fun deleteContact(account: Account, serverId: String): SyncResult = withContext(Dispatchers.IO) {
+        val carddavUrl = account.serverConfig.carddavUrl ?: return@withContext SyncResult.failure("No CardDAV URL")
+        val auth = crypto.decryptAuthConfig(account.authConfig)
+        val client = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+        val dav = newCardDav(carddavUrl, auth, client)
+        val href = if (serverId.contains('/')) serverId else "${carddavUrl.trimEnd('/')}/${serverId.removeSuffix(".vcf")}.vcf"
+        if (dav.deleteResource(href)) SyncResult.success(1, emptyList(), emptyList(), listOf(serverId))
+        else SyncResult.failure("Contact delete failed")
     }
 
     override fun observeSyncProgress(accountId: String): kotlinx.coroutines.flow.Flow<SyncProgress> {
