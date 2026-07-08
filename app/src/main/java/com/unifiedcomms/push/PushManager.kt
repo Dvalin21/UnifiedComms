@@ -156,11 +156,25 @@ class PushManagerImpl(
     }
 
     override suspend fun subscribeToTopic(topic: String): Boolean = withContext(Dispatchers.IO) {
-        true
+        val id = deviceId ?: return@withContext false
+        val request = Request.Builder()
+            .url("$serverUrl/api/v1/devices/$id/subscribe")
+            .apply { bearerAuthHeader()?.let { addHeader("Authorization", it) } }
+            .addHeader("Content-Type", "application/json")
+            .post("{\"topic\":\"$topic\"}".toRequestBody("application/json".toMediaType()))
+            .build()
+        runCatching { okHttp.newCall(request).execute().use { it.isSuccessful } }.getOrDefault(false)
     }
 
     override suspend fun unsubscribeFromTopic(topic: String): Boolean = withContext(Dispatchers.IO) {
-        true
+        val id = deviceId ?: return@withContext false
+        val request = Request.Builder()
+            .url("$serverUrl/api/v1/devices/$id/unsubscribe")
+            .apply { bearerAuthHeader()?.let { addHeader("Authorization", it) } }
+            .addHeader("Content-Type", "application/json")
+            .post("{\"topic\":\"$topic\"}".toRequestBody("application/json".toMediaType()))
+            .build()
+        runCatching { okHttp.newCall(request).execute().use { it.isSuccessful } }.getOrDefault(false)
     }
 
     override fun getFcmToken(): String? = deviceToken

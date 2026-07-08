@@ -149,6 +149,11 @@ class MainActivity : ComponentActivity() {
                                     onNavigateToCalendar = { navController.navigate("calendar") },
                                     onNavigateToSettings = { navController.navigate("settings") },
                                     onNavigateToAddAccount = { navController.navigate("add_account") },
+                                    onNavigateToSearch = {
+                                        this@MainActivity.startActivity(
+                                            android.content.Intent(this@MainActivity, com.unifiedcomms.ui.search.SearchActivity::class.java)
+                                        )
+                                    },
                                     onNavigateToConversation = { conversationId -> navController.navigate("conversation/$conversationId") },
                                     onNavigateToComposeMessage = { navController.navigate("compose_message") },
                                     onEventClick = { eventId -> navController.navigate("event_detail/$eventId") },
