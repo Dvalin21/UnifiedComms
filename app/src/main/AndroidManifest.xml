@@ -65,6 +65,12 @@
             </intent-filter>
         </activity>
 
+        <!-- Search Activity -->
+        <activity
+            android:name=".ui.search.SearchActivity"
+            android:exported="false"
+            android:launchMode="singleTop" />
+
         <!-- Full-screen Reminder Activity -->
         <activity
             android:name=".reminder.FullScreenReminderActivity"
