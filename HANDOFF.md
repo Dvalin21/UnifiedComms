@@ -427,3 +427,61 @@ FINAL SWEEP (2026-07-08):
 - Physical S22 (R5CT32YG8CL): NOT touched at any point. All E2E on emulator-5560.
 
 ALL PHASES COMPLETE. Build green, tests green, no known silent lies.
+
+=== REVIEW vs VISION (2026-07-08, post-Phase 14 sweep) ===
+Audit of the 7 hard requirements + project scope. Verified in source, not from doc claims.
+- Theme toggle: ✓ MainActivity:99-107 collects themeModeFlow -> UnifiedCommsTheme(darkTheme=).
+- Auto-sync after add: ✓ AddAccountActivity:168 + AddAccountScreen:305 call syncAccount() post-insert.
+- Sync notifications: ✓ SyncManager.performFullSync -> showSyncNotification (start/success/fail).
+- Advanced IMAP/SMTP/CalDAV UI: ✓.
+- Folder nav + unread: ✓ code path present (live confirmation still pending).
+- Fresh install zero demo: ✓ (doc).
+- Calendar/task sync w/ colors + invited events: ✓ real DAV sync, preserves color/attendees.
+Engine status: REAL, no silent lies. Email/Contact E2E green; Calendar/Task proven vs mock.
+GAP vs vision (blocks confident v1, not engine rewrites):
+- HIGH: background sync dead when app killed (SyncManager periodic loop was app-lifecycle-scoped;
+  BootReceiver only reschedules reminders). FIXED in Phase 15.
+- HIGH: live OAuth round-trip never run against real Google/Outlook -> token refresh unverified.
+- HIGH: CalDAV/CardDAV never run against a real provider (mock only).
+- MEDIUM: Calendar/Task have no instrumented E2E (only Email + Contact do).
+- MEDIUM: RECURRENCE-ID/EXDATE server overrides not consumed (masters-only expansion).
+- LOW: delete dead branch fix/add-account-email-sync (no diff vs master); Ethereal folder alias.
+
+Also found during review: the manifest declared `.sync.accounts.UnifiedCommsSyncService` which
+DOES NOT EXIST (broken SyncAdapter path). Removed in Phase 15 (see below).
+
+=== PHASE 15 — BACKGROUND SYNC (2026-07-08) ===
+Status: DONE. Replaces the app-lifecycle coroutine loop (SyncManager.onStart/onStop) as the
+background driver. The old loop was cancelled on app stop, so NO sync ran when the app was
+killed — new mail/calendar never arrived until the app was reopened.
+- ADDED androidx.work:work-runtime-ktx:2.9.1 (build.gradle.kts) + work-testing in androidTest.
+- NEW BackgroundSyncWorker (CoroutineWorker): builds the SAME engine stack + SyncManager as
+  the foreground UI and calls performFullSync() per active account. Reuses the proven real
+  sync path; only the lifecycle owner differs (WorkManager process vs app on-screen).
+- NEW BackgroundSyncScheduler: enqueues ONE unique periodic WorkRequest
+  ("unifiedcomms.background.sync", ExistingPeriodicWorkPolicy.KEEP, 15-min floor). Idempotent
+  on every app start; respects Doze + battery saver (WorkManager native).
+- WIRED: UnifiedCommsApplication.onCreate() now calls BackgroundSyncScheduler.schedule(this).
+- REMOVED broken manifest <service android:name=".sync.accounts.UnifiedCommsSyncService">
+  (referenced a non-existent class) + its syncadapter <meta-data>, and deleted the unused
+  res/xml/syncadapter.xml. The authenticator ContentProvider (UnifiedCommsAuthenticatorProvider)
+  is kept (real, boot-instantiated, harmless). The dead SyncAdapter service was never started
+  (no requestSync call existed), so it did not crash at runtime — but it was a broken reference
+  that WOULD fail the moment any sync adapter was invoked. Cleaned.
+- ponytail: foreground SyncManager periodic loop left in place (immediate in-app sync); the
+  WorkManager worker is the real out-of-process path. No double-sync risk: worker honors
+  per-account syncConfig toggles; foreground loop still cancels on app stop as before.
+
+Verification (THIS session, real):
+- :app:assembleDebug GREEN; :app:testDebugUnitTest GREEN (54 tests, 0 failures).
+- ContactSyncE2ETest PASS x2 on emulator-5560 (no regression from Phase 14 fix).
+- NEW BackgroundSyncWorkerTest (androidTest): enqueues a one-time worker via
+  WorkManagerTestInitHelper + SynchronousExecutor, asserts SUCCEEDED. Proves the worker
+  constructs the real engine stack + SyncManager and runs performFullSync on-device without
+  crashing. PASS on emulator-5560.
+
+NEXT (if continuing): live OAuth round-trip (real Google/Outlook account) + live CalDAV/CardDAV
+against a real provider (Nextcloud/Fastmail) are the remaining HIGH-confidence gaps. Then a
+Calendar/Task instrumented E2E mirroring ContactSyncE2ETest.
+
+Physical S22 (R5CT32YG8CL): NOT touched. All verification on emulator-5560.

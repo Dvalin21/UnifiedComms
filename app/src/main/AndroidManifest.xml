@@ -122,17 +122,9 @@
             android:multiprocess="true"
             android:syncable="true" />
 
-        <service
-            android:name=".sync.accounts.UnifiedCommsSyncService"
-            android:exported="true"
-            android:permission="android.permission.BIND_SYNC_ADAPTER">
-            <intent-filter>
-                <action android:name="android.content.SyncAdapter" />
-            </intent-filter>
-            <meta-data
-                android:name="android.content.SyncAdapter"
-                android:resource="@xml/syncadapter" />
-        </service>
+        <!-- Phase 15: background sync moved to WorkManager (BackgroundSyncWorker).
+             The old SyncAdapter <service> referenced a non-existent class
+             (UnifiedCommsSyncService) -> removed. res/xml/syncadapter.xml deleted. -->
 
         <!-- Widgets (Glance) -->
         <!-- Widget receivers - disabled for build -->
