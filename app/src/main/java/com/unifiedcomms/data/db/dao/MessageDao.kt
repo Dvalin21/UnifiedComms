@@ -52,8 +52,8 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE senderId = :senderId AND recipientId = :recipientId ORDER BY sentAt DESC LIMIT :limit")
     suspend fun getDirectMessages(senderId: String, recipientId: String, limit: Int): List<Message>
 
-    @Query("SELECT * FROM messages WHERE (content LIKE :query) AND conversationId IN (:conversationIds) ORDER BY sentAt DESC LIMIT :limit")
-    fun searchMessages(query: String, conversationIds: List<String>, limit: Int): Flow<List<Message>>
+    @Query("SELECT * FROM messages WHERE content LIKE :query ORDER BY sentAt DESC LIMIT :limit")
+    fun searchMessages(query: String, limit: Int): Flow<List<Message>>
 
     @Query("SELECT * FROM messages WHERE messageType = :type AND conversationId = :conversationId ORDER BY sentAt DESC")
     fun getByType(conversationId: String, type: MessageType): Flow<List<Message>>

@@ -39,8 +39,8 @@ class MessagingRepositoryImpl(
     override suspend fun getDirectMessages(senderId: String, recipientId: String, limit: Int): List<Message> =
         msgDao.getDirectMessages(senderId, recipientId, limit)
 
-    override fun searchMessages(query: String, conversationIds: List<String>, limit: Int): Flow<List<Message>> =
-        msgDao.searchMessages("%$query%", conversationIds, limit)
+    override fun searchMessages(query: String, limit: Int): Flow<List<Message>> =
+        msgDao.searchMessages("%$query%", limit)
 
     override fun getMessagesByType(conversationId: String, type: MessageType): Flow<List<Message>> =
         msgDao.getByType(conversationId, type)
