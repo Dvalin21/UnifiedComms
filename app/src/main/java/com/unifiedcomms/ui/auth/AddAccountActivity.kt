@@ -371,7 +371,15 @@ class AddAccountActivity : AppCompatActivity() {
             serverConfig = serverConfig,
             authConfig = AuthConfig.OAuth2(
                 accessToken = token.accessToken,
-                refreshToken = token.refreshToken
+                refreshToken = token.refreshToken,
+                // ponytail: without expiry the refresher never re-fires (its needsRefresh
+                // guard requires a non-null expiry), so OAuth accounts died at token
+                // expiry. Stamp it from the grant's expires_in.
+                expiry = token.expiresIn?.let { seconds ->
+                    kotlinx.datetime.Instant.fromEpochMilliseconds(
+                        kotlinx.datetime.Clock.System.now().toEpochMilliseconds() + seconds * 1000
+                    )
+                }
             ),
             syncConfig = SyncConfig.Defaults(),
             uiConfig = UIConfig.Defaults()

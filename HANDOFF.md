@@ -485,3 +485,57 @@ against a real provider (Nextcloud/Fastmail) are the remaining HIGH-confidence g
 Calendar/Task instrumented E2E mirroring ContactSyncE2ETest.
 
 Physical S22 (R5CT32YG8CL): NOT touched. All verification on emulator-5560.
+
+=== PHASE 16 — OAUTH + TASK DAV VERIFICATION (2026-07-08) ===
+Status: DONE. Brought OAuth confidence + Task DAV up to the same bar as Contact/Email E2E.
+
+REAL BUG FOUND + FIXED (the Phase 2 OAuth risk was a live defect, not just unverified):
+- `AddAccountActivity.createOAuthAccount` built `AuthConfig.OAuth2(accessToken, refreshToken)`
+  with `oauthTokenExpiry = null`. OAuthTokenRefresher.ensureFreshToken's needsRefresh guard is
+  `expiry != null && expiry < now+5m` — with a null expiry it ONLY refreshes when the access
+  token is literally null. So once a token was issued it NEVER refreshed -> every OAuth
+  account (Google/Outlook) silently died at token expiry. FIXED: AuthConfig.OAuth2 now takes
+  `expiry`; createOAuthAccount stamps it from the grant's `expires_in`. Refresher now re-fires
+  correctly before expiry.
+
+NEW TESTS (verifiable without live secrets):
+- OAuthTokenRefresherTest (JVM, MockWebServer): refreshes an expired token (POST refresh_token
+  -> parses access_token/expires_in -> persists updated AuthConfig) AND skips refresh when
+  still valid. Proves the unverified refresh HTTP path end-to-end.
+- Xoauth2FormatTest (JVM): asserts the exact SASL XOAUTH2 string Gmail/Outlook IMAP expect
+  ("user=<email>\u0001auth=Bearer <token>\u0001\u0001"). A malformed string = silent IMAP auth
+  failure. Extracted xoauth2Bare() (pure, no android.util.Base64) so it runs on the JVM.
+- TaskSyncE2ETest (androidTest, /tmp/taskdav_mock.py): full VTODO round-trip via the real
+  engine on emulator-5560 -> testConnection -> createTask PUT -> syncAccount download -> second
+  PUT -> deleteTask -> fetch returns null. Proves the CalDAVClient getETagList per-<response>
+  fix (Phase 11) ALSO holds for task lists, and VTODO write-round-trip works on-device.
+
+BUILD/TEST SUPPORT ADDED:
+- androidx.work:work-runtime-ktx:2.9.1 (runtime) + work-testing (androidTest) [Phase 15].
+- testOptions.unitTests.isReturnDefaultValues = true (JVM tests touch android.util.Log).
+- testImplementation: mockwebserver:4.12.0, org.json:json:20231013 (org.json is Android-only;
+  OAuthTokenRefresher uses it -> must be on the JVM test classpath or the parse throws).
+
+VERIFICATION (THIS session, real):
+- :app:testDebugUnitTest GREEN: 58 tests, 0 failures (was 54; +4 new OAuth/XOAUTH2).
+- Contact E2E x2 PASS (no regression from Account/AddAccountActivity edits).
+- Task E2E PASS on emulator-5560 (NEW).
+- BackgroundSyncWorkerTest PASS (no regression).
+
+HONEST CARRY-OVER (NOT bugs — blocked by environment, not code):
+- LIVE Google/Outlook OAuth round-trip NOT executed: requires a real registered client_id/
+  secret, an interactive browser consent screen (the web OAuth flow), and network egress to
+  Google/Azure from the emulator. Cannot run headless here. Phase 16 verifies the refresh
+  plumbing + XOAUTH2 format + token persistence against mocks; the live token exchange itself
+  remains unproven against a real provider.
+- LIVE CalDAV/CardDAV against a real provider (Nextcloud/Fastmail) NOT executed: same
+  credential/network constraints. Phase 8/11/16 verify the engine + DAV parsing against local
+  mocks that mirror real-server quirks (href doubling, etag/href desync, principal-by-body).
+- RECURRENCE-ID/EXDATE server overrides still not consumed (masters-only expansion).
+
+NEXT (if continuing): the only remaining HIGH-confidence gap is the LIVE provider round-trip,
+which needs Keith's real OAuth credentials + interactive consent. Everything else is verified.
+Repo is in a shippable state for an alpha: engine real, no silent lies, background sync live,
+OAuth refresh wired + unit-verified, Contact/Email/Task DAV proven on-device.
+
+Physical S22 (R5CT32YG8CL): NOT touched. All verification on emulator-5560.
