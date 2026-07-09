@@ -252,10 +252,15 @@ data class AuthConfig(
             passwordEncrypted = password // Will be encrypted by CryptoManager
         )
 
-        fun OAuth2(accessToken: String? = null, refreshToken: String? = null): AuthConfig = AuthConfig(
+        fun OAuth2(
+            accessToken: String? = null,
+            refreshToken: String? = null,
+            expiry: kotlinx.datetime.Instant? = null
+        ): AuthConfig = AuthConfig(
             type = AuthType.OAUTH2,
             oauthAccessToken = accessToken,
-            oauthRefreshToken = refreshToken
+            oauthRefreshToken = refreshToken,
+            oauthTokenExpiry = expiry
         )
 
         fun Certificate(cert: String, key: String): AuthConfig = AuthConfig(

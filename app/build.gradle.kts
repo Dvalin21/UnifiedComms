@@ -110,6 +110,12 @@ android {
         buildConfig = true
     }
 
+    // JVM unit tests touch Android framework classes (android.util.Log, etc.).
+    // returnDefaultValues lets them no-op instead of throwing "not mocked".
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
+
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.14"
     }
@@ -234,6 +240,8 @@ dependencies {
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.1.0")
     testImplementation("androidx.arch.core:core-testing:2.2.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    testImplementation("org.json:json:20231013")
     testImplementation("com.google.truth:truth:1.1.5")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
