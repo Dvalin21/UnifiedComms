@@ -32,6 +32,8 @@ class UnifiedCommsApplication : Application() {
         database = UnifiedCommsDatabase.getInstance(this)
         initializeNotificationChannels()
         DemoDataSeeder.seedIfNeeded(this, mainCoroutineScope)
+        // Phase 15: schedule background periodic sync (survives process death).
+        com.unifiedcomms.sync.BackgroundSyncScheduler.schedule(this)
     }
 
     private fun initializeNotificationChannels() {

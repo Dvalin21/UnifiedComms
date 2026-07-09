@@ -154,6 +154,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("androidx.lifecycle:lifecycle-process:2.8.4")
 
+    // WorkManager — background periodic sync (survives process death, respects Doze)
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
+
     // Navigation
     implementation("androidx.navigation:navigation-compose:2.7.7")
 
@@ -237,6 +240,7 @@ dependencies {
     androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.6.7")
     androidTestImplementation("androidx.compose.ui:ui-test-manifest:1.6.7")
+    androidTestImplementation("androidx.work:work-testing:2.9.1")
     debugImplementation("androidx.compose.ui:ui-tooling:1.6.7")
     debugImplementation("androidx.compose.ui:ui-tooling-data:1.6.7")
 }
