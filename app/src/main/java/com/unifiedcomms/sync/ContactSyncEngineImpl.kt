@@ -39,8 +39,14 @@ class ContactSyncEngineImpl(
                 val updatedItems = mutableListOf<String>()
 
                 for (contact in contacts) {
-                    val existing = contactRepo.getByEmail(contact.emails.firstOrNull() ?: "")
+                    // ponytail: dedupe by account-scoped natural key (accountId, sourceId),
+                    // NOT global email/phone. Global match would let account B's contact with a
+                    // shared email overwrite account A's row -> cross-account contact pollution.
+                    val existing = contactRepo.getBySourceId(account.id, contact.sourceId ?: "")
+                        ?: contactRepo.getByEmail(contact.emails.firstOrNull() ?: "")
+                            ?.takeIf { it.accountId == account.id }
                         ?: contactRepo.getByPhone(contact.phoneNumbers.firstOrNull() ?: "")
+                            ?.takeIf { it.accountId == account.id }
                     if (existing == null) {
                         contactRepo.insert(contact.copy(
                             accountId = account.id,

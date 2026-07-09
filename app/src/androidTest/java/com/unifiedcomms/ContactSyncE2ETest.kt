@@ -89,43 +89,43 @@ class ContactSyncE2ETest : kotlinx.coroutines.CoroutineScope {
             phoneNumbers = listOf("+15550100"),
             source = ContactSource.CARDDAV,
             accountId = account.id,
-            sourceId = "seed-1"
+            sourceId = "${account.id}-seed"
         )
         val seedRes = engine.createContact(stored, seed)
         assertTrue("createContact (seed) should succeed: ${seedRes.errorMessage}", seedRes.success)
 
-        // 3) syncAccount downloads from the server -> Room must contain seed-1 (proves GET)
+        // 3) syncAccount downloads from the server -> Room must contain seed (proves GET)
         val syncResult = engine.syncAccount(stored)
         assertTrue("syncAccount should succeed: ${syncResult.errorMessage}", syncResult.success)
-        assertTrue("downloaded seed-1 should be present in Room", roomHas(contactRepo, account.id, "seed-1"))
+        assertTrue("downloaded seed should be present in Room", roomHas(contactRepo, account.id, "${account.id}-seed"))
 
-        // 4) createContact PUTs a second vCard (new-1)
+        // 4) createContact PUTs a second vCard (new)
         val newContact = UnifiedContact(
             id = UUID.randomUUID().toString(),
             displayName = "Created Contact",
             firstName = "Created",
             lastName = "Contact",
             emails = listOf("created@example.com"),
-            phoneNumbers = listOf("+15550200"),
+            phoneNumbers = listOf("+1550200"),
             source = ContactSource.CARDDAV,
             accountId = account.id,
-            sourceId = "new-1"
+            sourceId = "${account.id}-new"
         )
         val created = engine.createContact(stored, newContact)
         assertTrue("createContact should succeed: ${created.errorMessage}", created.success)
 
-        // 5) re-sync must surface new-1 (proves the PUT actually landed on the server)
+        // 5) re-sync must surface new (proves the PUT actually landed on the server)
         engine.syncAccount(stored)
-        assertTrue("created new-1 should be downloadable after PUT (server round-trip)", roomHas(contactRepo, account.id, "new-1"))
+        assertTrue("created new should be downloadable after PUT (server round-trip)", roomHas(contactRepo, account.id, "${account.id}-new"))
 
         // 6) deleteContact removes the vCard from the server
-        val delResult = engine.deleteContact(stored, "new-1")
+        val delResult = engine.deleteContact(stored, "${account.id}-new")
         assertTrue("deleteContact should succeed: ${delResult.errorMessage}", delResult.success)
 
         // 7) fetchContact must return null now (proves DELETE landed on the server)
         engine.syncAccount(stored)
-        val fetched = engine.fetchContact(stored, "new-1")
-        assertTrue("deleted new-1 should no longer be fetchable from server", fetched == null)
+        val fetched = engine.fetchContact(stored, "${account.id}-new")
+        assertTrue("deleted new should no longer be fetchable from server", fetched == null)
 
         // cleanup
         accountRepo.delete(account.id)

@@ -42,11 +42,13 @@ import com.unifiedcomms.UnifiedCommsApplication
 import com.unifiedcomms.data.db.UnifiedCommsDatabase
 import com.unifiedcomms.data.model.CalendarEvent
 import com.unifiedcomms.data.model.Email
+import com.unifiedcomms.data.model.Message
 import com.unifiedcomms.data.model.Task
 import com.unifiedcomms.data.model.UnifiedContact
 import com.unifiedcomms.data.repository.CalendarRepositoryImpl
 import com.unifiedcomms.data.repository.ContactRepositoryImpl
 import com.unifiedcomms.data.repository.EmailRepositoryImpl
+import com.unifiedcomms.data.repository.MessagingRepositoryImpl
 import com.unifiedcomms.data.repository.TaskRepositoryImpl
 import com.unifiedcomms.data.repository.AccountRepositoryImpl
 import com.unifiedcomms.security.CryptoManagerImpl
@@ -75,6 +77,7 @@ class SearchActivity : ComponentActivity() {
         val calendarRepo = CalendarRepositoryImpl(db.calendarEventDao(), db.calendarDao())
         val taskRepo = TaskRepositoryImpl(db.taskDao(), db.taskListDao())
         val contactRepo = ContactRepositoryImpl(db.contactDao())
+        val msgRepo = MessagingRepositoryImpl(db.messageDao(), db.conversationDao())
         val accountRepo = AccountRepositoryImpl(db.accountDao(), CryptoManagerImpl(this))
 
         setContent {
@@ -107,6 +110,10 @@ class SearchActivity : ComponentActivity() {
                                 val contacts = contactRepo.search(query, 50).first()
                                 rows += contacts.map { c ->
                                     SearchRow("Contact", Icons.Default.Contacts, c.displayName, c.emails.firstOrNull() ?: "")
+                                }
+                                val messages = msgRepo.searchMessages(query, 50).first()
+                                rows += messages.map { m ->
+                                    SearchRow("Message", Icons.Default.Email, m.content.take(80), m.senderId)
                                 }
                             }
                             rows

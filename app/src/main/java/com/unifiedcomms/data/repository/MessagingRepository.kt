@@ -19,7 +19,7 @@ interface MessagingRepository {
     suspend fun getLastMessage(conversationId: String): Message?
     fun getPendingMessages(conversationId: String, statuses: List<MessageStatus>): Flow<List<Message>>
     suspend fun getDirectMessages(senderId: String, recipientId: String, limit: Int): List<Message>
-    fun searchMessages(query: String, conversationIds: List<String>, limit: Int): Flow<List<Message>>
+    fun searchMessages(query: String, limit: Int): Flow<List<Message>>
     fun getMessagesByType(conversationId: String, type: MessageType): Flow<List<Message>>
     suspend fun getMessagesNeedingSync(): List<Message>
     suspend fun getLocalOnlyMessages(): List<Message>
