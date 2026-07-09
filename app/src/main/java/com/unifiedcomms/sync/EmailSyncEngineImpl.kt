@@ -199,9 +199,25 @@ class EmailSyncEngineImpl(
         }
     }
 
-    private fun buildXoauth2(user: String, token: String): String {
-        val bare = "user=$user\u0001auth=Bearer $token\u0001\u0001"
-        return base64(bare)
+    @androidx.annotation.VisibleForTesting
+    internal fun buildXoauth2(user: String, token: String): String {
+        return base64(xoauth2Bare(user, token))
+    }
+
+    companion object {
+        /**
+         * ponytail: the exact SASL XOAUTH2 string Gmail/Outlook IMAP expect, pre-base64.
+         * Kept pure (no android.util.Base64) so it is unit-testable on the JVM.
+         */
+        internal fun xoauth2Bare(user: String, token: String): String =
+            "user=$user\u0001auth=Bearer $token\u0001\u0001"
+
+        @androidx.annotation.VisibleForTesting
+        internal fun buildXoauth2Static(user: String, token: String): String =
+            android.util.Base64.encodeToString(
+                xoauth2Bare(user, token).toByteArray(Charsets.UTF_8),
+                android.util.Base64.NO_WRAP
+            )
     }
 
     private fun base64(s: String): String =
