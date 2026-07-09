@@ -372,3 +372,58 @@ REMAINING CARRY-OVER (honest, post-Phase 11):
 - Search does not cover Messages (Phase 4 note stands) -> Phase 13.
 - Contact/Tasks/Calendar DAV write-round-trip proven against mock only; a live
   real-provider CalDAV/CardDAV account on emulator-5560 would confirm production.
+
+=== PHASE 12 — PUSHMANAGER DELETED (2026-07-08) ===
+Status: DONE. No live consumer (MessagingService removed in Phase 3; DI wiring in
+AppModules.kt is fully commented out / Hilt disabled). Per ponytail dead-code rule,
+delete orphan code rather than keep a fake-useful HTTP client that points at a
+non-existent server (push.unifiedcomms.app).
+- DELETED: app/src/main/java/com/unifiedcomms/push/PushManager.kt (+ push/ dir).
+- REMOVED the dangling commented import `com.unifiedcomms.push.PushManager` from
+  app/src/main/java/com/unifiedcomms/di/AppModules.kt (would break if Hilt re-enabled).
+- Verify: grep for PushManager returns only history; assembleDebug GREEN.
+
+=== PHASE 13 — SEARCH NOW COVERS MESSAGES (2026-07-08) ===
+Status: DONE. Real fix, verified by compile + unit tests (no instrumented UI test yet).
+- MessageDao.searchMessages: dropped the broken `conversationIds` param (callers in
+  local mode had no stable userId to scope it, so it was never wired). New signature
+  `searchMessages(query, limit)` searches ALL local messages by content LIKE.
+- MessagingRepository(.kt / Impl): signature updated to match.
+- SearchActivity: now builds MessagingRepositoryImpl(db.messageDao(), db.conversationDao())
+  and maps msgRepo.searchMessages(query, 50) into a "Message" SearchRow. Email/calendar/
+  task/contact were already covered. Search now covers all 5 entity kinds.
+
+=== PHASE 14 — CONTACT SYNC CROSS-ACCOUNT DEDUP BUG (2026-07-08, found during final E2E) ===
+Status: DONE. This is a REAL production bug surfaced by re-running the Phase 11 E2E.
+- SYMPTOM: ContactSyncEngineImpl.syncAccount deduped by GLOBAL email/phone
+  (getByEmail/getByPhone across all accounts). If account B synced a contact sharing an
+  email with account A's contact, B's row was never created — instead A's row got updated.
+  Multi-account contact pollution.
+- WHY IT LOOKED LIKE A TEST FLAKE: the Phase 11 E2E used a hardcoded sourceId "seed-1"
+  with a random accountId per run. Run 1 (fresh DB) passed; every later run found the
+  stale email row and silently updated it instead of inserting -> assertion failed. The
+  test was also not isolated (no per-run unique key).
+- FIX (engine): dedupe by account-scoped natural key first:
+  getBySourceId(account.id, contact.sourceId)
+    ?: getByEmail(...).takeIf { it.accountId == account.id }
+    ?: getByPhone(...).takeIf { it.accountId == account.id }
+- FIX (test): sourceIds now `${account.id}-seed` / `${account.id}-new` so each run is
+  isolated; re-run 3x on emulator-5560 -> all PASS.
+- This bug ALSO means the earlier "Phase 11 E2E green" was a one-shot fluke; the engine
+  was genuinely broken for any second account. Now correct.
+
+FINAL SWEEP (2026-07-08):
+- assembleDebug GREEN; :app:testDebugUnitTest GREEN (54 tests, 0 failures).
+- ContactSyncE2ETest PASS x3 on emulator-5560 (isolated, full round-trip).
+- No silent-lie stubs remain (all SyncResult.success() paths do real work; create/update/
+  delete for email/calendar/task/contact are real DAV/IMAP ops or fail honestly).
+- Remaining honest carry-over (NOT bugs):
+  - OAuth refresh: verified by compile/install only (needs live OAuth account).
+  - RECURRENCE-ID / EXDATE server overrides: providers in scope don't emit them; expansion
+    uses masters. Documented carry-over, not a fake path.
+  - Search UI launch: verified in Phase 3 (in-app icon); `am start` blocked because the
+    activity is not exported (by design).
+  - DAV write-round-trips proven against mock only; a live provider account confirms prod.
+- Physical S22 (R5CT32YG8CL): NOT touched at any point. All E2E on emulator-5560.
+
+ALL PHASES COMPLETE. Build green, tests green, no known silent lies.
