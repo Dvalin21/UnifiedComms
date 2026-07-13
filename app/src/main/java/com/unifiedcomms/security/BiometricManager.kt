@@ -47,7 +47,10 @@ class BiometricManagerImpl(
         get() = when {
             !canAuthenticate -> BiometricType.NONE
             AndroidBiometricManager.from(context).canAuthenticate(AndroidBiometricManager.Authenticators.DEVICE_CREDENTIAL) == AndroidBiometricManager.BIOMETRIC_SUCCESS -> {
-                BiometricType.STRONG
+                // ponytail: a device that can ONLY satisfy DEVICE_CREDENTIAL has no
+                // biometric enrolled; labeling it STRONG was a lie. Report the precise
+                // capability so callers don't promise a fingerprint prompt that won't come.
+                BiometricType.DEVICE_CREDENTIAL
             }
             else -> BiometricType.WEAK
         }

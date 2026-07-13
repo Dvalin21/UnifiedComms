@@ -72,7 +72,11 @@ class CalDAVClient(
             if (!resp.isSuccessful) return@withContext emptyList()
             val text = resp.body?.string().orEmpty()
             val hrefs = parseHrefs(text)
-            hrefs.mapIndexed { idx, href ->
+            // ponytail: listCalendars() was returning EVERY PROPFIND href — the
+            // home-set, addressbooks and task lists — as if each were a calendar,
+            // so the calendar picker offered addressbooks/task-lists too. Filter to
+            // collections whose href carries "calendar", like scanForCalendars.
+            hrefs.filter { it.contains("calendar", ignoreCase = true) }.mapIndexed { idx, href ->
                 CalendarInfo(
                     path = href,
                     displayName = href.substringAfterLast('/').ifBlank { "Calendar ${idx + 1}" },
@@ -264,7 +268,6 @@ class CalDAVClient(
             val body = propfind(normalized, xml, depth = "1")
             val db = parseXml(body)
             val responses = byLocalName(db.documentElement, "response")
-            Log.d(TAG, "DIAG ab responses=${responses.length} rootLocal=${db.documentElement?.localName} rootNode=${db.documentElement?.nodeName}")
             for (i in 0 until responses.length) {
                 val resp = responses.item(i) as? Element ?: continue
                 val href = byLocalName(resp, "href").item(0)?.textContent?.trim().orEmpty()
@@ -334,12 +337,9 @@ class CalDAVClient(
 
     suspend fun discoverAddressBooks(): List<AddressBookInfo> = withContext(Dispatchers.IO) {
         val principal = tryFindPrincipalAt(baseUrl) ?: return@withContext emptyList()
-        Log.d(TAG, "DIAG disc principal=$principal base=$baseUrl")
         val homeSet = findAddressBookHomeSet(principal) ?: principal
-        Log.d(TAG, "DIAG disc homeSet=$homeSet")
         val out = mutableListOf<AddressBookInfo>()
         scanForAddressBooks(homeSet, out)
-        Log.d(TAG, "DIAG disc found=${out.size}")
         out
     }
 
@@ -375,7 +375,6 @@ class CalDAVClient(
             val body = propfind(normalized, xml, depth = "1")
             val db = parseXml(body)
             val responses = byLocalName(db.documentElement, "response")
-            Log.d(TAG, "DIAG ab responses=${responses.length} rootLocal=${db.documentElement?.localName} rootNode=${db.documentElement?.nodeName}")
             for (i in 0 until responses.length) {
                 val resp = responses.item(i) as? Element ?: continue
                 val href = byLocalName(resp, "href").item(0)?.textContent?.trim().orEmpty()

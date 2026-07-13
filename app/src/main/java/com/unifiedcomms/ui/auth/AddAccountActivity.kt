@@ -67,6 +67,16 @@ class AddAccountActivity : AppCompatActivity() {
         @Suppress("DEPRECATION")
         pendingIntent = intent.getParcelableExtra(android.accounts.AccountManager.KEY_ACCOUNT_AUTHENTICATOR_RESPONSE)
 
+        // ponytail: if this instance was (re)created by the OAuth redirect carrying a
+        // ?code=, consume it here in onCreate — not only in onNewIntent. A fresh
+        // instance (process died while the browser was open) never gets onNewIntent,
+        // so the code was previously discarded and the user landed on manual setup.
+        val incomingCode = intent?.data?.getQueryParameter("code")
+        if (incomingCode != null) {
+            handleOAuthCallback(intent!!)
+            return
+        }
+
         when (accountType) {
             AccountType.GOOGLE -> startGoogleAuth()
             AccountType.OUTLOOK -> startOutlookAuth()
@@ -353,7 +363,13 @@ class AddAccountActivity : AppCompatActivity() {
             if (!resp.isSuccessful) return
             json.decodeFromString(TokenResponse.serializer(), resp.body!!.string())
         }
-        val email = tokenResp.idToken?.substringBefore("@")?.plus("@icloud.com") ?: return
+        // ponytail: Apple normally returns id_token; if it is absent we must fail
+        // honestly (log + return) rather than silently creating no account.
+        val idToken = tokenResp.idToken ?: run {
+            Log.e("AddAccountActivity", "iCloud OAuth: id_token missing from token response; cannot derive email")
+            return
+        }
+        val email = idToken.substringBefore("@") + "@icloud.com"
         createOAuthAccount(AccountType.ICLOUD, email, tokenResp, email.substringBefore("@"), ServerConfig.ICloudDefaults())
     }
 

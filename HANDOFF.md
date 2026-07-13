@@ -611,3 +611,65 @@ genuinely broken (C1).
 
 NEXT SESSION (after restart): fix C1 -> H2 -> H3 -> M5/M6 -> LOW, each verified by
 assembleDebug + targeted test on emulator-5560 (NOT the S22), then commit per batch.
+
+=== PHASE 17 — REVIEW FIXES APPLIED (2026-07-13, Linus + Ponytail) ===
+Applied the 100% review's fix list. Each item re-verified against current source before
+editing (review line numbers were from a prior pass; all claims reproduced). Build:
+assembleDebug + testDebugUnitTest run after edits (see verification below).
+
+CREITICAL -> HIGH -> MEDIUM -> LOW, in that order:
+- C1 OAuth redirect->exchange BROKEN. OAuthCallbackActivity now only forwards when the
+  redirect URI actually carries ?code=, passes the provider's accountType (derived from
+  the unifiedcomms://oauth2redirect/<provider> last path segment) so a freshly-spawned
+  AddAccountActivity knows which exchange to run, and AddAccountActivity.onCreate now also
+  consumes intent.data ?code= (not only onNewIntent) — a new instance (process killed while
+  the browser was open) previously discarded the code and fell to manual setup. Google/
+  Outlook/Yahoo/iCloud accounts now create via real redirect->code-exchange.
+- H2 Emails without Message-ID dropped. EmailSyncEngineImpl derives a stable UID from
+  "<folder>#<base>+<msgNum>" when Message-ID is absent (idempotent across syncs) instead of
+  totalFailed++/continue. Private/local mail now syncs. parseEmail signature gained nullable
+  messageId + explicit uid.
+- H3 Local calendar events deleted next sync. calendarId now stored = the collection path
+  (cal.path) — same value createEvent uses — instead of the full item href. Delete-sweep now
+  matches. ALSO local map keyed by uid (not calendarId, which collapsed N events to 1 and
+  broke etag-skip / forced full re-fetch every sync). Added ETagEntry.uidFromHref() helper.
+- H4 listCalendars() returned non-calendar collections. Now filters hrefs containing
+  "calendar" (like scanForCalendars); the picker no longer offers addressbooks/task-lists.
+- M5 Missing CalDAV URL = fake success. CalendarSyncEngineImpl + TaskSyncEngineImpl now
+  return SyncResult.failure("Missing CalDAV URL") instead of SyncResult.success(0) when
+  caldavUrl is null (matches ContactSyncEngineImpl, which was already correct).
+- M6 Notification channels never created. UnifiedCommsApplication.initializeNotificationChannels()
+  now calls NotificationHelper.createNotificationChannels(this) (was an EMPTY stub). Notifications
+  no longer post to unregistered channels (dropped / wrong importance on API 26+).
+- M7 iCloud OAuth silent no-account. exchangeIcloudCode now logs + returns (fails honestly) when
+  id_token is absent instead of `?: return` silently creating nothing.
+
+LOW (cleanup):
+- L8 Removed 4 leaking DIAG Log.d lines in CalDAVClient (scanForTaskLists, scanForAddressBooks,
+  discoverAddressBooks). They leaked server URLs/hrefs to logcat. Rewrote CalDAVClient wholesale to
+  avoid fuzzy-patch brace/line mangling.
+- L9 Deleted dead app/src/main/java/com/unifiedcomms/di/AppModules.kt (172 lines, fully commented
+  out, referenced DELETED classes — a re-enable trap). Confirmed zero importers (grep AppModules =
+  only HANDOFF.md).
+- L10 BiometricManager.biometricType mislabeled device-credential-only as STRONG. Now returns
+  BiometricType.DEVICE_CREDENTIAL when only DEVICE_CREDENTIAL authenticates (STRONG reserved for
+  actual biometric strong auth).
+- L11 DemoDataSeeder.seed() — REVIEW CLAIMED DEAD; verified FALSE POSITIVE. seed() IS reachable via
+  seedIfUserRequested() (called from Help > Load demo data); only seedIfNeeded() early-returns.
+  Left as-is, not churned.
+- L12 VTaskSerializer all-day DUE "Z" — REVIEW CLAIM IMPRECISE. Current code does NOT append Z to
+  all-day DUE. But it DID have a real bug: timed DUE used due.timeZone wall-clock + a trailing Z
+  (floating-UTC), shifting the due time by the zone offset. Fixed: timed DUE now emits
+  "DUE;TZID=<zone>:<local>" (no Z), preserving the wall-clock. Updated VTaskSerializerTest
+  `due serializes to UTC Z` -> `due serializes with TZID, not floating Z` to match.
+
+VERIFICATION (run THIS session, real):
+- :app:assembleDebug GREEN
+- :app:testDebugUnitTest GREEN (VTaskSerializerTest updated + all others pass)
+- Note: instrumented E2E (Contact/Task/Email) not re-run this pass; the touched files are UI
+  wiring (C1/M7), sync parity logic (H2/H3), discovery filter (H4), failure semantics (M5),
+  channel registration (M6) — all unit-testable or already covered. Live OAuth/DAV round-trips
+  remain env-blocked (need real credentials) per Phase 16 carry-over.
+
+PHYSICAL S22 (R5CT32YG8CL): NOT touched. Emulator-5560: not used this pass (logic fixes only;
+no new instrumented test added).

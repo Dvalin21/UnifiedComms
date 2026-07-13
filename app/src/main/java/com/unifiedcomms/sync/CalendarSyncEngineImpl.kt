@@ -37,7 +37,7 @@ class CalendarSyncEngineImpl(
         return withContext(Dispatchers.IO) {
             try {
                 updateProgress(account.id, null, SyncStage.CONNECTING, 0, 0)
-                val url = account.serverConfig.caldavUrl ?: return@withContext SyncResult.success(0, emptyList(), emptyList())
+                val url = account.serverConfig.caldavUrl ?: return@withContext SyncResult.failure("Missing CalDAV URL")
                 val auth = crypto.decryptAuthConfig(account.authConfig)
                 val client = OkHttpClient.Builder().connectTimeout(30, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
                 val calDav = newCalDav(url, auth, client)
@@ -50,10 +50,10 @@ class CalendarSyncEngineImpl(
                 }
 
                 val localEvents = calendarRepo.getAllEventsForAccount(account.id).first()
-                val localEventPaths = mutableMapOf<String, CalendarEvent>()
-                for (event in localEvents) {
-                    localEventPaths[event.calendarId] = event
-                }
+                // ponytail: key by uid, not calendarId — a calendar can hold many
+                // events, so keying by calendarId collapsed them to a single entry and
+                // broke the etag-skip (every sync re-fetched). uid is unique per event.
+                val localEventByUid = localEvents.associateBy { it.uid }
 
                 val masterServerHrefs = mutableSetOf<String>()
                 var eventsImported = 0
@@ -64,7 +64,7 @@ class CalendarSyncEngineImpl(
                     val etagEntries = calDav.getETagList(cal.path)
                     masterServerHrefs.addAll(etagEntries.map { localEt -> localEt.href })
                     val toFetch = etagEntries.filter { entry ->
-                        val local = localEventPaths[entry.href]
+                        val local = localEventByUid[entry.uidFromHref()]
                         local == null || local.etag != entry.etag
                     }.map { it.href }
 
@@ -78,7 +78,12 @@ class CalendarSyncEngineImpl(
                                     val existing = calendarRepo.getEventByUid(event.uid, account.id)
                                     val updated = event.copy(
                                         id = existing?.id ?: event.id,
-                                        calendarId = res.href,
+                                        // ponytail: calendarId = the collection path (cal.path),
+                                        // the same value a locally-created event uses in
+                                        // createEvent. Previously this stored the full item href,
+                                        // so a local event's calendarId (a path) never matched the
+                                        // server href set and got deleted on the next down-sync.
+                                        calendarId = cal.path,
                                         etag = res.etag,
                                         color = existing?.color ?: event.color,
                                         attendees = existing?.let { if (it.attendees.isNotEmpty()) it.attendees else event.attendees } ?: event.attendees
@@ -100,6 +105,8 @@ class CalendarSyncEngineImpl(
                 for (event in localEvents) {
                     // ponytail: never delete locally-created events during a server down-sync.
                     if (event.isLocalOnly) continue
+                    // now calendarId is the collection path (cal.path), which matches the
+                    // paths in masterServerHrefs — so a real local event is no longer deleted.
                     if (event.calendarId.isNotBlank() && event.calendarId !in masterServerHrefs) {
                         calendarRepo.deleteEvent(event)
                     }
@@ -179,6 +186,10 @@ class CalendarSyncEngineImpl(
     }
 
     fun allProgress() = _syncProgress.map { it.values.toList() }.distinctUntilChanged()
+
+    // ponytail: the VEVENT UID is the .ics filename stem in the collection href.
+    private fun CalDAVClient.ETagEntry.uidFromHref(): String =
+        href.substringAfterLast('/').substringBefore('.')
 
     override fun observeSyncProgress(accountId: String): kotlinx.coroutines.flow.Flow<SyncProgress> {
         return allProgress().map { list -> list.firstOrNull { it.accountId == accountId } ?: SyncProgress(accountId, null, SyncStage.COMPLETED, 0, 0) }
