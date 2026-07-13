@@ -36,8 +36,11 @@ object VTaskSerializer {
             runCatching {
                 val zoned = java.time.Instant.ofEpochMilli(due.toInstant().toEpochMilliseconds()).atZone(ZoneId.of(due.timeZone))
                 val fmt = if (due.hasTime) "yyyyMMdd'T'HHmmss" else "yyyyMMdd"
-                val v = if (due.hasTime) zoned.format(DateTimeFormatter.ofPattern(fmt)) + "Z" else zoned.format(DateTimeFormatter.ofPattern(fmt))
-                sb.appendLine("DUE:$v")
+                // ponytail: a DUE carries its wall-clock zone in due.timeZone, so emit it
+                // as a LOCAL time with a TZID (not a floating Z). Stamping Z masqueraded
+                // the wall-clock as UTC and shifted the due time by the zone offset.
+                val zoneSuffix = if (due.hasTime) "" else ""
+                sb.appendLine("DUE;TZID=${due.timeZone}:${zoned.format(DateTimeFormatter.ofPattern(fmt + zoneSuffix))}")
             }.onFailure { Log.w(TAG, "bad DUE for ${task.id}", it) }
         }
 

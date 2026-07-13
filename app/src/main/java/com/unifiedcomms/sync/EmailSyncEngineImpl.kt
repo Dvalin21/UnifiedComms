@@ -136,11 +136,13 @@ class EmailSyncEngineImpl(
                 if (!folder.isOpen) break // stop if folder was closed externally
                 try {
                     val messageId = msg.getHeader("Message-ID")?.firstOrNull()
-                    if (messageId == null) {
-                        totalFailed++
-                        continue
-                    }
-                    val email = parseEmail(msg, account.id, folderName, messageId)
+                    // ponytail: not every message carries a Message-ID (local/POP
+                    // derived mail, some internal messages). Dropping them silently
+                    // made real mail vanish. Derive a stable UID from the folder +
+                    // sequence number when Message-ID is absent so the message still
+                    // syncs and is idempotent across syncs.
+                    val uid = messageId ?: "$folderName#$start+${msg.messageNumber}"
+                    val email = parseEmail(msg, account.id, folderName, messageId, uid)
                     if (email != null) {
                         val existing = emailRepo.getByUid(account.id, email.uid, folderName)
                         if (existing == null) {
@@ -237,10 +239,10 @@ class EmailSyncEngineImpl(
         return Session.getInstance(props)
     }
 
-    private fun parseEmail(msg: JMailMessage, accountId: String, folder: String, messageId: String): Email? {
+    private fun parseEmail(msg: JMailMessage, accountId: String, folder: String, messageId: String?, uid: String): Email? {
         return try {
-            val uid = messageId
-            val threadId = msg.getHeader("X-GM-THRID")?.firstOrNull() ?: messageId
+            val uid = uid
+            val threadId = msg.getHeader("X-GM-THRID")?.firstOrNull() ?: messageId ?: uid
             val inReplyTo = msg.getHeader("In-Reply-To")?.firstOrNull()
             val references = msg.getHeader("References")?.toList() ?: emptyList()
 
@@ -285,7 +287,7 @@ class EmailSyncEngineImpl(
                 accountId = accountId,
                 folder = folder,
                 uid = uid,
-                messageId = messageId,
+                messageId = messageId ?: uid,
                 threadId = threadId,
                 inReplyTo = inReplyTo,
                 references = references,
