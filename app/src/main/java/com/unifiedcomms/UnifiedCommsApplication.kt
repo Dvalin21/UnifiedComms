@@ -6,6 +6,7 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import com.unifiedcomms.data.db.UnifiedCommsDatabase
 import com.unifiedcomms.util.PreferencesManager
 import com.unifiedcomms.util.DemoDataSeeder
+import com.unifiedcomms.util.NotificationHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -37,7 +38,10 @@ class UnifiedCommsApplication : Application() {
     }
 
     private fun initializeNotificationChannels() {
-        // Notification channels will be created by NotificationManager
+        // ponytail: was an EMPTY stub — createNotificationChannels() (the real
+        // channel registration) was dead, so on API 26+ notifications posted to
+        // channels that were never created and were dropped. Wire it.
+        NotificationHelper.createNotificationChannels(this)
     }
 
     val mainCoroutineScope: CoroutineScope get() = mainScope

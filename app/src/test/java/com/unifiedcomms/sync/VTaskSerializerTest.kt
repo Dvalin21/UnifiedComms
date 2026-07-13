@@ -48,11 +48,15 @@ class VTaskSerializerTest {
     }
 
     @Test
-    fun `due serializes to UTC Z`() {
-        // 1_784_092_800_000L == 2026-07-15T05:20:00Z (verified). Serializer emits UTC Z.
+    fun `due serializes with TZID, not floating Z`() {
+        // 1_784_092_800_000L == 2026-07-15T05:20:00Z. Serializer emits the wall-clock
+        // local time in the task's tz (UTC here) with a TZID=UTC parameter — NOT a
+        // trailing Z, which would re-interpret the wall-clock as UTC-floating and is
+        // only correct by accident when the zone already is UTC.
         val due = 1_784_092_800_000L
         val vtodo = VTaskSerializer.toVtodo(mkTask("u4", "Timed", TaskStatus.NEEDS_ACTION, TaskPriority.NONE, due))
-        assertTrue("DUE present", vtodo.contains("DUE:20260715T052000Z"))
+        assertTrue("DUE carries TZID=UTC", vtodo.contains("DUE;TZID=UTC:20260715T052000"))
+        assertTrue("DUE has no floating Z", !vtodo.contains("DUE:20260715T052000Z"))
     }
 
     @Test
