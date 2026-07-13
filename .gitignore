@@ -78,6 +78,9 @@ google-services.json
 *.dex
 *.class
 *.jar
+# The Gradle wrapper jar MUST be committed (CI builds via ./gradlew). The blanket
+# *.jar rule above would otherwise hide it and break every CI run.
+!gradle/wrapper/gradle-wrapper.jar
 *.so
 *.o
 *.obj

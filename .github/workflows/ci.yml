@@ -128,12 +128,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: ${{ env.JAVA_VERSION }}
-
+      # ponytail: deliberately NO actions/setup-java here. The Dependency-Check
+      # action runs in its own Docker image that bundles its own JDK. setup-java
+      # writes a host JAVA_HOME (/opt/hostedtoolcache/...) into $GITHUB_ENV which
+      # is then injected into the container where that path does not exist →
+      # "JAVA_HOME is not defined correctly" and the scan aborts. Drop the step
+      # and let the container use its own java.
       - name: Run OWASP Dependency Check
         uses: dependency-check/Dependency-Check_Action@main
         with:
