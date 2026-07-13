@@ -539,3 +539,75 @@ Repo is in a shippable state for an alpha: engine real, no silent lies, backgrou
 OAuth refresh wired + unit-verified, Contact/Email/Task DAV proven on-device.
 
 Physical S22 (R5CT32YG8CL): NOT touched. All verification on emulator-5560.
+
+=== 100% LINE-BY-LINE BUG REVIEW (2026-07-13, Linus + Ponytail) ===
+Full review of the source tree (73 main .kt + manifest + layouts + resources). High-risk
+files read line-by-line; UI composables / DAO / repository impls verified by wiring + consistency.
+NOTHING modified this pass — review only. Fix order: C1 -> H2 -> H3 -> M5/M6 -> LOW.
+
+CRITICAL:
+- C1 OAuth account-add flow BROKEN. OAuthCallbackActivity.kt:19-24 forwards the redirect
+  uri (with ?code=) to a FRESH AddAccountActivity via startActivity+finish(); but
+  AddAccountActivity.onCreate (AddAccountActivity.kt:65) only reads accountType extra (null ->
+  GENERIC_IMAP_SMTP -> showManualSetup) and the code is only consumed in onNewIntent
+  (AddAccountActivity.kt:210-228), which is NEVER called for a new instance. Result: Google/
+  Outlook/Yahoo/iCloud accounts can NEVER be created via redirect; user lands on manual-setup
+  with code discarded. Contradicts HANDOFF Phase 16 "OAuth verified" — Phase 16 only tested
+  token REFRESH on an existing account, not initial redirect->exchange.
+  FIX: OAuthCallbackActivity must pass accountType extra AND invoke handleOAuthCallback
+  (parse intent.data code directly), or AddAccountActivity must read intent.data in onCreate.
+
+HIGH (data loss / silent failure):
+- H2 Emails without Message-ID permanently dropped. EmailSyncEngineImpl.kt:138-142
+  `if (messageId == null) { totalFailed++; continue }` and uid=messageId (line 242). Private/
+  local mail lacking Message-ID never syncs -> real mail vanishes.
+  FIX: derive stable UID from (folder, seqnum) or content hash when Message-ID absent.
+- H3 CalendarSyncEngineImpl calendarId inconsistency -> local events deleted next sync.
+  Line 81 stored event calendarId = res.href (full item href), but createEvent (139-146)
+  inserts with caller's calendar path. Deletion sweep (100-106) deletes non-local events
+  whose calendarId !in masterServerHrefs (hrefs) -> local-created event (calendarId=path)
+  deleted even if isLocalOnly false (createEvent doesn't set isLocalOnly). ALSO line 52-56
+  localEventPaths is Map<String,CalendarEvent> keyed by calendarId (collapses to 1/calendar);
+  localEventPaths[entry.href] (67) always null -> etag-skip never fires -> full re-fetch/sync.
+  FIX: stable calendarId=path everywhere; key local map by uid/href; reuse getEventByUid.
+- H4 CalDAVClient.listCalendars() returns non-calendar collections as calendars. Lines 54-82
+  parse ALL PROPFIND hrefs (home-set, addressbooks, task lists) as CalendarInfo. Picker shows
+  addressbooks/task-lists as calendars. FIX: filter resourcetype contains "calendar" (like
+  scanForCalendars:162 already does).
+
+MEDIUM:
+- M5 Fake-success when CalDAV/CardDAV URL missing. CalendarSyncEngineImpl:40 and
+  TaskSyncEngineImpl:37 `return SyncResult.success(0,...)` when url null. No URL = can't sync
+  but reports SUCCESS (violates no-silent-lie). Contact sync (ContactSyncEngineImpl:88) correctly
+  returns empty list. FIX: SyncResult.failure("No CalDAV URL").
+- M6 NotificationHelper.createNotificationChannels() NEVER called. UnifiedCommsApplication.
+  initializeNotificationChannels() (33,39-41) is EMPTY stub; createNotificationChannels (43-103)
+  is dead code. On API 26+ notifications post to non-existent channels (wrong grouping/importance
+  or dropped). FIX: call NotificationHelper.createNotificationChannels(this) in the stub.
+- M7 iCloud OAuth fails silently if idToken absent. AddAccountActivity.exchangeIcloudCode:356
+  `idToken?.substringBefore("@")?.plus("@icloud.com") ?: return` -> no account, no error if
+  Apple omits id_token. FIX: fall back to form email / show error.
+
+LOW (cleanup):
+- L8 Leftover diagnostic Log.d in CalDAVClient:267,337,339,342,378 ("DIAG ..."). Leaks server
+  URLs to logcat. Remove.
+- L9 AppModules.kt entirely commented out (172 lines) references DELETED classes (PushManager,
+  MessagingService) -> "uncomment to re-enable" is a compile trap. Delete file.
+- L10 BiometricManager.biometricType mislabels device-credential-only as STRONG (49-50).
+- L11 DemoDataSeeder.seed() unreachable dead code (32-38 returns early). Harmless.
+- L12 VTaskSerializer all-day DUE gets Z suffix (39) on local-zone date. Minor.
+
+VERIFIED CORRECT (no bug): CryptoManager (AES/GCM sound), Converters (all guarded decodeOr),
+RecurrenceExpander (DST-safe, capped), VCardParser/Serializer (RFC, escaped), ContactSyncEngineImpl
+cross-account dedup (Phase 14 fix present), manifest<->class consistency (FullScreenReminderActivity
++ ReminderAlarmReceiver DO exist inside ReminderSystem.kt; all manifest names resolve), layouts
+match all referenced IDs (activity_add_account_manual / activity_fullscreen_reminder present with
+all R.id.* the code uses).
+
+Note: HANDOFF prior phases claimed "build green, tests green, no silent lies" — that holds for
+COMPILE/TEST, but C1/H2/H3/M5 are RUNTIME/correctness defects a green build does NOT catch. The
+OAuth "verified" claim (Phase 16) was scoped to refresh only; the initial redirect->exchange is
+genuinely broken (C1).
+
+NEXT SESSION (after restart): fix C1 -> H2 -> H3 -> M5/M6 -> LOW, each verified by
+assembleDebug + targeted test on emulator-5560 (NOT the S22), then commit per batch.
