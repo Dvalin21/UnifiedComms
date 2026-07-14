@@ -15,6 +15,24 @@
 
 ---
 
+## 📱 Screenshots
+
+Captured from the running app (debug build, light + dark themes, seeded demo data).
+
+| | Light | Dark |
+|---|---|---|
+| **Inbox** | ![Inbox](docs/screenshots/uc_01_inbox.png) | ![Inbox](docs/screenshots/uc_10_inbox_dark.png) |
+| **Email — Account Overview** | ![Email](docs/screenshots/uc_02_email_overview.png) | — |
+| **Email — Unified Inbox** | ![Unified Inbox](docs/screenshots/uc_03_email_folder.png) | — |
+| **Calendar** | ![Calendar](docs/screenshots/uc_04_calendar.png) | ![Calendar](docs/screenshots/uc_11_calendar_dark.png) |
+| **Tasks** | ![Tasks](docs/screenshots/uc_05_tasks.png) | ![Tasks](docs/screenshots/uc_12_tasks_dark.png) |
+| **Messages** | ![Messages](docs/screenshots/uc_06_messages.png) | — |
+| **Settings** | ![Settings](docs/screenshots/uc_07_settings.png) | ![Settings](docs/screenshots/uc_13_settings_dark.png) |
+| **Add Account** | ![Add Account](docs/screenshots/uc_08_add_account.png) | — |
+| **Search** | ![Search](docs/screenshots/uc_09_search.png) | — |
+
+---
+
 ## ✨ Features Overview
 
 | Feature | Providers | Key Capabilities |
