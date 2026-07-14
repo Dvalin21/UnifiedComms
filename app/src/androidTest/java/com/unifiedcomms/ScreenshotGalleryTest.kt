@@ -1,0 +1,137 @@
+package com.unifiedcomms
+
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.UiDevice
+import com.unifiedcomms.ui.main.MainActivity
+import com.unifiedcomms.util.DemoDataSeeder
+import kotlinx.coroutines.runBlocking
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.ext.junit.rules.ActivityScenarioRule
+
+/**
+ * Screenshot gallery harness.
+ *
+ * Seeds the real demo dataset (via the app's own DemoDataSeeder) and walks every
+ * major screen, capturing the device framebuffer to /sdcard/uc_*.png for each screen.
+ *
+ * Why coordinate taps instead of Compose/UiAutomator semantics:
+ *  - The app boots into BiometricLockScreen on a no-biometric emulator, so we force
+ *    biometric_lock=false (and the theme) via EncryptedSharedPreferences and recreate the
+ *    activity to reach the inbox.
+ *  - ActivityScenario.recreate() leaves BOTH ComposeTestRule's cached activity AND
+ *    UiAutomator's window binding pointing at the dead instance, so node queries
+ *    can no longer locate nodes. The framebuffer (screencap) and raw coordinate taps
+ *    (UiDevice.click) act on the live, recreated screen and are unaffected by that.
+ *
+ * Coordinates are for the 1080x2400 / 420dpi emulator (emulator-5556):
+ *   top bar y=211: Settings(880) Search(998) AddAccount(628)
+ *   bottom nav y=2192: Inbox(316) Email(488) Calendar(729) Tasks(922) Messages(1044)
+ *
+ * Run on emulator-5556:
+ *   adb -s emulator-5556 shell pm clear com.unifiedcomms.debug
+ *   adb -s emulator-5556 install -r app/build/outputs/apk/debug/app-debug.apk
+ *   adb -s emulator-5556 install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+ *   adb -s emulator-5556 shell am instrument -w -r \
+ *     -e class com.unifiedcomms.ScreenshotGalleryTest \
+ *     com.unifiedcomms.debug.test/androidx.test.runner.AndroidJUnitRunner
+ *   adb -s emulator-5556 pull /sdcard/uc_*.png docs/screenshots/
+ */
+@RunWith(AndroidJUnit4::class)
+class ScreenshotGalleryTest {
+
+    @get:Rule
+    val scenarioRule = ActivityScenarioRule(MainActivity::class.java)
+
+    private val ui: UiDevice get() = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+    private fun ctx() = InstrumentationRegistry.getInstrumentation().targetContext
+
+    private fun tap(x: Int, y: Int) {
+        ui.click(x, y)
+        Thread.sleep(500)
+    }
+
+    // Force biometric_lock=false + the requested theme, then recreate so MainActivity
+    // re-reads both as UNLOCKED / correct-theme.
+    private fun unlock(mode: String) {
+        val mk = MasterKey.Builder(ctx()).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
+        val prefs = EncryptedSharedPreferences.create(
+            ctx(), "unifiedcomms_prefs", mk,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+        prefs.edit().putBoolean("biometric_lock", false).putString("theme_mode", mode).commit()
+        scenarioRule.scenario.recreate()
+        Thread.sleep(2500)
+    }
+
+    private fun seedNow() {
+        ctx().getSharedPreferences("unifiedcomms_demo_seed", android.content.Context.MODE_PRIVATE)
+            .edit().putBoolean("user_requested_demo", true).commit()
+        runBlocking { DemoDataSeeder.seedIfUserRequested(ctx()) }
+        Thread.sleep(800)
+    }
+
+    private fun shot(name: String) {
+        Thread.sleep(900)
+        InstrumentationRegistry.getInstrumentation()
+            .uiAutomation.executeShellCommand("screencap -p /sdcard/uc_$name.png")
+        Thread.sleep(200)
+    }
+
+    // Top-bar / bottom-nav coordinates (1080x2400), derived from the live light-theme
+    // inbox screenshot: top bar y=211 (Add 629, Settings 880, Search 1005);
+    // bottom nav y=2171 (Inbox 100, Email 310, Calendar 530, Tasks 750, Messages 960).
+    private fun settings() = tap(880, 211)
+    private fun search() = tap(1005, 211)
+    private fun addAccount() = tap(629, 211)
+    private fun tabInbox() = tap(100, 2171)
+    private fun tabEmail() = tap(310, 2171)
+    private fun tabCalendar() = tap(530, 2171)
+    private fun tabTasks() = tap(750, 2171)
+    private fun tabMessages() = tap(960, 2171)
+
+    @Test
+    fun lightGallery() {
+        unlock("light")
+        seedNow()
+
+        shot("01_inbox")                 // default tab, seeded card
+
+        tabEmail(); shot("02_email_overview")
+
+        // 03 Email folder (Unified Inbox): from the inbox tab, tap the account card.
+        tabInbox()
+        tap(540, 420)
+        Thread.sleep(900)
+        shot("03_email_folder")
+        ui.pressBack(); Thread.sleep(500)   // return to main inbox (restores bottom nav)
+
+        tabCalendar(); shot("04_calendar")
+        tabTasks(); shot("05_tasks")
+        tabMessages(); shot("06_messages")
+
+        settings(); Thread.sleep(600); shot("07_settings")   // settings screen
+        ui.pressBack(); Thread.sleep(500)                    // back to inbox
+        addAccount(); Thread.sleep(400); shot("08_add_account")
+
+        ui.pressBack(); Thread.sleep(500)                    // close add-account -> inbox
+        search(); Thread.sleep(500); shot("09_search")
+    }
+
+    @Test
+    fun darkGallery() {
+        unlock("dark")
+        seedNow()
+
+        shot("10_inbox_dark")
+        tabCalendar(); shot("11_calendar_dark")
+        tabTasks(); shot("12_tasks_dark")
+
+        settings(); Thread.sleep(600); shot("13_settings_dark")
+    }
+}

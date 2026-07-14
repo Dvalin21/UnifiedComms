@@ -34,15 +34,19 @@ class BackgroundSyncWorkerTest {
         val request = OneTimeWorkRequestBuilder<com.unifiedcomms.sync.BackgroundSyncWorker>().build()
         wm.enqueueUniqueWork("test.bgsync", ExistingWorkPolicy.REPLACE, request).result.get()
 
-        // ponytail: enqueue future resolves on ENQUEUE, not on completion. Poll until
-        // the worker reaches a terminal state (SynchronousExecutor runs doWork inline,
-        // but its coroutine finishes after enqueue returns).
+        // ponytail: enqueue future resolves on ENQUEUE, not on completion. SynchronousExecutor
+        // only governs WorkManager's internal scheduling; the worker's own coroutine runs on
+        // Dispatchers.IO, so poll until it reaches a terminal state. 30s guard covers a cold
+        // emulator first-launch without masking a real hang.
         var state = wm.getWorkInfoById(request.id).get().state
         var guard = 0
-        while (!state.isFinished && guard < 50) {
+        while (!state.isFinished && guard < 300) {
             Thread.sleep(100)
             state = wm.getWorkInfoById(request.id).get().state
             guard++
+        }
+        if (!state.isFinished) {
+            android.util.Log.e("BGTEST", "worker did not finish in ${guard * 100}ms; final state=$state")
         }
         assertEquals(WorkInfo.State.SUCCEEDED, state)
         assertTrue("worker should finish", state.isFinished)
