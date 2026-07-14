@@ -35,11 +35,15 @@ jobs:
       - name: Validate Gradle Wrapper
         run: ./gradlew --version --no-daemon
 
-      - name: Run KTLint
-        run: ./gradlew ktlintCheck --no-daemon
-
-      - name: Run Detekt
-        run: ./gradlew detekt --no-daemon
+      # ponytail: ktlintCheck/detekt were referenced in CHANGELOG/CONTRIBUTING but the
+      # ktlint + detekt Gradle plugins were NEVER applied in build.gradle.kts, so those
+      # tasks do not exist (CI failed with "Task 'ktlintCheck' not found"). Two honest
+      # options: wire the plugins (separate task — needs config + making ~100 files pass)
+      # or gate on a REAL, already-available task. Android Lint (lintDebug) ships with the
+      # Android Gradle Plugin and is the legitimate static-analysis gate for this app, so
+      # we use it. ktlint/detekt can be added properly as a follow-up.
+      - name: Run Android Lint
+        run: ./gradlew lintDebug --no-daemon
 
       - name: Run Unit Tests
         run: ./gradlew test --no-daemon --continue
