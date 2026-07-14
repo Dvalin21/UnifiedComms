@@ -26,13 +26,14 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: gradle
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: wrapper
-
+      # ponytail: NO gradle/actions/setup-gradle here. That action resets JAVA_HOME
+      # to the runner's system JDK (java-21-openjdk-amd64 on ubuntu-24.04), which on
+      # this image has a broken lib/modules and crashes GradleWrapperMain with
+      # NoSuchFileException. setup-java@v4 (temurin 17) sets a healthy JAVA_HOME and
+      # ./gradlew runs on it directly. The committed wrapper jar (gradle-wrapper.jar,
+      # see .gitignore negation) makes ./gradlew self-sufficient.
       - name: Validate Gradle Wrapper
-        run: gradle wrapper --version
+        run: ./gradlew --version --no-daemon
 
       - name: Run KTLint
         run: ./gradlew ktlintCheck --no-daemon
@@ -68,11 +69,6 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: gradle
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: wrapper
-
       - name: Build Debug APK
         run: ./gradlew assembleDebug --no-daemon
 
@@ -100,11 +96,6 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: gradle
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: wrapper
-
       - name: Build Release AAB
         run: ./gradlew bundleRelease --no-daemon
         env:
@@ -131,9 +122,9 @@ jobs:
       # ponytail: deliberately NO actions/setup-java here. The Dependency-Check
       # action runs in its own Docker image that bundles its own JDK. setup-java
       # writes a host JAVA_HOME (/opt/hostedtoolcache/...) into $GITHUB_ENV which
-      # is then injected into the container where that path does not exist →
-      # "JAVA_HOME is not defined correctly" and the scan aborts. Drop the step
-      # and let the container use its own java.
+      # is then injected into the container where that path does not exist ->
+      # "JAVA_HOME is not defined correctly" and the scan aborts. Let the container
+      # use its own java.
       - name: Run OWASP Dependency Check
         uses: dependency-check/Dependency-Check_Action@main
         with:
