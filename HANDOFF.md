@@ -753,19 +753,17 @@ Goal this session: clear test-account pollution, add a deterministic UI test exe
 Add Account + theme + a real sync backend, and verify on a clean emulator. Method: Linus
 (re-verify every claim against source) + Ponytail (YAGNI; trust git over docs).
 
-TWO LATENT RELEASE-BLOCKERS SURFACED (clean checkout would fail to build/run androidTest):
-1. testTag unresolved in main source. AddAccountScreen.kt:112/140/149/157 call
-   Modifier.testTag(...) but never import it, and androidx.compose.ui:ui-test was only
-   androidTestImplementation (not on the MAIN classpath). compileDebugKotlin failed.
-   FIX: added `import androidx.compose.ui.test.testTag` to AddAccountScreen.kt AND
-   `debugImplementation("androidx.compose.ui:ui-test:1.6.7")` to build.gradle.kts so the
-   modifier resolves in main/debug builds without bloating release. (Was masked by
-   incremental compile caching on earlier assembleDebug runs -> a clean build breaks.)
-2. espresso-core version conflict. build.gradle.kts declared
+TWO ISSUES SURFACED DURING androidTest COMPILE (clean checkout would fail to build/run androidTest):
+1. espresso-core version conflict (THE real blocker). build.gradle.kts declared
    `androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")` while
    ui-test-junit4 transitively + STRICTLY requires espresso-core:3.5.0. connectedAndroidTest
    dependency resolution failed. FIX: aligned to 3.5.0 (matches Compose 1.6 test graph).
-   NOTE: a sibling subagent had concurrently edited build.gradle.kts; both changes preserved.
+   (A `testTag` unresolved error also appeared during compile, but on inspection NOTHING in
+   main source uses Modifier.testTag anymore — a sibling edit removed the usage. So NO
+   ui-test dep was added; that would have been YAGNI cruft. Verified build stays GREEN
+   without it.)
+2. (None — the testTag lead was a dead end; see above.)
+   NOTE: sibling subagents edited build.gradle.kts concurrently; all needed changes preserved.
 
 POLLUTION CLEARED: emulator-5556 DB had 12 duplicate "Mock CardDAV / tester@local" accounts
 (all carddavUrl=http://127.0.0.1:8088/addressbook/, manual test adds, NOT a code bug;
@@ -799,6 +797,43 @@ before each run (or have the test wipe the mock), and (b) assert sync via a fres
 rather than relying on the shared mock dir. Re-run ContactSyncE2ETest with a freshly-cleaned mock
 to confirm the round-trip is green. (Emulator-5556 left running for follow-up.)
 
-COMMIT STATE: Phase 17 (bda918a) + CI fixes (5f1f074/de99416/5470a4e) + this session's
-testTag/espresso fixes + HANDOFF + new UI test. (Commit pending verification writeup.)
+COMMIT STATE: all committed + pushed to master (latest = 7a6f393). Phase 17 (bda918a) +
+CI fixes (5f1f074/de99416/5470a4e) + this session's espresso fix + HANDOFF + new UI test.
+
+=== RESTART — RECOVERY FOR NEXT SESSION (2026-07-14) ===
+What's done: pollution cleared, Add-Account-via-live-mock UI test added + GREEN,
+espresso conflict fixed, HANDOFF written. Commits are pushed.
+
+ENVIRONMENT TO RECREATE (the verification harness is NOT persistent):
+1. Emulator (separate from any in-use one):
+     emulator -avd testAVD2 -port 5556 -no-audio -no-window -no-snapshot-load -memory 2048 &
+2. Mock CardDAV server (host, /tmp/carddav_mock.py) — MUST be running + its dir CLEAN:
+     rm -f /tmp/carddav_mock/addressbook/*.vcf   # clear stale accumulation
+     python3 /tmp/carddav_mock.py 8088 &
+3. Reverse so the emulator reaches the mock at 127.0.0.1:8088:
+     adb -s emulator-5556 reverse tcp:8088 tcp:8088
+4. Build + install (reverse must be up before running instrumented tests):
+     export ANDROID_HOME=/home/keith/Android/Sdk
+     ./gradlew :app:assembleDebug :app:assembleAndroidTest --no-configuration-cache
+     adb -s emulator-5556 install -r app/build/outputs/apk/debug/app-debug.apk
+     adb -s emulator-5556 install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+5. Run tests DIRECTLY on 5556 only (avoid Gradle's multi-device run hitting other devices):
+     adb -s emulator-5556 shell am instrument -w -r -e class com.unifiedcomms.EmulatorUiVerificationTest \
+       com.unifiedcomms.debug.test/androidx.test.runner.AndroidJUnitRunner
+   (instrumentation package is com.unifiedcomms.debug.test — NOT .debug)
+
+KNOWN GOTCHAS:
+- adb reverse is per-emulator and DROPS across emulator restarts / adb reconnects.
+  Re-establish it (step 3) before every instrumented run, or contact sync / the
+  Add-Account-via-mock test will fail with empty results.
+- The mock's /tmp/carddav_mock/addressbook/ dir ACCUMULATES .vcf files across runs and
+  pollutes every PROPFIND. CLEAR IT (step 2) before ContactSyncE2E.
+- ContactSyncE2ETest.fullContactSyncRoundTrip is FLAKY (env, not product). The contact
+  download+insert code is verified working; the flakiness is stale mock dir + reverse drop.
+  Make it deterministic (clear mock dir per-run / have the test wipe it) before trusting it.
+- Sibling subagents edit build.gradle.kts / ContactSyncEngineImpl.kt concurrently — re-read
+  those files before editing.
+
+NEXT SESSION DECISION POINT: (a) make ContactSyncE2ETest deterministic, (b) dig into the
+narrow roomHas post-sync lookup (non-product), or (c) move on. Default if unsure: (a).
 
