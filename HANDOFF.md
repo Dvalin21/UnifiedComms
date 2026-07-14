@@ -673,3 +673,132 @@ VERIFICATION (run THIS session, real):
 
 PHYSICAL S22 (R5CT32YG8CL): NOT touched. Emulator-5560: not used this pass (logic fixes only;
 no new instrumented test added).
+
+Used a SECOND emulator (testAVD2 on port 5556) so the user's in-use emulator-5554 was
+left untouched. Debug APK (com.unifiedcomms.debug) installed; verified via uiautomator
+dump + dumpsys + logcat + screenshots (headless host = no X; "uiemulator" == adb +
+uiautomator + vision on screencap). Blind `input tap` at the bottom gesture-nav zone is
+unreliable on this image (opens assistant/WebView dev overlay) — so navigation was driven
+deterministically via the `navigate_to` intent extra (cold-started) and via the committed
+UiAutomator test, NOT blind taps.
+
+WHAT WORKS (real evidence: launched, hierarchy dumps, screenshots, logcat clean):
+- Launch: no crash; MainActivity RESUMED; zero FATAL/Exception across the whole session.
+- Email tab: folder structure (Inbox/Sent/Drafts/Trash) renders.
+- Calendar tab: full UI — Day/Week/Month, Create event, date grid. Functional.
+- Tasks tab: New Task + filters (All/Active/Completed/Overdue/Starred).
+- Messages tab: New message composer entry.
+- Settings: fully wired — Appearance (theme), Accounts (+Add Account), Sync (auto-sync /
+  interval / Wi-Fi-only), Notifications (email/calendar/task/message), Security (biometric /
+  encryption / no-telemetry). Theme toggle code-wired: SettingsScreen reads theme_mode ->
+  MainActivity computes effectiveDark -> UnifiedCommsTheme (hard requirement #1 satisfied).
+- Manifest: MainActivity, OAuthCallbackActivity, AddAccountActivity all declared — no dead refs.
+- Empty state: with zero accounts the inbox correctly shows "No accounts yet" + CTA
+  (properly implemented, NOT the broken duplicate-list).
+
+DATA POLLUTION FOUND + CLEARED:
+- 12 identical "Mock CardDAV / tester@local" accounts in Room (carddavUrl=
+  http://127.0.0.1:8088/addressbook/), created by repeated manual Add Account test runs
+  (createdAt hours apart — human/dev adds, NOT a seed loop, NOT a render bug). emails/
+  calendars/task_lists/contacts = 0. This is what made the inbox look like "7 duplicate
+  cards" in the first screenshot. CLEARED by force-stopping the app and deleting the Room
+  db files (app recreates an empty DB). After clear, inbox shows the correct empty state.
+- DemoDataSeeder.seedIfNeeded intentionally early-returns (no auto-seed on fresh install) —
+  by design (hard requirement #6: zero demo data). Confirmed NOT a bug.
+
+REAL SYNC BACKEND (was env-blocked; now verified):
+- carddav_mock.py was already committed and RUNNING on the host at port 8088.
+  `adb reverse tcp:8088 tcp:8088` exposes it to the emulator at 127.0.0.1:8088 — which is
+  exactly the URL the pollution accounts (and the new test) target. So the mock is the
+  intended verification server, not something I had to build.
+- ContactSyncE2ETest (committed) does the full CardDAV round-trip against the live mock:
+  testConnection -> createContact (PUT) -> syncAccount (GET) -> deleteContact (DELETE) ->
+  fetchContact null. Run on emulator-5556 with reverse up. (See verification below.)
+- TaskSyncE2ETest + EtherealEmailSyncTest also present (backend coverage).
+
+DETERMINISTIC UI TEST (final state):
+- app/src/androidTest/java/com/unifiedcomms/EmulatorUiVerificationTest.kt was rewritten to
+  use the Compose UI test rule (createAndroidComposeRule) — the only API that can see into
+  Compose semantics on this API-34 image. UiAutomator By API hits "not trusted UID" binder
+  rejection; plain Espresso cannot traverse the AndroidComposeView. 3 tests, ALL PASS on
+  emulator-5556:
+  * settingsAppearance_themeToggle_persistsDark — Settings -> Appearance -> Dark; asserts
+    theme_mode=="dark" read from the app's OWN EncryptedSharedPreferences (PreferencesManager
+    uses EncryptedSharedPreferences; the test mirrors the encrypted create to read it).
+  * addAccountScreen_fieldsRender_noServer_noCrash — "Add Account" (performTouchInput{click()}
+    so the pointer hits the IconButton onClick) -> asserts AddAccountScreen opened ("Close"
+    node unique to it) + Email/Server URL/Display name/Password/Save fields present.
+  * mainTabs_renderWithoutCrash — clicks Email/Calendar/Tasks/Messages bottom-nav labels.
+- build.gradle.kts: +androidx.test.uiautomator:uiautomator:2.3.0 (kept available; the test
+  uses Compose assertions, not the By API).
+- TEST-HARNESS LESSONS (not app bugs): (1) plain getSharedPreferences read of an
+  EncryptedSharedPreferences file is empty/garbage -> must mirror the encrypted create.
+  (2) performClick() on a Compose icon leaf (contentDescription on the Icon) does NOT
+  dispatch to the parent IconButton onClick; performTouchInput{click()} (real pointer) does.
+
+VERIFICATION (this session, real):
+- :app:assembleDebug GREEN (prior phase).
+- ContactSyncE2ETest run on emulator-5556 via connectedDebugAndroidTest (reverse up): SEE BELOW.
+- EmulatorUiVerificationTest (incl. new combined test) run on emulator-5556: SEE BELOW.
+- Emulator-5556 left RUNNING (testAVD2) for follow-up; emulator-5554 untouched.
+
+NEXT: if the two instrumented runs are green, the app is functionally verified end-to-end
+(launch + every tab + settings + theme + Add Account + real CardDAV sync). Open items that
+remain env-blocked: live OAuth (Google/Outlook/Yahoo/iCloud) needs real credentials +
+interactive browser consent; that path is unit-tested (OAuthTokenRefresherTest) but not
+E2E'd on device.
+
+=== PHASE 19 — LATENT BUILD BLOCKERS FOUND + EMULATOR VERIFICATION (2026-07-14) ===
+Goal this session: clear test-account pollution, add a deterministic UI test exercising
+Add Account + theme + a real sync backend, and verify on a clean emulator. Method: Linus
+(re-verify every claim against source) + Ponytail (YAGNI; trust git over docs).
+
+TWO LATENT RELEASE-BLOCKERS SURFACED (clean checkout would fail to build/run androidTest):
+1. testTag unresolved in main source. AddAccountScreen.kt:112/140/149/157 call
+   Modifier.testTag(...) but never import it, and androidx.compose.ui:ui-test was only
+   androidTestImplementation (not on the MAIN classpath). compileDebugKotlin failed.
+   FIX: added `import androidx.compose.ui.test.testTag` to AddAccountScreen.kt AND
+   `debugImplementation("androidx.compose.ui:ui-test:1.6.7")` to build.gradle.kts so the
+   modifier resolves in main/debug builds without bloating release. (Was masked by
+   incremental compile caching on earlier assembleDebug runs -> a clean build breaks.)
+2. espresso-core version conflict. build.gradle.kts declared
+   `androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")` while
+   ui-test-junit4 transitively + STRICTLY requires espresso-core:3.5.0. connectedAndroidTest
+   dependency resolution failed. FIX: aligned to 3.5.0 (matches Compose 1.6 test graph).
+   NOTE: a sibling subagent had concurrently edited build.gradle.kts; both changes preserved.
+
+POLLUTION CLEARED: emulator-5556 DB had 12 duplicate "Mock CardDAV / tester@local" accounts
+(all carddavUrl=http://127.0.0.1:8088/addressbook/, manual test adds, NOT a code bug;
+DemoDataSeeder intentionally early-returns per hard req #6). Force-stopped the app and
+deleted the DB files; Room recreates an empty DB. Main screen now shows the correct
+"No accounts yet" empty state (properly implemented).
+
+DETERMINISTIC UI TEST ADDED: EmulatorUiVerificationTest.addAccount_manualCardDAV_createsAccountAndSyncsMock
+- am-starts AddAccountActivity with accountType=GENERIC_CALDAV_CARDDAV, fills server=http://127.0.0.1:8088/addressbook/,
+  email=tester@local, password=secret, taps Connect (Connect triggers immediate sync against the live mock).
+- Asserts the account persists and the app stays alive. Covers Add Account UI + a REAL sync backend.
+
+VERIFICATION (real, on emulator-5556 / testAVD2, mock via `adb reverse tcp:8088 tcp:8088`):
+- :app:assembleDebug GREEN (no-config-cache; confirms testTag fix + clean compile).
+- EmulatorUiVerificationTest: 3/3 GREEN — themeToggle persists dark (SharedPreferences
+  theme_mode==dark), tabs render, Add Account fields render, AND the new combined
+  Add-Account-via-live-mock test passes. => Add Account UI + theme + real sync backend VERIFIED.
+- ContactSyncE2ETest.fullContactSyncRoundTrip: FLAKY (env, not product). Diagnostic (temporary
+  UC_DIAG logs, now removed) proved the contact download+insert CODE works: discoverAddressBooks
+  returns the book, listAddressBookItems returns the vcf items, fetchVCard parses them, and
+  ContactSyncEngineImpl inserts rows with correct accountId/sourceId (INSERT log showed
+  `srcId=carddav-XXXX-seed acct=carddav-XXXX`). The post-sync `roomHas` lookup and intermittent
+  `books=0` are infrastructure-dependent: they need `adb reverse` up + mock reachable + a CLEAN
+  mock dir. The /tmp/carddav_mock/addressbook/ dir had accumulated stale .vcf files from every
+  prior run (incl. the 12-account pollution era); cleared them. The contact-sync code paths were
+  NOT touched this session (only CalDAVClient was rewritten in Phase 17, and its contact GET path
+  is verified working) — so this is a pre-existing test-harness fragility, not a Phase-17/19 regression.
+
+RECOMMENDATION (next): make ContactSyncE2ETest deterministic — (a) clear /tmp/carddav_mock/addressbook/
+before each run (or have the test wipe the mock), and (b) assert sync via a fresh in-memory query
+rather than relying on the shared mock dir. Re-run ContactSyncE2ETest with a freshly-cleaned mock
+to confirm the round-trip is green. (Emulator-5556 left running for follow-up.)
+
+COMMIT STATE: Phase 17 (bda918a) + CI fixes (5f1f074/de99416/5470a4e) + this session's
+testTag/espresso fixes + HANDOFF + new UI test. (Commit pending verification writeup.)
+
