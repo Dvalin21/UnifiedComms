@@ -950,10 +950,63 @@ unit tests) was GREEN before this campaign and unaffected. This campaign is PURE
 polish + two real layout bugs (b1 brick, b2 calendar SQL guard). The biometric fix (b1) is a
 genuine shipping blocker that should be prioritized.
 
-EMULATOR/TARGETS: same as prior phases — emulator-5556 (testAVD2), NOT emulator-5554 (in use),
-NOT the physical S22. Mocks: carddav_mock.py (8088) via `adb reverse tcp:8088 tcp:8088`;
-task mock /tmp/taskdav_mock.py (8089) via `adb reverse tcp:8089 tcp:8089` (needed if re-running
-TaskSyncE2ETest). Clear /tmp/carddav_mock/addressbook/*.vcf before contact runs.
+
+================================================================================
+SESSION RESTART SUMMARY (2026-07-14, end of visual-polish phase)
+================================================================================
+BRANCH: master @ origin/master. HEAD = f61e4f3 ("UI polish: fix bunched spacing...").
+Working tree CLEAN. All work this session is committed + pushed.
+
+WHAT SHIPPED THIS SESSION (commits, in order):
+- 8d7e8e7 Phase 20: Add Account FlowRow fix (b3) + calendar chip width chain (b2).
+            b3 root cause: 14-chip non-wrapping Row measured ~945px, hid Save.
+            Fixed Row->FlowRow + LazyColumn->Column(verticalScroll). Pixel-verified.
+- a593b28 Visual polish: Settings bottom truncation (navigationBarsPadding) +
+            Messages empty-state placeholder. Verified on screenshots.
+- 9f572af HANDOFF correction: SearchActivity "crash" was a false alarm (broken &&
+            chain in run wrapper). Gallery passes OK(2 tests). No fix needed.
+- f61e4f3 Bunched-spacing fixes: top-bar icons, email folder chips, task filter
+            chips + header icons, account-type chips all spaced (8->12dp). Fixed
+            gallery addAccount() coord (565,212) which my top-bar change had broken.
+            Verified all four on regenerated screenshots.
+
+CURRENT UI STATE (verified via regenerated gallery screenshots, emulator-5556):
+- Add Account: no void, Save reachable (below fold of scrollable form). Chips wrapped + spaced.
+- Calendar month chip: full-width (dark screenshot confirms); title shows "T..." in month
+  view (cell ~140px, compact by design; day view shows full). Acceptable.
+- Settings: Sync interval no longer cut off. Messages: empty-state placeholder shows.
+- Top bar / folder chips / task chips / account chips: comfortable spacing.
+- Inbox/Email/Unified Inbox: EMPTY BY DESIGN (DemoDataSeeder.seedIfNeeded() returns
+  immediately; seed() inserts no EmailMessage). Not a bug.
+
+KNOWN ISSUES / OPEN ITEMS (not yet done):
+1. Biometric fix (b1 brick) — HANDOFF marks it a genuine shipping blocker. NOT resolved
+   this session (this session was visual-only). PRIORITIZE before next release.
+2. Demo email data — inbox/email tabs empty by design. Optional: seed demo emails so
+   search + inbox have content (also makes screenshot gallery look populated).
+3. ScreenshotGalleryTest uses hardcoded pixel taps (tap(x,y)). Fragile: any top-bar/layout
+   change shifts icons and breaks captures (this happened with addAccount). Longer-term:
+   migrate to content-desc / resource-id based taps.
+4. "Awesome not square" redesign plan proposed (see below) — NOT started.
+
+PROPOSED "AWESOME NOT SQUARE" PLAN (user asked; not yet built — awaiting go-ahead):
+  P1 (cheap, high payoff): #1 rounded layered surfaces (radius 20-28dp, tonal stroke,
+     subtle elevation) + #3 bottom-nav pill/indicator upgrade + consistent tinted
+     selected state.
+  P2: #4 illustrated empty states (hides empty-data gaps) + #5 calendar dots-per-event
+     (kills "T..." truncation) + #6 Material3 typography scale + spring animations.
+  P3: #2 dynamic color per account + #7 ExtendedFAB / speed-dial.
+  Recommendation: start P1 (#1 + #3).
+
+RESTART CHECKLIST (next session):
+- git pull (master is current; nothing uncommitted).
+- emulator-5556 up; ANDROID_HOME=/home/keith/Android/Sdk.
+- Build: ./gradlew :app:assembleDebug :app:assembleAndroidTest --no-configuration-cache
+- UI verify: clean uninstall+install (NEVER install -r — stale APK trap, saved to memory),
+  run ScreenshotGalleryTest, pull docs/screenshots/uc_*.png, vision-review.
+- If continuing "awesome" plan: start with rounded surfaces + bottom-nav upgrade.
+- If fixing b1 biometric: that is the real release blocker.
+
 
 
 
