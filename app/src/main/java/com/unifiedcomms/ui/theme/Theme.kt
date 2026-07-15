@@ -3,7 +3,6 @@ package com.unifiedcomms.ui.theme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
-import androidx.compose.material3.Typography
 import androidx.compose.material3.Shapes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -11,8 +10,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -129,29 +126,10 @@ fun UnifiedCommsTheme(
     currentColorScheme = colorScheme
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = TypographyDefault,
         shapes = ShapesDefault,
         content = content
     )
 }
-
-val TypographyDefault = Typography(
-    bodyLarge = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Normal, fontFamily = FontFamily.Default),
-    bodyMedium = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Normal, fontFamily = FontFamily.Default),
-    bodySmall = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Normal, fontFamily = FontFamily.Default),
-    displayLarge = TextStyle(fontSize = 57.sp, fontWeight = FontWeight.Normal, fontFamily = FontFamily.Default),
-    displayMedium = TextStyle(fontSize = 45.sp, fontWeight = FontWeight.Normal, fontFamily = FontFamily.Default),
-    displaySmall = TextStyle(fontSize = 36.sp, fontWeight = FontWeight.Normal, fontFamily = FontFamily.Default),
-    headlineLarge = TextStyle(fontSize = 32.sp, fontWeight = FontWeight.Normal, fontFamily = FontFamily.Default),
-    headlineMedium = TextStyle(fontSize = 28.sp, fontWeight = FontWeight.Normal, fontFamily = FontFamily.Default),
-    headlineSmall = TextStyle(fontSize = 24.sp, fontWeight = FontWeight.Normal, fontFamily = FontFamily.Default),
-    labelLarge = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Medium, fontFamily = FontFamily.Default),
-    labelMedium = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Medium, fontFamily = FontFamily.Default),
-    labelSmall = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Medium, fontFamily = FontFamily.Default),
-    titleLarge = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.Normal, fontFamily = FontFamily.Default),
-    titleMedium = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Medium, fontFamily = FontFamily.Default),
-    titleSmall = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Medium, fontFamily = FontFamily.Default),
-)
 
 val ShapesDefault = Shapes(
     extraSmall = RoundedCornerShape(4.dp),
