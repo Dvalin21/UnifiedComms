@@ -4,6 +4,8 @@
 [![Kotlin](https://img.shields.io/badge/Kotlin-1.9-blue.svg)](https://kotlinlang.org)
 [![Compose](https://img.shields.io/badge/Jetpack%20Compose-1.6-orange.svg)](https://developer.android.com/jetpack/compose)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Releases](https://img.shields.io/github/v/release/Dvalin21/UnifiedComms?label=Latest%20Release)](https://github.com/Dvalin21/UnifiedComms/releases)
+[![Komi Store](https://img.shields.io/badge/Get%20it%20on-Komi%20Store-2196F3.svg)](https://github.com/kurikomi-labs/komi-store)
 
 > **A unified communication app for Android** — sync email, calendar, tasks, and messages across multiple accounts. Zero telemetry. Local-first. Encrypted by default.
 
@@ -43,6 +45,17 @@ Captured from the running app (debug build, light + dark themes, seeded demo dat
 | **💬 Messaging** | UnifiedComms users only | Direct/group/broadcast conversations, rich sharing (emails, events, tasks, calendar invites) |
 | **🔒 Security** | — | Biometric lock, AES-256 for stored credentials (Android Keystore), zero telemetry |
 | **🔔 Reminders** | AlarmManager | Full-screen heads-up alerts with snooze/dismiss |
+
+---
+
+## 🔒 Privacy & Security
+
+- **Zero telemetry / zero analytics.** The app ships no tracking, analytics, or crash-reporting SDKs (no Firebase, Crashlytics, Sentry, Mixpanel, etc.). A "No Telemetry" toggle exists in Settings and is on by default.
+- **Local-first.** Account data, credentials, and sync state live on your device. Nothing is sent to a UnifiedComms server — the app talks only to the email/calendar/task providers you configure.
+- **Encrypted credentials.** Stored credentials are protected with AES-256 in the Android Keystore.
+- **Secure transport.** Cleartext HTTP is disabled; all network traffic uses HTTPS (enforced via network security config).
+- **Biometric lock.** Optional biometric / device-credential unlock for the app.
+- **Open source.** MIT-licensed. Builds reproducible from source; no proprietary dependencies.
 
 ---
 
