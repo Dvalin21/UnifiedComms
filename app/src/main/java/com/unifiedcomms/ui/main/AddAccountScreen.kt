@@ -92,7 +92,7 @@ fun AddAccountScreen(
                 androidx.compose.material3.TopAppBar(
                     title = { Text(text = "Add Account") },
                     navigationIcon = {
-                        androidx.compose.material3.IconButton(onClick = onComplete) {
+                        androidx.compose.material3.TextButton(onClick = onComplete) {
                             androidx.compose.material3.Text("Close")
                         }
                     }
