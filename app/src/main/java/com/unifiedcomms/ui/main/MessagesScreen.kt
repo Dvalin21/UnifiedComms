@@ -1,4 +1,5 @@
 package com.unifiedcomms.ui.main
+import androidx.compose.foundation.border
 
 import android.content.Intent
 import android.net.Uri
@@ -217,8 +218,11 @@ fun ConversationScreen(
             }
 
             Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(24.dp)),
+                shape = RoundedCornerShape(24.dp),
+                tonalElevation = 2.dp,
                 color = MaterialTheme.colorScheme.surfaceContainerHighest
             ) {
                 Row(
@@ -282,8 +286,10 @@ fun ConversationListItem(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
+            .clickable(onClick = onClick)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(24.dp)),
+        shape = RoundedCornerShape(24.dp),
+        tonalElevation = 2.dp,
         color = MaterialTheme.colorScheme.surfaceContainerLow
     ) {
         Row(
