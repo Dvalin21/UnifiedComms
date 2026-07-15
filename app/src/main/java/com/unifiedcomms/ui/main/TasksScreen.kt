@@ -81,11 +81,16 @@ fun TasksScreen(
             TopAppBar(
                 title = { Text("Tasks", fontWeight = FontWeight.Bold) },
                 actions = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                     IconButton(onClick = { /* Filter */ }) {
                         Icon(Icons.Default.FilterList, contentDescription = "Filter")
                     }
                     IconButton(onClick = onCreateTask) {
                         Icon(Icons.Default.Add, contentDescription = "New Task")
+                    }
                     }
                 }
             )
@@ -104,7 +109,7 @@ fun TasksScreen(
             Surface(color = MaterialTheme.colorScheme.surfaceContainerHighest) {
                 Row(
                     modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     TaskFilter.values().forEach { f ->
                         FilterChip(
