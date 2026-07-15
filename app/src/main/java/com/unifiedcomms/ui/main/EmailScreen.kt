@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -37,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -76,6 +78,12 @@ fun EmailScreen(
         .getByAccountAndFolder(accountId, resolvedFolder, 100, 0)
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val messages = emails.map { it.toEmailMessage() }
+    // ponytail: tint the email avatar with the owning account color so a unified inbox is
+    // scannable by account at a glance. Fall back to theme primary when the account is gone.
+    val accountColor by remember {
+        derivedStateOf { viewModel.accounts.value.firstOrNull { it.id == accountId }?.uiConfig?.color }
+    }
+    val avatarColor = remember(accountColor) { Color(accountColor ?: 0xFF2196F3.toInt()) }
 
     var deleteTarget by remember { mutableStateOf<EmailMessage?>(null) }
     val coroutineScope = rememberCoroutineScope()
@@ -111,7 +119,7 @@ fun EmailScreen(
                     tonalElevation = if (localMessage.isUnread) 1.dp else 0.dp
                 ) {
                     Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                        Box(modifier = Modifier.size(40.dp).background(avatarColor, CircleShape), contentAlignment = Alignment.Center) {
                             Text(text = localMessage.from.first().uppercase(), fontWeight = FontWeight.Bold, color = Color.White)
                         }
                         Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
