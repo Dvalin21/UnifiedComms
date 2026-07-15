@@ -936,8 +936,11 @@ VISUAL POLISH PASS (post-push screenshot review):
   DemoDataSeeder.seedIfNeeded() returns immediately (no auto-seed) and seed() inserts no
   EmailMessage — only CalendarEvents, Tasks, Conversations/Messages, Contacts. So email tabs
   have no demo data. Optional future work: seed demo emails if a populated inbox is wanted.
-- FINDING: ScreenshotGalleryTest crashes on SearchActivity (INSTRUMENTATION_CODE: -1) but the
-  pull loop still captures screenshots. Search screen itself renders fine (uc_09).
+- FINDING (corrected): ScreenshotGalleryTest does NOT crash — it passes "OK (2 tests)".
+  The earlier "INSTRUMENTATION_CODE: -1 / app died on SearchActivity" was a false alarm from a
+  broken `&&` chain in the run wrapper (an `adb pull` for a missing file returned non-zero and
+  aborted the chain, leaving a stale logcat line). SearchActivity launches and renders fine
+  (uc_09). No fix needed.
 
 LESSON (saved to memory): on emulator-5556, `adb install -r` does NOT reliably replace the app
 (stale Compose renders identically) — always `adb uninstall` + `adb install` before verifying UI.
