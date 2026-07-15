@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DatePicker
@@ -258,11 +259,18 @@ fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onEvent
                             Column(modifier = Modifier.fillMaxWidth().padding(4.dp), verticalArrangement = Arrangement.Top) {
                                 Text(text = cellDate?.dayOfMonth?.toString() ?: "", fontSize = 12.sp, fontWeight = if (cellDate == java.time.LocalDate.now()) FontWeight.Bold else FontWeight.Normal)
                                 Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    events.take(3).forEach { event ->
-                                        EventChip(event = event.toMockEvent(), compact = true, onClick = { onEventClick(event.id) })
+                                    // ponytail: show one colored dot per event (kills the "T..." title
+                                    // truncation in ~140px cells); cap at 3 dots, "+n" overflow.
+                                    val shown = events.take(3)
+                                    shown.forEach { event ->
+                                        Box(
+                                            modifier = Modifier
+                                                .size(8.dp)
+                                                .background(Color(event.color.toColorInt()), CircleShape)
+                                        )
                                     }
-                                    if (events.size > 3) {
-                                        Text(text = "+${events.size - 3}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    if (events.size > shown.size) {
+                                        Text(text = "+${events.size - shown.size}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 }
                             }
