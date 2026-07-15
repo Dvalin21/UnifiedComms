@@ -1,4 +1,5 @@
 package com.unifiedcomms.ui.main
+import androidx.compose.foundation.border
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 
@@ -177,10 +178,11 @@ fun TaskItem(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
+            .clickable(onClick = onClick)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(24.dp)),
+        shape = RoundedCornerShape(24.dp),
         color = if (task.isCompleted) MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp
+        tonalElevation = 2.dp
     ) {
         Row(
             modifier = Modifier.padding(16.dp),

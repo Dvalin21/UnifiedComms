@@ -1,4 +1,5 @@
 package com.unifiedcomms.ui.main
+import androidx.compose.foundation.border
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
@@ -149,8 +150,12 @@ fun DayView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick
         val dayEvents = events.filter { isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), date) }
         if (dayEvents.isNotEmpty()) {
             Surface(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp)),
+                shape = RoundedCornerShape(16.dp),
+                tonalElevation = 2.dp,
                 color = MaterialTheme.colorScheme.surfaceContainerHighest
             ) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
