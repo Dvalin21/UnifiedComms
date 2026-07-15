@@ -1,4 +1,5 @@
 package com.unifiedcomms.ui.main
+import androidx.compose.foundation.border
 
 import android.content.Intent
 import androidx.compose.foundation.background
@@ -172,8 +173,11 @@ fun AddAccountScreen(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(24.dp)),
+                    shape = RoundedCornerShape(24.dp),
+                    tonalElevation = 2.dp,
                     color = MaterialTheme.colorScheme.surfaceContainerHigh
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {

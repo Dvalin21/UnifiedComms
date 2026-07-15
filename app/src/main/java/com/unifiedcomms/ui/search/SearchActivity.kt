@@ -1,4 +1,5 @@
 package com.unifiedcomms.ui.search
+import androidx.compose.foundation.border
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -184,8 +185,10 @@ fun SearchScreen(
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { /* future: drill into result */ },
-                        shape = RoundedCornerShape(12.dp),
+                            .clickable { /* future: drill into result */ }
+                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(24.dp)),
+                        shape = RoundedCornerShape(24.dp),
+                        tonalElevation = 2.dp,
                         color = MaterialTheme.colorScheme.surfaceContainerLow
                     ) {
                         Row(
