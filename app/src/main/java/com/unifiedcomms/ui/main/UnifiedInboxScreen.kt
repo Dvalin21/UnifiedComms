@@ -1,6 +1,7 @@
 package com.unifiedcomms.ui.main
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,8 +16,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -130,21 +133,38 @@ fun UnifiedInboxScreen(
             )
         },
         bottomBar = {
-            NavigationBar {
-                val items = listOf(
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 12.dp, end = 12.dp, bottom = 18.dp)
+            ) {
+                NavigationBar(
+                    tonalElevation = 6.dp,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(28.dp))
+                ) {
+                    val items = listOf(
      NavigationItem("Inbox", Icons.Default.Inbox, 0),
      NavigationItem("Email", Icons.Default.Email, 1),
      NavigationItem("Calendar", Icons.Default.CalendarMonth, 2),
      NavigationItem("Tasks", Icons.Default.Checklist, 3),
      NavigationItem("Messages", Icons.AutoMirrored.Default.Message, 4)
  )
-                items.forEach { item ->
-                    NavigationBarItem(
-                        selected = selectedTab == item.index,
-                        onClick = { selectedTab = item.index },
-                        icon = { Icon(item.icon, contentDescription = item.label) },
-                        label = { Text(item.label) }
-                    )
+                    items.forEach { item ->
+                        NavigationBarItem(
+                            selected = selectedTab == item.index,
+                            onClick = { selectedTab = item.index },
+                            icon = { Icon(item.icon, contentDescription = item.label) },
+                            label = { Text(item.label) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                            )
+                        )
+                    }
                 }
             }
         }
@@ -221,10 +241,11 @@ fun AccountInboxCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .clickable(onClick = onClick),
+            .clickable(onClick = onClick)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(28.dp)),
         color = color.container,
-        tonalElevation = 2.dp,
-        shape = RoundedCornerShape(16.dp)
+        tonalElevation = 3.dp,
+        shape = RoundedCornerShape(28.dp)
     ) {
         androidx.compose.foundation.layout.Row(
             modifier = Modifier.padding(12.dp),
@@ -289,7 +310,7 @@ fun EmailOverviewScreen(
 
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(24.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerLow
             ) {
                 Column(
