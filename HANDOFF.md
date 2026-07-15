@@ -923,6 +923,22 @@ BLOCKERS — RESOLVED THIS SESSION:
    reran ScreenshotGalleryTest, pulled 13 shots, committed UI fixes + this HANDOFF + gallery,
    pushed to origin/master.
 
+VISUAL POLISH PASS (post-push screenshot review):
+- Settings (uc_07): "Sync interval" row was cut off by the system nav bar. FIXED: added
+  `.navigationBarsPadding()` to the scroll Column in SettingsScreen.kt. Verified.
+- Messages (uc_06): empty state was blank white (looked broken). FIXED: added an empty-state
+  item (Email icon + "No messages yet" + helper text) in MessagesScreen.kt LazyColumn. Verified.
+- Calendar month chip (b2): width chain is fillMaxWidth end-to-end; dark-theme screenshot
+  confirmed full-width chip. Light-theme vision was inconsistent (sliver vs full) — trust the
+  code + dark confirmation. Title still shows "T..." in month view (cells are ~140px; compact
+  by design — day view shows full titles). Acceptable.
+- FINDING (not a bug): Inbox/Email/Unified Inbox screens (uc_01/02/03) are empty by design.
+  DemoDataSeeder.seedIfNeeded() returns immediately (no auto-seed) and seed() inserts no
+  EmailMessage — only CalendarEvents, Tasks, Conversations/Messages, Contacts. So email tabs
+  have no demo data. Optional future work: seed demo emails if a populated inbox is wanted.
+- FINDING: ScreenshotGalleryTest crashes on SearchActivity (INSTRUMENTATION_CODE: -1) but the
+  pull loop still captures screenshots. Search screen itself renders fine (uc_09).
+
 LESSON (saved to memory): on emulator-5556, `adb install -r` does NOT reliably replace the app
 (stale Compose renders identically) — always `adb uninstall` + `adb install` before verifying UI.
 
