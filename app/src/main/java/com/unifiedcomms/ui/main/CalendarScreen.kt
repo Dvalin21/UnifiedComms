@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -85,7 +86,10 @@ fun CalendarScreen(
     val currentDate = remember { mutableStateOf(java.time.LocalDate.now()) }
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
     val activeAccountIds = accounts.filter { it.isActive }.map { it.id }
-    val allEvents by viewModel.calendarRepository.getUnifiedEvents(activeAccountIds)
+    // ponytail: Room's `accountId IN ()` with an empty list throws; guard it so the
+    // Flow never errors on first composition (before accounts emit) and stays empty.
+    val allEvents by (if (activeAccountIds.isEmpty()) kotlinx.coroutines.flow.flowOf(emptyList())
+    else viewModel.calendarRepository.getUnifiedEvents(activeAccountIds))
         .collectAsStateWithLifecycle(initialValue = emptyList())
 
     Scaffold(
@@ -110,21 +114,21 @@ fun CalendarScreen(
                     IconButton(onClick = onCreateEvent) {
                         Icon(Icons.Default.Add, contentDescription = "Create event")
                     }
+                    }
+                )
+                },
+            floatingActionButton = {
+                androidx.compose.material3.FloatingActionButton(
+                    onClick = onCreateEvent,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Create event")
                 }
-            )
-        },
-        floatingActionButton = {
-            androidx.compose.material3.FloatingActionButton(
-                onClick = onCreateEvent,
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            ) {
-                Icon(Icons.Default.Event, contentDescription = "Create event")
             }
-        }
-    ) { innerPadding ->
-        Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
-            when (selectedView) {
+        ) { innerPadding ->
+            Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+                when (selectedView) {
                 CalendarView.DAY -> DayView(date = currentDate.value, events = allEvents, onEventClick = onEventClick)
                 CalendarView.WEEK -> WeekView(date = currentDate.value, events = allEvents, onEventClick = onEventClick)
                 CalendarView.MONTH -> MonthView(date = currentDate.value, allEvents = allEvents, onEventClick = onEventClick)
@@ -237,7 +241,7 @@ fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onEvent
                         Surface(
                             modifier = Modifier
                                 .weight(1f)
-                                .aspectRatio(1f)
+                                .height(72.dp)
                                 .background(
                                     if (cellDate == java.time.LocalDate.now()) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
                                     RoundedCornerShape(8.dp)
@@ -246,9 +250,9 @@ fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onEvent
                             shape = RoundedCornerShape(8.dp),
                             onClick = { val first = events.firstOrNull(); if (first != null) onEventClick(first.id) }
                         ) {
-                            Column(modifier = Modifier.fillMaxSize().padding(4.dp), verticalArrangement = Arrangement.Top) {
+                            Column(modifier = Modifier.fillMaxWidth().padding(4.dp), verticalArrangement = Arrangement.Top) {
                                 Text(text = cellDate?.dayOfMonth?.toString() ?: "", fontSize = 12.sp, fontWeight = if (cellDate == java.time.LocalDate.now()) FontWeight.Bold else FontWeight.Normal)
-                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     events.take(3).forEach { event ->
                                         EventChip(event = event.toMockEvent(), compact = true, onClick = { onEventClick(event.id) })
                                     }
@@ -314,18 +318,16 @@ fun EventChip(event: MockEvent, compact: Boolean = false, onClick: () -> Unit) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = if (compact) 2.dp else 4.dp)
-            .background(
-                Color(event.color),
-                RoundedCornerShape(6.dp)
-            ),
+            .then(if (compact) Modifier.heightIn(min = 18.dp) else Modifier),
         shape = RoundedCornerShape(6.dp),
+        color = Color(event.color),
+        contentColor = Color.White,
         onClick = onClick
     ) {
-        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = if (compact) 4.dp else 8.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = if (compact) 3.dp else 8.dp)) {
             Text(
                 text = if (!compact) "${String.format("%02d:00", event.startHour)}-${String.format("%02d:00", event.endHour)} ${event.title}" else event.title,
-                fontSize = if (compact) 10.sp else 12.sp,
+                fontSize = if (compact) 11.sp else 13.sp,
                 color = Color.White,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis

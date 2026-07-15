@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -78,7 +80,7 @@ fun UnifiedInboxScreen(
     initialTab: Int? = null
 ) {
     val accounts = viewModel.accounts.collectAsStateWithLifecycle()
-    val activeAccounts = accounts.value.filter { it.isActive }
+    val activeAccounts = accounts.value.filter { it.isActive }.distinctBy { it.id }
     val coroutineScope = rememberCoroutineScope()
 
     var selectedTab by rememberSaveable { mutableIntStateOf(initialTab?.coerceIn(0, 4) ?: 0) }
@@ -220,22 +222,22 @@ fun AccountInboxCard(
         shape = RoundedCornerShape(16.dp)
     ) {
         androidx.compose.foundation.layout.Row(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Account avatar/indicator
             androidx.compose.foundation.layout.Box(
-                modifier = Modifier.size(48.dp),
+                modifier = Modifier.size(40.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = account.name.first().uppercase(),
-                    fontSize = 24.sp,
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = color.onContainer
                 )
             }
-            androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(16.dp))
+            androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(12.dp))
             // Account info
             androidx.compose.foundation.layout.Column(
                 modifier = Modifier.weight(1f),
@@ -244,16 +246,18 @@ fun AccountInboxCard(
                 Text(text = account.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = color.onContainer)
                 Text(text = account.email, fontSize = 14.sp, color = color.onContainer.copy(alpha = 0.8f))
             }
-            // Unread count badge
+            // Unread count badge (hidden when zero)
             val inbox by viewModel.emailRepository.getUnreadByAccountAndFolder(account.id, "INBOX").collectAsStateWithLifecycle(initialValue = emptyList())
-            androidx.compose.foundation.layout.Box(
-                modifier = Modifier
-                    .padding(start = 8.dp)
-                    .wrapContentSize()
-                    .background(Color(0xFFE57373), RoundedCornerShape(12.dp))
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            ) {
-                Text(text = inbox.size.toString(), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            if (inbox.isNotEmpty()) {
+                androidx.compose.foundation.layout.Box(
+                    modifier = Modifier
+                        .padding(start = 8.dp)
+                        .wrapContentSize()
+                        .background(Color(0xFF6750A4), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(text = inbox.size.toString(), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
             }
         }
     }
@@ -293,6 +297,7 @@ fun EmailOverviewScreen(
                         Text(text = account.email, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         FolderChip("Inbox", inbox.size, color.container, onClick = { onNavigateToEmail(account.id, "INBOX") })
@@ -311,16 +316,15 @@ fun EmailOverviewScreen(
 fun FolderChip(label: String, count: Int, color: Color, onClick: () -> Unit) {
     Surface(
         modifier = Modifier
-            .fillMaxWidth(0.25f)
-            .padding(vertical = 8.dp)
+            .padding(vertical = 8.dp, horizontal = 4.dp)
             .clickable(onClick = onClick)
             .background(color.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(text = label, fontWeight = FontWeight.Medium, fontSize = 12.sp)
+            Text(text = label, fontWeight = FontWeight.Medium, fontSize = 12.sp, maxLines = 1, softWrap = false)
             if (count > 0) {
                 Text(text = count.toString(), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = color)
             }

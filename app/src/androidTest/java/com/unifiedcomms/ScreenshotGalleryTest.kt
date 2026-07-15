@@ -1,11 +1,10 @@
 package com.unifiedcomms
 
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
 import com.unifiedcomms.ui.main.MainActivity
 import com.unifiedcomms.util.DemoDataSeeder
+import com.unifiedcomms.util.PreferencesManager
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
@@ -21,7 +20,7 @@ import androidx.test.ext.junit.rules.ActivityScenarioRule
  *
  * Why coordinate taps instead of Compose/UiAutomator semantics:
  *  - The app boots into BiometricLockScreen on a no-biometric emulator, so we force
- *    biometric_lock=false (and the theme) via EncryptedSharedPreferences and recreate the
+ *    biometric_lock=false (and the theme) via the app's PreferencesManager and recreate the
  *    activity to reach the inbox.
  *  - ActivityScenario.recreate() leaves BOTH ComposeTestRule's cached activity AND
  *    UiAutomator's window binding pointing at the dead instance, so node queries
@@ -29,8 +28,8 @@ import androidx.test.ext.junit.rules.ActivityScenarioRule
  *    (UiDevice.click) act on the live, recreated screen and are unaffected by that.
  *
  * Coordinates are for the 1080x2400 / 420dpi emulator (emulator-5556):
- *   top bar y=211: Settings(880) Search(998) AddAccount(628)
- *   bottom nav y=2192: Inbox(316) Email(488) Calendar(729) Tasks(922) Messages(1044)
+ *   top bar y=211: Settings(880) Search(1005) AddAccount(629)
+ *   bottom nav y=2171: Inbox(100) Email(310) Calendar(530) Tasks(750) Messages(960)
  *
  * Run on emulator-5556:
  *   adb -s emulator-5556 shell pm clear com.unifiedcomms.debug
@@ -55,16 +54,14 @@ class ScreenshotGalleryTest {
         Thread.sleep(500)
     }
 
-    // Force biometric_lock=false + the requested theme, then recreate so MainActivity
-    // re-reads both as UNLOCKED / correct-theme.
+    // Force biometric_lock=false + the requested theme via the app's own PreferencesManager
+    // (this updates the _themeMode StateFlow that MainActivity collects, so the recreated
+    // activity actually applies the theme — writing the file directly does NOT).
     private fun unlock(mode: String) {
-        val mk = MasterKey.Builder(ctx()).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
-        val prefs = EncryptedSharedPreferences.create(
-            ctx(), "unifiedcomms_prefs", mk,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
-        prefs.edit().putBoolean("biometric_lock", false).putString("theme_mode", mode).commit()
+        com.unifiedcomms.util.PreferencesManager.initialize(ctx())
+        val pm = com.unifiedcomms.util.PreferencesManager.getInstance()
+        pm.putBoolean("biometric_lock", false)
+        pm.putThemeMode(mode)
         scenarioRule.scenario.recreate()
         Thread.sleep(2500)
     }
