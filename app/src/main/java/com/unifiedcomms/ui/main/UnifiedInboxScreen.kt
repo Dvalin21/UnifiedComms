@@ -58,6 +58,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -98,7 +99,7 @@ fun UnifiedInboxScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("UnifiedComms", fontWeight = FontWeight.Bold) },
+                title = { Text("UnifiedComms", fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = {
                     IconButton(onClick = { /* Open drawer */ }) {
                         Icon(Icons.Default.Menu, contentDescription = "Menu")
