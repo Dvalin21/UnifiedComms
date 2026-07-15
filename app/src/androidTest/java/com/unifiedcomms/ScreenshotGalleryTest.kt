@@ -81,11 +81,11 @@ class ScreenshotGalleryTest {
     }
 
     // Top-bar / bottom-nav coordinates (1080x2400), derived from the live light-theme
-    // inbox screenshot: top bar y=211 (Add 629, Settings 880, Search 1005);
+    // inbox screenshot: top bar y=211 (Add 565, Sync 712, Settings 859, Search 1005);
     // bottom nav y=2171 (Inbox 100, Email 310, Calendar 530, Tasks 750, Messages 960).
     private fun settings() = tap(880, 211)
     private fun search() = tap(1005, 211)
-    private fun addAccount() = tap(629, 211)
+    private fun addAccount() = tap(565, 212)
     private fun tabInbox() = tap(100, 2171)
     private fun tabEmail() = tap(310, 2171)
     private fun tabCalendar() = tap(530, 2171)
