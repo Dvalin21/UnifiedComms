@@ -43,6 +43,9 @@ interface AccountDao {
     @Query("SELECT * FROM accounts WHERE isActive = 1 ORDER BY isDefault DESC, name ASC")
     fun getAllActive(): Flow<List<Account>>
 
+    @Query("SELECT COUNT(*) FROM accounts")
+    suspend fun getCount(): Int
+
     @Query("SELECT * FROM accounts WHERE isActive = 1 AND isDefault = 1 LIMIT 1")
     suspend fun getDefault(): Account?
 

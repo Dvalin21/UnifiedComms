@@ -31,6 +31,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.BrightnessMedium
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.Notifications
@@ -115,9 +117,9 @@ fun SettingsScreen(
                             },
                             label = { androidx.compose.material3.Text(label) },
                             leadingIcon = when (value) {
-                                "light" -> { { androidx.compose.material3.Text("L", Modifier.size(18.dp), fontSize = 14.sp, fontWeight = FontWeight.Bold) } }
+                                "light" -> { { androidx.compose.material3.Icon(Icons.Default.LightMode, null, Modifier.size(16.dp)) } }
                                 "dark" -> { { androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Filled.DarkMode, null, Modifier.size(16.dp)) } }
-                                else -> null
+                                else -> { { androidx.compose.material3.Icon(Icons.Default.BrightnessMedium, null, Modifier.size(16.dp)) } }
                             }
                         )
                     }
@@ -281,7 +283,7 @@ private fun AccountBlock(
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(24.dp))
+                Icon(imageVector = Icons.Default.Email, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(text = "Accounts", fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }

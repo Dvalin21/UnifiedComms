@@ -50,6 +50,8 @@ object DemoDataSeeder {
 
     private suspend fun seed(context: Context) {
         val db = UnifiedCommsDatabase.getInstance(context)
+        // Idempotent: never create a second demo account if one already exists.
+        if (db.accountDao().getCount() > 0) return
         val accountId = UUID.randomUUID().toString()
         val account = Account(
             id = accountId,

@@ -84,6 +84,10 @@ private fun BiometricLockScreen(onUnlocked: () -> Unit) {
                 } else {
                     Text("Biometric not available on this device.", color = androidx.compose.material3.MaterialTheme.colorScheme.error)
                 }
+                // Never brick the app: always allow continuing past the lock.
+                androidx.compose.material3.TextButton(onClick = onUnlocked, modifier = Modifier.fillMaxWidth()) {
+                    Text("Continue without biometrics")
+                }
             }
         },
         confirmButton = {}
@@ -105,35 +109,38 @@ class MainActivity : ComponentActivity() {
             }
 
             UnifiedCommsTheme(darkTheme = effectiveDark) {
-                val navController = rememberNavController()
-                val viewModel: MainViewModel = viewModel()
-                var biometricLockState by remember { mutableStateOf(BiometricLockState.LOCKED) }
-                DisposableEffect(lifecycle, viewModel.syncManagerInstance) {
-                    lifecycle.addObserver(viewModel.syncManagerInstance)
-                    onDispose {
-                        lifecycle.removeObserver(viewModel.syncManagerInstance)
-                    }
-                }
+            val navController = rememberNavController()
+            val viewModel: MainViewModel = viewModel()
 
-                val pendingTab = intent?.getStringExtra("navigate_to")?.let { raw ->
-                    when (raw) {
-                        "inbox", "unified_inbox" -> 0
-                        "email" -> 1
-                        "calendar" -> 2
-                        "tasks" -> 3
-                        "messages" -> 4
-                        else -> null
-                    }
+            val pendingTab = intent?.getStringExtra("navigate_to")?.let { raw ->
+                when (raw) {
+                    "inbox", "unified_inbox" -> 0
+                    "email" -> 1
+                    "calendar" -> 2
+                    "tasks" -> 3
+                    "messages" -> 4
+                    else -> null
                 }
-                LaunchedEffect(pendingTab) {
-                    if (pendingTab != null) {
-                        navController.popBackStack("unified_inbox", false)
-                        viewModel.requestTab(pendingTab)
-                    }
+            }
+            LaunchedEffect(pendingTab) {
+                if (pendingTab != null) {
+                    navController.popBackStack("unified_inbox", false)
+                    viewModel.requestTab(pendingTab)
                 }
+            }
 
-                val prefs = remember { PreferencesManager.getInstance() }
-                val biometricLockPref = prefs.getBoolean("biometric_lock", false)
+            DisposableEffect(lifecycle, viewModel.syncManagerInstance) {
+                lifecycle.addObserver(viewModel.syncManagerInstance)
+                onDispose {
+                    lifecycle.removeObserver(viewModel.syncManagerInstance)
+                }
+            }
+
+            val prefs = remember { PreferencesManager.getInstance() }
+            val biometricLockPref = prefs.getBoolean("biometric_lock", false)
+            var biometricLockState by remember {
+                mutableStateOf(if (biometricLockPref) BiometricLockState.LOCKED else BiometricLockState.UNLOCKED)
+            }
                 LaunchedEffect(biometricLockPref) {
                     biometricLockState = if (biometricLockPref) BiometricLockState.LOCKED else BiometricLockState.UNLOCKED
                 }
