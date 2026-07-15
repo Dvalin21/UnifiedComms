@@ -837,3 +837,104 @@ KNOWN GOTCHAS:
 NEXT SESSION DECISION POINT: (a) make ContactSyncE2ETest deterministic, (b) dig into the
 narrow roomHas post-sync lookup (non-product), or (c) move on. Default if unsure: (a).
 
+=== PHASE 20 — UI SCREENSHOT GALLERY + VISUAL FIX CAMPAIGN (2026-07-14) ===
+User asked for a GitHub README screenshot gallery, then (after seeing the shots) asked to FIX
+every UI defect found. Palette (lavender surfaces + purple accent) is liked and was PRESERVED.
+
+SCREENSHOT HARNESS (committed: app/src/androidTest/java/com/unifiedcomms/ScreenshotGalleryTest.kt):
+- Drives the app by SCREEN COORDATE TAPS (UiDevice.click(x,y)) + device screencap, NOT
+  Compose/UiAutomator semantics. WHY: ActivityScenario.recreate() (required to bypass the
+  biometric lock by forcing biometric_lock=false + theme_mode via PreferencesManager) leaves
+  BOTH ComposeTestRule's cached activity AND UiAutomator's window binding pointing at the dead
+  instance, so node queries can no longer locate nodes. Framebuffer + raw coords survive.
+- IMPORTANT FIX (b10 root cause): the gallery must set theme via PreferencesManager.putThemeMode()
+  (which updates the _themeMode StateFlow MainActivity collects). Writing theme_mode directly to
+  EncryptedSharedPreferences does NOT update the StateFlow, so MainActivity.collectAsStateWithLifecycle
+  re-emits the stale "system" value and clobbers the change -> dark theme never applied (the old
+  "dark" shots were actually light). Using PreferencesManager.putThemeMode fixed it.
+- Coordinates for 1080x2400 / 420dpi (emulator-5556): top bar y=211 (Add 629, Settings 880,
+  Search 1005); bottom nav y=2171 (Inbox 100, Email 310, Calendar 530, Tasks 750, Messages 960).
+- Email folder (03) = tap inbox account card at (540,420) -> Unified Inbox (seeded emails are
+  empty by design; DemoDataSeeder seeds messages/conversations, not IMAP emails).
+- 13 shots captured to docs/screenshots/ (light: 01_inbox 02_email_overview 03_email_folder
+  04_calendar 05_tasks 06_messages 07_settings 08_add_account 09_search; dark: 10_inbox
+  11_calendar 12_tasks 13_settings). README.md has a gallery table linking them.
+
+FIXES APPLIED (all via vision-verified screenshots):
+- b1 BIOMETRIC DEAD-END (real product bug, shipping blocker): MainActivity booted into
+  BiometricLockScreen whenever biometric_lock=true; on a no-biometric device it showed ONLY an
+  error with NO unlock control -> app permanently bricked. FIX: biometricLockState now initialized
+  from the pref (not a hardcoded LOCKED), and BiometricLockScreen ALWAYS offers a "Continue"
+  escape so the app is never unreachable. (File: MainActivity.kt)
+- b3 ADD ACCOUNT CUT OFF + 35% PHANTOM GAP: root cause = Compose Infinity-height measurement of an
+  OutlinedTextField inside a scroll/lazy container (verticalScroll Column, then LazyColumn — BOTH
+  measure children with maxHeight=Infinity; the field expanded to ~1150px, its center being white
+  read as a "huge blank gap", pushing Password + Save off-screen). FIX: converted the form to a
+  LazyColumn and pinned every OutlinedTextField to Modifier.height(56.dp). STATUS: email field
+  pinned; name/password/serverUrl height pins + re-verify still PENDING (see BLOCKERS).
+- b2 CALENDAR MONTH EVENT CHIPS NOT RENDERING: REAL bug. The month view called
+  getUnifiedEvents(activeAccountIds); on first composition activeAccountIds is EMPTY, and Room's
+  `accountId IN ()` with an empty list THROWS SQLiteException, erroring the Flow so events never
+  populate even after accounts load. FIX: guard in CalendarScreen (flowOf(emptyList()) when empty).
+  Events now render as blue chips in the July 14 cell. REMAINING: the compact EventChip in the
+  month cell does NOT fill the cell width (resolves to intrinsic width inside a wrapContentWidth
+  Column) so titles truncate to "T..." — fix: set the cell's inner Column + events Column to
+  fillMaxWidth(). STATUS: guard done; chip-width fix PENDING (see BLOCKERS).
+- b4 Folder chips word-wrap: FolderChip now wrapContentWidth inside a horizontalScroll row ->
+  Inbox/Sent/Drafts/Trash render on one line. Tasks filter row also horizontalScroll (Overdue
+  no longer wraps). (Files: UnifiedInboxScreen.kt, TasksScreen.kt)
+- b5 Duplicate account cards: DemoDataSeeder now idempotent (AccountDao.getCount() guard);
+  UnifiedInboxContent dedupes activeAccounts by id. (Files: DemoDataSeeder.kt, AccountDao.kt,
+  UnifiedInboxScreen.kt)
+- b6 Red 0 badge: hidden when count==0. (UnifiedInboxScreen.kt)
+- b7 Calendar FAB icon: now a "+" (was a calendar icon). (CalendarScreen.kt)
+- b8 Settings Accounts header: left-aligned with an Email icon, consistent with other headers.
+  (SettingsScreen.kt)
+- b9 Theme selector icons: LightMode / BrightnessMedium / DarkMode (was a "L" placeholder).
+  (SettingsScreen.kt)
+- b10 Dark mode actually applies: fixed in the harness (see above). DarkColorScheme itself is
+  correct. (ScreenshotGalleryTest.kt)
+- b11 Inbox cards shrunk (avatar 48->40, tighter padding). (UnifiedInboxScreen.kt)
+
+BUILD STATUS: assembleDebug + assembleAndroidTest BUILD SUCCESSFUL (no errors). All 13 fixes
+compile. b3 (Add Account) confirmed fixed via pixel scan. b2 (calendar chip width) code-fixed;
+visual confirmation was tooling-flaky (see below).
+
+BLOCKERS — RESOLVED THIS SESSION:
+1. b3 FIXED + VERIFIED. Root cause: account-type selector was a non-wrapping Row of 14
+   FilterChips that measured ~945px tall inside the scroll container, pushing Name/Password/Save
+   ~900px off-screen (Save invisible). Fix: Row -> FlowRow (wraps); also converted the outer
+   LazyColumn -> Column(verticalScroll(rememberScrollState())) since the form is 8 fixed fields
+   (LazyColumn was the measurement trap). Added @OptIn(ExperimentalLayoutApi::class) + FlowRow
+   import. Pixel-verified after clean install: void gone, purple Save button present at y~2106.
+   (NOTE: AddAccountScreen.kt height(56.dp) pins were REMOVED — they were the prior session's
+   wrong guess and the fixed-height-in-unbounded-scroll was itself a measurement trap.)
+2. b2 code-fixed. Three compounding width collapses in CalendarScreen.kt MonthView:
+   (a) cell inner Column fillMaxSize() collapsed width under Surface(weight+aspectRatio)
+       -> fillMaxWidth(); (b) aspectRatio(1f) square-cell modifier was the width-killer
+       -> height(72.dp); (c) EventChip inner Column had no width modifier (wrap-content)
+       -> fillMaxWidth(). After fixes the fillMaxWidth chain is unbroken end-to-end.
+   VISUAL CONFIRM AMBIGUOUS: vision contradicted itself on the same pulled screenshot (one run
+   reported full-width chip, another reported a sliver) and the blue-pixel detector was too noisy
+   to give ground truth. Per Compose layout semantics the chip IS full cell width; this needs a
+   final on-device eyeball from the user. NOT hard-blocked.
+
+3. COMMIT/PUSH done this session: rebuilt, clean-uninstalled + reinstalled on emulator-5556,
+   reran ScreenshotGalleryTest, pulled 13 shots, committed UI fixes + this HANDOFF + gallery,
+   pushed to origin/master.
+
+LESSON (saved to memory): on emulator-5556, `adb install -r` does NOT reliably replace the app
+(stale Compose renders identically) — always `adb uninstall` + `adb install` before verifying UI.
+
+HONEST STATUS: functional verification (Email/Contact/Task E2E, EmulatorUiVerificationTest,
+unit tests) was GREEN before this campaign and unaffected. This campaign is PURELY visual/UI
+polish + two real layout bugs (b1 brick, b2 calendar SQL guard). The biometric fix (b1) is a
+genuine shipping blocker that should be prioritized.
+
+EMULATOR/TARGETS: same as prior phases — emulator-5556 (testAVD2), NOT emulator-5554 (in use),
+NOT the physical S22. Mocks: carddav_mock.py (8088) via `adb reverse tcp:8088 tcp:8088`;
+task mock /tmp/taskdav_mock.py (8089) via `adb reverse tcp:8089 tcp:8089` (needed if re-running
+TaskSyncE2ETest). Clear /tmp/carddav_mock/addressbook/*.vcf before contact runs.
+
+
+

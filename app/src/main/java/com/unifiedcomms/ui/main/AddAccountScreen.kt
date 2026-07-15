@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,6 +16,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -53,6 +57,7 @@ import com.unifiedcomms.ui.theme.UnifiedCommsTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AddAccountScreen(
     viewModel: MainViewModel,
@@ -97,12 +102,11 @@ fun AddAccountScreen(
                 modifier = Modifier
                     .padding(innerPadding)
                     .padding(16.dp)
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
             ) {
                 Text(text = "Add Account", style = MaterialTheme.typography.headlineSmall)
+                Spacer(modifier = Modifier.height(16.dp))
 
                 Text(text = "Email", style = MaterialTheme.typography.bodyLarge)
                 OutlinedTextField(
@@ -111,9 +115,14 @@ fun AddAccountScreen(
                     label = { Text("Email") },
                     modifier = Modifier.fillMaxWidth()
                 )
+                Spacer(modifier = Modifier.height(16.dp))
 
                 Text(text = "Account type", style = MaterialTheme.typography.bodyLarge)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     AccountType.values().forEach { type ->
                         val selected = selectedType == type
                         androidx.compose.material3.FilterChip(
@@ -123,6 +132,7 @@ fun AddAccountScreen(
                         )
                     }
                 }
+                Spacer(modifier = Modifier.height(16.dp))
 
                 if (selectedType in setOf(
                     AccountType.MAILCOW,
@@ -139,6 +149,7 @@ fun AddAccountScreen(
                         label = { Text("Server URL") },
                         modifier = Modifier.fillMaxWidth()
                     )
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
 
                 Text(text = "Name", style = MaterialTheme.typography.bodyLarge)
@@ -148,6 +159,7 @@ fun AddAccountScreen(
                     label = { Text("Display name") },
                     modifier = Modifier.fillMaxWidth()
                 )
+                Spacer(modifier = Modifier.height(16.dp))
 
                 Text(text = "Password / App Password", style = MaterialTheme.typography.bodyLarge)
                 OutlinedTextField(
@@ -157,7 +169,6 @@ fun AddAccountScreen(
                     modifier = Modifier.fillMaxWidth(),
                     visualTransformation = PasswordVisualTransformation()
                 )
-
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Surface(
@@ -203,6 +214,7 @@ fun AddAccountScreen(
                         }
                     }
                 }
+                Spacer(modifier = Modifier.height(16.dp))
 
                 if (saved) {
                     Text(text = "Account saved.", color = MaterialTheme.colorScheme.primary)
@@ -223,8 +235,6 @@ fun AddAccountScreen(
                         error = null
                         val trimmed = email.trim()
                         val selected = selectedType
-                        // OAuth providers require the web consent flow in AddAccountActivity.
-                        // Building AppPassword locally here would silently break Google/Outlook/etc.
                         val oauthProviders = setOf(
                             AccountType.GOOGLE,
                             AccountType.OUTLOOK,
