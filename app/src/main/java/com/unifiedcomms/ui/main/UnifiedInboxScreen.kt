@@ -102,6 +102,10 @@ fun UnifiedInboxScreen(
                     }
                 },
                 actions = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                     IconButton(onClick = onNavigateToAddAccount) {
                         Icon(Icons.Default.Add, contentDescription = "Add Account")
                     }
@@ -117,6 +121,7 @@ fun UnifiedInboxScreen(
                     }
                     IconButton(onClick = onNavigateToSearch) {
                         Icon(Icons.Default.Search, contentDescription = "Search")
+                    }
                     }
                 },
                 colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
@@ -298,7 +303,7 @@ fun EmailOverviewScreen(
                     }
                     Row(
                         modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         FolderChip("Inbox", inbox.size, color.container, onClick = { onNavigateToEmail(account.id, "INBOX") })
                         FolderChip("Sent", sent.size, color.container, onClick = { onNavigateToEmail(account.id, "Sent") })

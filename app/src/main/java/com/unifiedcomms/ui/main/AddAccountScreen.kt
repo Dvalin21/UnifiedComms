@@ -120,8 +120,8 @@ fun AddAccountScreen(
                 Text(text = "Account type", style = MaterialTheme.typography.bodyLarge)
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     AccountType.values().forEach { type ->
                         val selected = selectedType == type
