@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-16
 Authoritative branch: `master`  (single branch; `fix/add-account-email-sync` was DELETED — never restore it)
-Current HEAD: `b760a18`  (feat(autodiscover): CalDAV/CardDAV RFC6764 SRV + .well-known + overrides)
+Current HEAD: `beb112b`  (fix(biometric): accept WEAK biometric or device credential for lock gate)
 Latest release: **v1.0.1** (versionCode 2) — https://github.com/Dvalin21/UnifiedComms/releases/tag/v1.0.1
 
 > WARNING: This file rots. Before trusting any claim here, run `git log -5` and
@@ -31,7 +31,7 @@ export ANDROID_HOME=/home/keith/Android/Sdk
 - UI proof: `ScreenshotGalleryTest` (com.unifiedcomms) writes uc_01..uc_13 to /sdcard,
   pulls into docs/screenshots/, vision-reviewed. Gallery PASS (2 tests) = minimum gate.
 
-## Status: shipped & verified (git HEAD b760a18)
+## Status: shipped & verified (git HEAD beb112b)
 - **Release v1.0.1** published (signed, v2).
 - **Add Account overhaul + autodiscover wire-through** (verified on emulator-5556):
   - Email-first flow with provider buttons; autodiscover fires on email IME-Done AND
@@ -121,6 +121,20 @@ THEN before committing:
   Probe was a throwaway; removed after run.
 - **Note**: cannot screenshot-verify on the physical V2170A (can't press a finger remotely),
   but the mechanism is device-independent and proven on the identical code path.
+- **ON-DEVICE STATUS (2026-07-16)**: app APK is now INSTALLED and RUNNING on the V2170A
+  (verified: launches to "No accounts yet" + full bottom nav). The biometric fix is in that
+  installed build.
+- **V2170A INSTALL GOTCHA (critical for next session)**: `adb install` AND `adb shell pm install`
+  HANG/abort with `INSTALL_FAILED_ABORTED: User rejected permissions` whenever the KEYGUARD is up.
+  Working flow: (1) unlock screen (swipe up), (2) `adb shell pm install -r -t -i com.android.shell
+  /data/local/tmp/app-debug.apk`, (3) vivo pops a "Security Care" dialog — tap checkbox
+  "I have understood the risk" (~540,1974) then "Continue installing" (~540,2139 on 1080x2310).
+  Keyguard re-locks aggressively on idle, so run the tap sequence promptly in one shell chain.
+- **Store / Play Store request (RESOLVED, no change needed)**: `pm disable-user` on
+  `com.bbk.appstore` / `com.vivo.appfilter` is REJECTED (no root; bootloader locked). Google Play
+  APP (`com.android.vending`) is NOT present but GMS core (gms/gsf/webview) IS preinstalled.
+  Sideloading vending on a non-GMS-certified vivo is unreliable AND was not needed — the install
+  now works via the unlock + Security-Care tap flow above.
 
 ## Honest carry-over (NOT shipped, NOT faked)
 - **Live OAuth round-trip** (real Google/Outlook token refresh) never run against a real
@@ -141,9 +155,13 @@ THEN before committing:
 - DAV E2E tests require the host mock servers reachable via `adb reverse`. Without the
   mock running + both ports forwarded, Contact/Task E2E will fail with "No address book" /
   "No task list" — that is a MISSING TEST HARNESS, not an app bug.
+- V2170A (vivo, Android 15, no root): every sideload install hits a "Security Care" confirm
+  dialog + requires an unlocked keyguard. See biometric section for the exact tap flow. The
+  wedged `com.android.packageinstaller` (high CPU) after a failed install is cleared by
+  `am force-stop com.android.packageinstaller` + reboot.
 
 ## Restart checklist
-1. `git status` + `git log -3` — confirm clean tree, HEAD = b760a18 (or newer).
+1. `git status` + `git log -3` — confirm clean tree, HEAD = beb112b (or newer).
 2. `./gradlew :app:assembleDebug :app:testDebugUnitTest` — must be GREEN.
 3. If resuming DAV write-proof: start both mocks (8088/8089) + `adb reverse` both, then run
    ContactSyncE2ETest + TaskSyncE2ETest. Strip DIAG logs from CalDAVClient.kt first/after.
