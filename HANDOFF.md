@@ -89,7 +89,13 @@ export ANDROID_HOME=/home/keith/Android/Sdk
   |  - Autodiscover real-provider round-trip unverified (no live creds); parser
   |    unit-tested only.
 
-  ## Honnest carry-over (NOT shipped, NOT faked)
+  |- **Autodiscover now WIRE-THROUGH (2026-07-15, VERIFIED)**:
+|  - Backend bug found + fixed: was hitting dead URLs (`autoconfig.thunderbird.net/mail/config-v1.1.xml?emailaddress=` → 404; `domain/.well-known/mail/config-v1.1.xml` → 404). Corrected to the real endpoints: `autoconfig.thunderbird.net/v1.1/<domain>`, `autoconfig.<domain>/mail/config-v1.1.xml`, `domain/.well-known/autoconfig/mail/config-v1.1.xml`.
+|  - `AutodiscoverTest` (live network) PASSED: Gmail → imap.gmail.com:993/smtp.gmail.com:465, Outlook resolves, bogus domain → null.
+|  - Email-first: `AddAccountScreen` fires `runDiscovery()` on (a) email field IME Done and (b) manual provider chip select. On success pre-fills IMAP/SMTP + shows "Server settings found automatically"; on failure auto-reveals Advanced. `AddAccountAutodiscoverUiTest` (Compose UI, live net) PASSED — proves the real UI path.
+|  - `AddAccountScreen` Email field got a `Modifier.testTag` removed (M3 OutlinedTextField has no contentDescription param); uses `hasSetTextAction()` matcher in test instead.
+
+## Honnest carry-over (NOT shipped, NOT faked)
 - **Live OAuth round-trip** (real Google/Outlook token refresh) never run against a real
   provider — verified by compile/install only. Highest remaining confidence gap.
 - **Live CalDAV/CardDAV** only proven against a mock server; not against a real provider
