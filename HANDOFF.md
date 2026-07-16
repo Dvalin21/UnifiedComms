@@ -51,9 +51,45 @@ export ANDROID_HOME=/home/keith/Android/Sdk
 - **Fix-campaign history (Phases 1–16, 2026-07-06 → 07-08)**: email/calendar/task/contact
   sync engines, OAuth refresh, recurrence expansion, background WorkManager sync, manifest
   perm pruning, dead-code deletion. All real fixes, E2E-verified on emulator-5560.
-  Source of truth = `git log`; do NOT reconstruct from this paragraph.
+  |  Source of truth = `git log`; do NOT reconstruct from this paragraph.
+  |
+  |## 2026-07-15 session — Add Account + persistence fixes (VERIFIED)
+  |- **ROOT CAUSE of "dud" reports**: Add Account had NO autodiscover/autoconfig and
+  |  opened to a raw `AccountType` enum chip list (GENERIC_IMAP_SMTP, etc.) — not the
+  |  client buttons (Google/Yahoo) + email-first flow the user asked for. Confirmed by
+  |  screenshot `uc_08_add_account.png` (this session).
+  |- **Silent-sync-failure bug** (the "emails never show / inbox blank" cause):
+  |  `AddAccountScreen.kt` saved then called `viewModel.syncAccount` inside
+  |  `catch (_: Exception) {}` — any IMAP/DAV failure was swallowed, 0 emails
+  |  persisted, no error shown. `AddAccountActivity.kt` token exchange did
+  |  `if (!resp.isSuccessful) return` (silent account-drop on any 4xx/5xx).
+  |  BOTH fixed: errors now surface via Toast + on-screen error text.
+  |- **Fixes applied (verified green this session)**:
+  |  - New `util/Autodiscover.kt`: Thunderbird autoconfig + domain .well-known
+  |    XML parse → ServerConfig. (Feature was ABSENT before — grep-confirmed.)
+  |  - `AddAccountScreen.kt` rewritten: email + password first, clean provider
+  |    buttons (Google/Outlook/Yahoo/iCloud/Mailcow/Exchange/ProtonMail/Fastmail/
+  |    Zoho/GMX/AOL/Generic IMAP/Generic CalDAV/Custom), autodiscover on
+  |    select, auto-expand Advanced on failure, Save surfaces sync errors.
+  |  - `AddAccountActivity.kt`: token/IMAP failures show Toast + `finishWithError()`,
+  |    no silent return. `MainViewModel.syncAccount` now returns `SyncResult`.
+  |- **VERIFIED**:
+  |  - `./gradlew :app:assembleDebug :app:assembleAndroidTest` GREEN.
+  |  - `:app:testDebugUnitTest` GREEN.
+  |  - Emulator-5556 light gallery: Add Account + Calendar(dots) + Tasks(real task)
+  |    screenshots captured + vision-reviewed (tabs render; demo data proves shells work).
+  |  - **`EtherealEmailSyncTest` PASSED** against live IMAP/SMTP (ethereal.email):
+  |    testConnection → sendEmail → syncAccount → Room read-back with total>0.
+  |    Proves the email-persistence pipeline now works end-to-end.
+  |- **NOT fixed this session / still open**:
+  |  - Calendar/Task/Contact instrumented E2E still FAIL on the test server
+  |    ("No task list" / "No address book") — DAV discovery gap on the test
+  |    account, NOT a UI crash. Seeded demo already shows Calendar/Tasks render.
+  |  - Live OAuth round-trip (real Google/Outlook token) still unrun.
+  |  - Autodiscover real-provider round-trip unverified (no live creds); parser
+  |    unit-tested only.
 
-## Honest carry-over (NOT shipped, NOT faked)
+  ## Honnest carry-over (NOT shipped, NOT faked)
 - **Live OAuth round-trip** (real Google/Outlook token refresh) never run against a real
   provider — verified by compile/install only. Highest remaining confidence gap.
 - **Live CalDAV/CardDAV** only proven against a mock server; not against a real provider
