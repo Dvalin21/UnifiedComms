@@ -37,9 +37,13 @@ object Autodiscover {
     suspend fun discover(email: String): Discovered? = withContext(Dispatchers.IO) {
         val domain = email.substringAfter('@').lowercase().trim()
         if (domain.isBlank() || !domain.contains('.')) return@withContext null
-        val encoded = java.net.URLEncoder.encode(email, "UTF-8")
         val urls = listOf(
-            "https://autoconfig.thunderbird.net/mail/config-v1.1.xml?emailaddress=$encoded",
+            // Thunderbird central database (MX/IP-derived), current path-based API.
+            "https://autoconfig.thunderbird.net/v1.1/$domain",
+            // Legacy per-domain autoconfig host.
+            "https://autoconfig.$domain/mail/config-v1.1.xml",
+            // RFC 6186 /.well-known/autoconfig (newer) and Thunderbird's /.well-known/mail.
+            "https://$domain/.well-known/autoconfig/mail/config-v1.1.xml",
             "https://$domain/.well-known/mail/config-v1.1.xml"
         )
         for (url in urls) {

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.imePadding
@@ -45,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -120,6 +122,36 @@ fun AddAccountScreen(
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope: CoroutineScope = rememberCoroutineScope()
 
+    // Shared autodiscover trigger: tries to resolve server settings from the email
+    // address. On success pre-fills IMAP/SMTP; on failure reveals Advanced for manual.
+    fun runDiscovery() {
+        val addr = email.trim()
+        if (!addr.contains("@") || selectedProvider?.oauth == true) return
+        autodiscovered = null
+        autodiscoverFailed = false
+        discovering = true
+        coroutineScope.launch {
+            val d = Autodiscover.discover(addr)
+            discovering = false
+            if (d != null) {
+                autodiscovered = d
+                imapHost = d.imapHost
+                imapPort = d.imapPort
+                imapUseSsl = d.imapSsl
+                smtpHost = d.smtpHost
+                smtpPort = d.smtpPort
+                smtpUseStartTls = d.smtpStartTls
+                caldavUrl = "$addr/dav/"
+                carddavUrl = "$addr/dav/"
+                showAdvanced = false
+            } else {
+                // autodiscover failed -> reveal advanced for manual entry
+                autodiscoverFailed = true
+                showAdvanced = true
+            }
+        }
+    }
+
     UnifiedCommsTheme {
         Scaffold(
             topBar = {
@@ -150,6 +182,12 @@ fun AddAccountScreen(
                         autodiscoverFailed = false
                     },
                     label = { Text("Email") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Email,
+                        imeAction = ImeAction.Done
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { runDiscovery() }),
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(16.dp))
@@ -184,33 +222,8 @@ fun AddAccountScreen(
                                     )
                                     return@FilterChip
                                 }
-                                // manual/IMAP: attempt autodiscover from the email
-                                autodiscovered = null
-                                autodiscoverFailed = false
-                                val addr = email.trim()
-                                if (addr.contains("@")) {
-                                    discovering = true
-                                    coroutineScope.launch {
-                                        val d = Autodiscover.discover(addr)
-                                        discovering = false
-                                        if (d != null) {
-                                            autodiscovered = d
-                                            imapHost = d.imapHost
-                                            imapPort = d.imapPort
-                                            imapUseSsl = d.imapSsl
-                                            smtpHost = d.smtpHost
-                                            smtpPort = d.smtpPort
-                                            smtpUseStartTls = d.smtpStartTls
-                                            showAdvanced = false
-                                        } else {
-                                            // autodiscover failed -> reveal advanced for manual entry
-                                            autodiscoverFailed = true
-                                            showAdvanced = true
-                                        }
-                                    }
-                                } else {
-                                    showAdvanced = true
-                                }
+                                // manual/IMAP: autodiscover from the email (or reveal advanced)
+                                runDiscovery()
                             },
                             label = { androidx.compose.material3.Text(p.label) }
                         )
