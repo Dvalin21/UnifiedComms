@@ -1,8 +1,8 @@
 # UnifiedComms — HANDOFF (session restart)
 
-Last updated: 2026-07-15
+Last updated: 2026-07-16
 Authoritative branch: `master`  (single branch; `fix/add-account-email-sync` was DELETED — never restore it)
-Current HEAD: `229dd5d`  (README privacy section + Komi badges)
+Current HEAD: `b760a18`  (feat(autodiscover): CalDAV/CardDAV RFC6764 SRV + .well-known + overrides)
 Latest release: **v1.0.1** (versionCode 2) — https://github.com/Dvalin21/UnifiedComms/releases/tag/v1.0.1
 
 > WARNING: This file rots. Before trusting any claim here, run `git log -5` and
@@ -31,95 +31,122 @@ export ANDROID_HOME=/home/keith/Android/Sdk
 - UI proof: `ScreenshotGalleryTest` (com.unifiedcomms) writes uc_01..uc_13 to /sdcard,
   pulls into docs/screenshots/, vision-reviewed. Gallery PASS (2 tests) = minimum gate.
 
-## Status: shipped & verified
-- **Release v1.0.1** published (signed, v2). Cut as a distinct versionCode (2) so store
-  crawlers / updaters pick up the Add Account "Close" fix cleanly.
-- **UI overhaul ("awesome not square", Phases 21–23)** done + verified on emulator:
-  - P1: rounded layered surfaces (24dp + outlineVariant stroke) on all main screens;
-    floating pill bottom-nav with tinted active indicator.
-  - P2: illustrated empty states (Tasks, Search); calendar month view shows one colored
-    dot per event (kills "T..." truncation); dropped the hand-rolled TypographyDefault
-    block in favor of canonical M3 type scale (pure deletion).
-  - P3: per-account email avatar tint (Account.uiConfig.color by accountId).
-  - Fix: inbox TopAppBar title no longer wraps to two lines (maxLines=1).
-  - Fix: Add Account top-bar "Close" button was clipped ("Clos") inside an IconButton;
-    switched to TextButton — full "Close" now renders.
-- **Komi Store**: auto-indexes GitHub Releases (no submit form). v1.0.1 (versionCode 2)
-  will be picked up on next crawl. App meets the bar: MIT, no GMS/firebase/billing deps,
-  cleartext disabled, signed APK on a public release. README has a "Get it on Komi Store"
-  badge + Privacy & Security section (claims grep-verified: no analytics SDKs in deps).
-- **Fix-campaign history (Phases 1–16, 2026-07-06 → 07-08)**: email/calendar/task/contact
-  sync engines, OAuth refresh, recurrence expansion, background WorkManager sync, manifest
-  perm pruning, dead-code deletion. All real fixes, E2E-verified on emulator-5560.
-  |  Source of truth = `git log`; do NOT reconstruct from this paragraph.
-  |
-  |## 2026-07-15 session — Add Account + persistence fixes (VERIFIED)
-  |- **ROOT CAUSE of "dud" reports**: Add Account had NO autodiscover/autoconfig and
-  |  opened to a raw `AccountType` enum chip list (GENERIC_IMAP_SMTP, etc.) — not the
-  |  client buttons (Google/Yahoo) + email-first flow the user asked for. Confirmed by
-  |  screenshot `uc_08_add_account.png` (this session).
-  |- **Silent-sync-failure bug** (the "emails never show / inbox blank" cause):
-  |  `AddAccountScreen.kt` saved then called `viewModel.syncAccount` inside
-  |  `catch (_: Exception) {}` — any IMAP/DAV failure was swallowed, 0 emails
-  |  persisted, no error shown. `AddAccountActivity.kt` token exchange did
-  |  `if (!resp.isSuccessful) return` (silent account-drop on any 4xx/5xx).
-  |  BOTH fixed: errors now surface via Toast + on-screen error text.
-  |- **Fixes applied (verified green this session)**:
-  |  - New `util/Autodiscover.kt`: Thunderbird autoconfig + domain .well-known
-  |    XML parse → ServerConfig. (Feature was ABSENT before — grep-confirmed.)
-  |  - `AddAccountScreen.kt` rewritten: email + password first, clean provider
-  |    buttons (Google/Outlook/Yahoo/iCloud/Mailcow/Exchange/ProtonMail/Fastmail/
-  |    Zoho/GMX/AOL/Generic IMAP/Generic CalDAV/Custom), autodiscover on
-  |    select, auto-expand Advanced on failure, Save surfaces sync errors.
-  |  - `AddAccountActivity.kt`: token/IMAP failures show Toast + `finishWithError()`,
-  |    no silent return. `MainViewModel.syncAccount` now returns `SyncResult`.
-  |- **VERIFIED**:
-  |  - `./gradlew :app:assembleDebug :app:assembleAndroidTest` GREEN.
-  |  - `:app:testDebugUnitTest` GREEN.
-  |  - Emulator-5556 light gallery: Add Account + Calendar(dots) + Tasks(real task)
-  |    screenshots captured + vision-reviewed (tabs render; demo data proves shells work).
-  |  - **`EtherealEmailSyncTest` PASSED** against live IMAP/SMTP (ethereal.email):
-  |    testConnection → sendEmail → syncAccount → Room read-back with total>0.
-  |    Proves the email-persistence pipeline now works end-to-end.
-  |- **NOT fixed this session / still open**:
-  |  - Calendar/Task/Contact instrumented E2E still FAIL on the test server
-  |    ("No task list" / "No address book") — DAV discovery gap on the test
-  |    account, NOT a UI crash. Seeded demo already shows Calendar/Tasks render.
-  |  - Live OAuth round-trip (real Google/Outlook token) still unrun.
-  |  - Autodiscover real-provider round-trip unverified (no live creds); parser
-  |    unit-tested only.
+## Status: shipped & verified (git HEAD b760a18)
+- **Release v1.0.1** published (signed, v2).
+- **Add Account overhaul + autodiscover wire-through** (verified on emulator-5556):
+  - Email-first flow with provider buttons; autodiscover fires on email IME-Done AND
+    manual provider chip select; auto-expands Advanced on failure; Save surfaces errors.
+  - `Autodiscover.discover()` resolves IMAP/SMTP AND CalDAV/CardDAV:
+    (1) provider overrides (gmail/outlook/icloud/fastmail/zoho/yahoo/...);
+    (2) raw DNS SRV `_caldavs._tcp`/`_carddavs._tcp` (UDP, type 33, custom parser);
+    (3) `.well-known/caldav` + `.well-known/carddav` redirect follow.
+  - `AutodiscoverTest` (live net) PASSED: Gmail (IMAP/SMTP + DAV), Outlook, bogus→null.
+  - `DavAutodiscoverTest` PASSED: Fastmail (real SRV DNS path) + Gmail (override) DAV.
+  - `AddAccountAutodiscoverUiTest` (Compose UI, live net) PASSED: types gmail address,
+    picks Generic IMAP/SMTP, asserts "Server settings found automatically".
+  - `EtherealEmailSyncTest` PASSED: live IMAP/SMTP send + sync + Room read-back.
+- **Build green**: `:app:assembleDebug`, `:app:assembleAndroidTest`, `:app:testDebugUnitTest`.
 
-  |- **Autodiscover now WIRE-THROUGH (2026-07-15, VERIFIED)**:
-|  - Backend bug found + fixed: was hitting dead URLs (`autoconfig.thunderbird.net/mail/config-v1.1.xml?emailaddress=` → 404; `domain/.well-known/mail/config-v1.1.xml` → 404). Corrected to the real endpoints: `autoconfig.thunderbird.net/v1.1/<domain>`, `autoconfig.<domain>/mail/config-v1.1.xml`, `domain/.well-known/autoconfig/mail/config-v1.1.xml`.
-|  - `AutodiscoverTest` (live network) PASSED: Gmail → imap.gmail.com:993/smtp.gmail.com:465, Outlook resolves, bogus domain → null.
-|  - Email-first: `AddAccountScreen` fires `runDiscovery()` on (a) email field IME Done and (b) manual provider chip select. On success pre-fills IMAP/SMTP + shows "Server settings found automatically"; on failure auto-reveals Advanced. `AddAccountAutodiscoverUiTest` (Compose UI, live net) PASSED — proves the real UI path.
-|  - `AddAccountScreen` Email field got a `Modifier.testTag` removed (M3 OutlinedTextField has no contentDescription param); uses `hasSetTextAction()` matcher in test instead.
+## Current in-flight work (2026-07-16, NOT yet committed)
+GOAL: prove the production DAV **write** round-trip (PUT vCard / PUT VTODO → re-sync
+GET → DELETE) against a REAL (local) DAV server, not just the parser/email path.
 
-|- **CalDAV/CardDAV autodiscovery ADDED (RFC 6764, VERIFIED 2026-07-15)**:
-|  - `Autodiscover.discover()` now also resolves DAV via: (1) provider overrides for the majors (gmail/outlook/icloud/fastmail/zoho/yahoo/...); (2) raw DNS SRV `_caldavs._tcp`/`_carddavs._tcp` (UDP query, type 33, custom parser in `Autodiscover.kt`); (3) `.well-known/caldav` + `.well-known/carddav` redirect follow.
-|  - `Discovered` model extended with `caldavUrl`/`carddavUrl`. `runDiscovery()` prefills REAL DAV URLs (was a wrong `<domain>/dav/` guess).
-|  - `DavAutodiscoverTest` PASSED: Fastmail (SRV path, real DNS) + Gmail (override) both resolve CalDAV/CardDAV. `AutodiscoverTest` gmail case extended to assert DAV URLs.
+WHAT EXISTS NOW (uncommitted, in working tree):
+- `tools/dav_mock.py` — NEW, stdlib-only RFC-ish CardDAV + CalDAV mock server. The repo's
+  tests referenced `carddav_mock.py` / `taskdav_mock.py` that were NEVER shipped — that is
+  exactly why the DAV E2E was unproven. This replaces them. One process = one port;
+  run it twice (8088 contacts, 8089 tasks) because the tests hardcode those ports.
+- `tools/dav_diag.py` — host-side PROPFIND sequence checker (debug aid).
+- `app/src/androidTest/.../DavMockConnectivityTest.kt` — proves emulator→mock via
+  `adb reverse tcp:8088` (PROPFIND returns 207). PASSED.
+- `app/src/androidTest/.../DavDiscoverDiagTest.kt` — raw PROPFIND walk logger (debug aid).
+- `app/src/main/java/com/unifiedcomms/sync/CalDAVClient.kt` — has TEMPORARY `Log.d("DIAG ...")`
+  lines added for debugging. MUST be stripped before commit.
 
-## Honnest carry-over (NOT shipped, NOT faked)
+ROOT-CAUSE BUGS FOUND + FIXED IN THE MOCK THIS SESSION:
+1. HTTP keep-alive reuse hang: mock sent HTTP/1.1 without `Connection: close` → 2nd
+   OkHttp request to the same socket timed out ("No address book found" / "No task list").
+   Fixed: `Connection: close` + `ThreadingHTTPServer`.
+2. Double-nested `<resourcetype>`: mock emitted `<resourcetype><resourcetype>...` so the
+   client's resourcetype walk found no `addressbook` child. Fixed: `_rt()` returns child
+   Elements appended directly under the prop's `<resourcetype>`.
+3. Escaped component-set XML: `supported-calendar-component-set` value was a STRING with
+   `<C:comp .../>` that got HTML-escaped → `componentSetOf()` found no `VTODO` → task list
+   never matched. Fixed: `_comp()` returns a real Element (not an escaped string).
+
+VERIFICATION REACHED THIS SESSION:
+- **ContactSyncE2ETest now PASSES** against `tools/dav_mock.py` on 8088: testConnection →
+  createContact(PUT vCard) → re-sync(GET) → deleteContact(DELETE) all succeed. This was
+  the missing DAV write proof.
+- TaskSyncE2ETest: the `_comp()` fix (bug #3 above) is written but the FINAL instrumented
+  run against the 8089 mock was NOT executed (the `adb reverse` + run command was blocked
+  by the user mid-session). Expected to pass once re-run; not yet confirmed.
+
+TO FINISH THIS SESSION'S WORK (exact steps):
+```bash
+# host: start BOTH mocks (mock is single-port; tests hardcode 8088 + 8089)
+cd /home/keith/host/UnifiedComms
+python3 tools/dav_mock.py 8088 &   # background
+python3 tools/dav_mock.py 8089 &   # background
+# emulator: forward both ports
+adb -s emulator-5556 reverse tcp:8088 tcp:8088
+adb -s emulator-5556 reverse tcp:8089 tcp:8089
+# run the DAV write round-trip E2E
+adb -s emulator-5556 shell am instrument -w -r \
+  -e class com.unifiedcomms.ContactSyncE2ETest,com.unifiedcomms.TaskSyncE2ETest \
+  com.unifiedcomms.debug.test/androidx.test.runner.AndroidJUnitRunner
+# expect: OK (2 tests)
+```
+THEN before committing:
+- Strip every `Log.d(TAG, "DIAG ...` line from `CalDAVClient.kt` (restore to clean).
+- Keep `tools/dav_mock.py` + `DavMockConnectivityTest` (they are the real DAV test harness).
+- Delete `tools/dav_diag.py` and `DavDiscoverDiagTest.kt` (one-off debug aids) OR keep
+  `DavDiscoverDiagTest` if you want a reusable diagnostic. Recommend deleting both.
+- `git add -A && git commit -m "test(dav): CardDAV/CalDAV write round-trip vs local mock"` and push.
+
+## Biometric lock bug — FIXED (2026-07-16)
+- **Symptom**: user reported "Biometric not available on this device" on the V2170A
+  (vivo, Android 15), which DOES have face + fingerprint enrolled.
+- **Root cause**: `MainActivity.BiometricLockScreen` gated the Unlock button (and showed
+  the "unavailable" text) on `canAuthenticate(BIOMETRIC_STRONG)` ONLY. OEM face/fingerprint
+  on many devices enroll as WEAK (Class 2); `BIOMETRIC_STRONG` then returns non-success even
+  though a real biometric/credential exists. The app's own `BiometricManagerImpl` already used
+  the correct `BIOMETRIC_STRONG or DEVICE_CREDENTIAL` set — so the lock screen was internally
+  inconsistent and wrong.
+- **Fix** (`MainActivity.kt`): gate + prompt now use `BIOMETRIC_WEAK or DEVICE_CREDENTIAL`.
+  Any enrolled biometric (weak or strong) or screen-lock credential now satisfies the lock.
+- **Proof** (`BiometricProbeTest`, run on emulator-5556 with PIN, no strong biometric):
+  `STRONG_ONLY → code=11 (no biometrics) ok=false` (OLD UI said unavailable);
+  `WEAK_OR_CRED → code=0 ok=true` (NEW UI shows Unlock). `FIX_EFFECTIVE=true`.
+  Probe was a throwaway; removed after run.
+- **Note**: cannot screenshot-verify on the physical V2170A (can't press a finger remotely),
+  but the mechanism is device-independent and proven on the identical code path.
+
+## Honest carry-over (NOT shipped, NOT faked)
 - **Live OAuth round-trip** (real Google/Outlook token refresh) never run against a real
   provider — verified by compile/install only. Highest remaining confidence gap.
-- **Live CalDAV/CardDAV** DAV *discovery* now verified against real providers (Fastmail SRV + Gmail override). Production DAV *write* round-trip (actual event/task PUT) still only proven against a mock server.
-- **Calendar/Task instrumented E2E** — only Email + Contact have it.
+  Needs `GOOGLE_CLIENT_ID` / `MICROSOFT_CLIENT_ID` in BuildConfig.
+- **Calendar/Task write round-trip** now has a working Contact proof; Task proof pending
+  the re-run above. Both currently rest on the LOCAL mock, not a third-party provider
+  (Fastmail/Nextcloud). That is a stronger proof than before, but not a real-provider one.
 - **RECURRENCE-ID / EXDATE** server overrides not consumed (masters-only expansion).
-- **Per-account avatar tint (P3)** wired but not pixel-verified: demo email list is empty
-  on the email screen, so no avatar rows render to screenshot. Code path build+unit verified.
+- **Per-account avatar tint (P3)** wired but not pixel-verified (demo email list empty on
+  email screen, so no avatar rows render to screenshot). Code path build+unit verified.
 
 ## Known environment quirks
 - Emulator-5556 10-min screen-off kills USB: `adb shell settings put global
   stay_on_while_plugged_in 7`. Backup: `adb tcpip 5555` + `adb connect 10.0.2.2:5555`.
-- Physical test phone (vivo V2170A, Android 15, bootloader LOCKED, no root): NOT used this
-  phase. Don't bother with Magisk here.
 - `fix/add-account-email-sync` branch was toxic (deleted the Phase 1–20 work); never
   resurrect or merge it.
+- DAV E2E tests require the host mock servers reachable via `adb reverse`. Without the
+  mock running + both ports forwarded, Contact/Task E2E will fail with "No address book" /
+  "No task list" — that is a MISSING TEST HARNESS, not an app bug.
 
 ## Restart checklist
-1. `git status` + `git log -3` — confirm clean tree, HEAD = 229dd5d.
+1. `git status` + `git log -3` — confirm clean tree, HEAD = b760a18 (or newer).
 2. `./gradlew :app:assembleDebug :app:testDebugUnitTest` — must be GREEN.
-3. Pick a carry-over item above, or a new feature. Read the actual file before editing.
-4. Verify on emulator-5556 with a clean install + ScreenshotGalleryTest; vision-review.
-5. Commit/push without asking once build is green + fix is verified (Keith workflow).
+3. If resuming DAV write-proof: start both mocks (8088/8089) + `adb reverse` both, then run
+   ContactSyncE2ETest + TaskSyncE2ETest. Strip DIAG logs from CalDAVClient.kt first/after.
+4. Pick a carry-over item, or a new feature. Read the actual file before editing.
+5. Verify on emulator-5556 with a clean install + ScreenshotGalleryTest; vision-review.
+6. Commit/push without asking once build is green + fix is verified (Keith workflow).

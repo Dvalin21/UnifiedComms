@@ -54,12 +54,20 @@ private fun BiometricLockScreen(onUnlocked: () -> Unit) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(statusMessage.ifBlank { "Unlock to access UnifiedComms." })
-                if (activity != null && biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS) {
+                // ponytail: gate on BIOMETRIC_WEAK or DEVICE_CREDENTIAL (not STRONG-only).
+                // A device with a weak biometric (e.g. face unlock) or only a screen lock
+                // was wrongly reporting "unavailable" under a STRONG-only check.
+                if (activity != null && biometricManager.canAuthenticate(
+                        BiometricManager.Authenticators.BIOMETRIC_WEAK or BiometricManager.Authenticators.DEVICE_CREDENTIAL
+                    ) == BiometricManager.BIOMETRIC_SUCCESS) {
                     androidx.compose.material3.Button(onClick = {
                         val promptInfo = BiometricPrompt.PromptInfo.Builder()
                             .setTitle("Unlock UnifiedComms")
                             .setSubtitle("Authenticate to continue")
                             .setNegativeButtonText("Cancel")
+                            .setAllowedAuthenticators(
+                                BiometricManager.Authenticators.BIOMETRIC_WEAK or BiometricManager.Authenticators.DEVICE_CREDENTIAL
+                            )
                             .build()
                         val biometricPrompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
                             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
