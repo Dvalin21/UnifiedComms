@@ -95,11 +95,15 @@ export ANDROID_HOME=/home/keith/Android/Sdk
 |  - Email-first: `AddAccountScreen` fires `runDiscovery()` on (a) email field IME Done and (b) manual provider chip select. On success pre-fills IMAP/SMTP + shows "Server settings found automatically"; on failure auto-reveals Advanced. `AddAccountAutodiscoverUiTest` (Compose UI, live net) PASSED — proves the real UI path.
 |  - `AddAccountScreen` Email field got a `Modifier.testTag` removed (M3 OutlinedTextField has no contentDescription param); uses `hasSetTextAction()` matcher in test instead.
 
+|- **CalDAV/CardDAV autodiscovery ADDED (RFC 6764, VERIFIED 2026-07-15)**:
+|  - `Autodiscover.discover()` now also resolves DAV via: (1) provider overrides for the majors (gmail/outlook/icloud/fastmail/zoho/yahoo/...); (2) raw DNS SRV `_caldavs._tcp`/`_carddavs._tcp` (UDP query, type 33, custom parser in `Autodiscover.kt`); (3) `.well-known/caldav` + `.well-known/carddav` redirect follow.
+|  - `Discovered` model extended with `caldavUrl`/`carddavUrl`. `runDiscovery()` prefills REAL DAV URLs (was a wrong `<domain>/dav/` guess).
+|  - `DavAutodiscoverTest` PASSED: Fastmail (SRV path, real DNS) + Gmail (override) both resolve CalDAV/CardDAV. `AutodiscoverTest` gmail case extended to assert DAV URLs.
+
 ## Honnest carry-over (NOT shipped, NOT faked)
 - **Live OAuth round-trip** (real Google/Outlook token refresh) never run against a real
   provider — verified by compile/install only. Highest remaining confidence gap.
-- **Live CalDAV/CardDAV** only proven against a mock server; not against a real provider
-  (Nextcloud/Fastmail). Production DAV write round-trip unconfirmed.
+- **Live CalDAV/CardDAV** DAV *discovery* now verified against real providers (Fastmail SRV + Gmail override). Production DAV *write* round-trip (actual event/task PUT) still only proven against a mock server.
 - **Calendar/Task instrumented E2E** — only Email + Contact have it.
 - **RECURRENCE-ID / EXDATE** server overrides not consumed (masters-only expansion).
 - **Per-account avatar tint (P3)** wired but not pixel-verified: demo email list is empty

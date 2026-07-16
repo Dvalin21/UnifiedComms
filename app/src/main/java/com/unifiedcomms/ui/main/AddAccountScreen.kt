@@ -141,8 +141,8 @@ fun AddAccountScreen(
                 smtpHost = d.smtpHost
                 smtpPort = d.smtpPort
                 smtpUseStartTls = d.smtpStartTls
-                caldavUrl = "$addr/dav/"
-                carddavUrl = "$addr/dav/"
+                caldavUrl = d.caldavUrl ?: "$addr/dav/"
+                carddavUrl = d.carddavUrl ?: "$addr/dav/"
                 showAdvanced = false
             } else {
                 // autodiscover failed -> reveal advanced for manual entry
