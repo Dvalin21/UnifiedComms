@@ -31,7 +31,7 @@ export ANDROID_HOME=/home/keith/Android/Sdk
 - UI proof: `ScreenshotGalleryTest` (com.unifiedcomms) writes uc_01..uc_13 to /sdcard,
   pulls into docs/screenshots/, vision-reviewed. Gallery PASS (2 tests) = minimum gate.
 
-## Status: shipped & verified (git HEAD beb112b)
+## Status: shipped & verified (git HEAD f08b67c)
 - **Release v1.0.1** published (signed, v2).
 - **Add Account overhaul + autodiscover wire-through** (verified on emulator-5556):
   - Email-first flow with provider buttons; autodiscover fires on email IME-Done AND
@@ -40,6 +40,16 @@ export ANDROID_HOME=/home/keith/Android/Sdk
     (1) provider overrides (gmail/outlook/icloud/fastmail/zoho/yahoo/...);
     (2) raw DNS SRV `_caldavs._tcp`/`_carddavs._tcp` (UDP, type 33, custom parser);
     (3) `.well-known/caldav` + `.well-known/carddav` redirect follow.
+- **UI polish pass (commit f08b67c, emulator-5556 screenshots re-verified):**
+  - Status bar icon contrast fixed: driven from theme via WindowInsetsControllerCompat
+    in MainActivity; removed static windowLightStatusBar=false. Icons visible in both themes.
+  - Top app-bar title 'UnifiedComms' now renders in full (removed redundant top-bar
+    Add Account action that crowded it).
+  - EmailScreen has a 'No emails yet' empty state (was a blank list).
+  - DemoDataSeeder seeds 3 demo emails so Unified Inbox / folder views show real content.
+  - Tasks filter chips use FlowRow (wrap) — 'Overdue' no longer clipped at screen edge.
+  - ScreenshotGalleryTest harness: Add Account reached via Settings (top-bar Add removed);
+    Search captured while app foreground (kills coordinate flakiness). uc_01..uc_13 all verified.
   - `AutodiscoverTest` (live net) PASSED: Gmail (IMAP/SMTP + DAV), Outlook, bogus→null.
   - `DavAutodiscoverTest` PASSED: Fastmail (real SRV DNS path) + Gmail (override) DAV.
   - `AddAccountAutodiscoverUiTest` (Compose UI, live net) PASSED: types gmail address,
