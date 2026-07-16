@@ -1,8 +1,8 @@
 # UnifiedComms — HANDOFF (session restart)
 
-Last updated: 2026-07-16
+Last updated: 2026-07-16 (resumed session)
 Authoritative branch: `master`  (single branch; `fix/add-account-email-sync` was DELETED — never restore it)
-Current HEAD: `beb112b`  (fix(biometric): accept WEAK biometric or device credential for lock gate)
+Current HEAD: `64187b0`  (test(dav): CardDAV/CalDAV write round-trip vs local mock)
 Latest release: **v1.0.1** (versionCode 2) — https://github.com/Dvalin21/UnifiedComms/releases/tag/v1.0.1
 
 > WARNING: This file rots. Before trusting any claim here, run `git log -5` and
@@ -47,62 +47,35 @@ export ANDROID_HOME=/home/keith/Android/Sdk
   - `EtherealEmailSyncTest` PASSED: live IMAP/SMTP send + sync + Room read-back.
 - **Build green**: `:app:assembleDebug`, `:app:assembleAndroidTest`, `:app:testDebugUnitTest`.
 
-## Current in-flight work (2026-07-16, NOT yet committed)
-GOAL: prove the production DAV **write** round-trip (PUT vCard / PUT VTODO → re-sync
-GET → DELETE) against a REAL (local) DAV server, not just the parser/email path.
+## DAV write round-trip — DONE (2026-07-16, resumed session, COMMITTED 64187b0)
+GOAL (achieved): prove the production DAV **write** round-trip (PUT vCard / PUT VTODO →
+re-sync GET → DELETE) against a REAL (local) DAV server, not just the parser/email path.
 
-WHAT EXISTS NOW (uncommitted, in working tree):
-- `tools/dav_mock.py` — NEW, stdlib-only RFC-ish CardDAV + CalDAV mock server. The repo's
-  tests referenced `carddav_mock.py` / `taskdav_mock.py` that were NEVER shipped — that is
-  exactly why the DAV E2E was unproven. This replaces them. One process = one port;
-  run it twice (8088 contacts, 8089 tasks) because the tests hardcode those ports.
-- `tools/dav_diag.py` — host-side PROPFIND sequence checker (debug aid).
+WHAT SHIPPED (commit 64187b0):
+- `tools/dav_mock.py` — stdlib-only RFC-ish CardDAV + CalDAV mock server, single-port
+  (run twice for 8088 contacts / 8089 tasks; tests hardcode those ports).
 - `app/src/androidTest/.../DavMockConnectivityTest.kt` — proves emulator→mock via
-  `adb reverse tcp:8088` (PROPFIND returns 207). PASSED.
-- `app/src/androidTest/.../DavDiscoverDiagTest.kt` — raw PROPFIND walk logger (debug aid).
-- `app/src/main/java/com/unifiedcomms/sync/CalDAVClient.kt` — has TEMPORARY `Log.d("DIAG ...")`
-  lines added for debugging. MUST be stripped before commit.
+  `adb reverse tcp:8088` (PROPFIND returns 207).
+- Debug aids `tools/dav_diag.py` + `DavDiscoverDiagTest.kt` DELETED.
+- `CalDAVClient.kt` confirmed free of `DIAG` logging.
 
-ROOT-CAUSE BUGS FOUND + FIXED IN THE MOCK THIS SESSION:
-1. HTTP keep-alive reuse hang: mock sent HTTP/1.1 without `Connection: close` → 2nd
-   OkHttp request to the same socket timed out ("No address book found" / "No task list").
-   Fixed: `Connection: close` + `ThreadingHTTPServer`.
-2. Double-nested `<resourcetype>`: mock emitted `<resourcetype><resourcetype>...` so the
-   client's resourcetype walk found no `addressbook` child. Fixed: `_rt()` returns child
-   Elements appended directly under the prop's `<resourcetype>`.
-3. Escaped component-set XML: `supported-calendar-component-set` value was a STRING with
-   `<C:comp .../>` that got HTML-escaped → `componentSetOf()` found no `VTODO` → task list
-   never matched. Fixed: `_comp()` returns a real Element (not an escaped string).
+ROOT-CAUSE BUGS FIXED IN THE MOCK (reproved by the passing run):
+1. keep-alive hang → `Connection: close` + `ThreadingHTTPServer`.
+2. double-nested `<resourcetype>` → `_rt()` appends child Elements directly.
+3. escaped `supported-calendar-component-set` → `_comp()` returns a real Element.
 
-VERIFICATION REACHED THIS SESSION:
-- **ContactSyncE2ETest now PASSES** against `tools/dav_mock.py` on 8088: testConnection →
-  createContact(PUT vCard) → re-sync(GET) → deleteContact(DELETE) all succeed. This was
-  the missing DAV write proof.
-- TaskSyncE2ETest: the `_comp()` fix (bug #3 above) is written but the FINAL instrumented
-  run against the 8089 mock was NOT executed (the `adb reverse` + run command was blocked
-  by the user mid-session). Expected to pass once re-run; not yet confirmed.
-
-TO FINISH THIS SESSION'S WORK (exact steps):
-```bash
-# host: start BOTH mocks (mock is single-port; tests hardcode 8088 + 8089)
-cd /home/keith/host/UnifiedComms
-python3 tools/dav_mock.py 8088 &   # background
-python3 tools/dav_mock.py 8089 &   # background
-# emulator: forward both ports
-adb -s emulator-5556 reverse tcp:8088 tcp:8088
-adb -s emulator-5556 reverse tcp:8089 tcp:8089
-# run the DAV write round-trip E2E
-adb -s emulator-5556 shell am instrument -w -r \
-  -e class com.unifiedcomms.ContactSyncE2ETest,com.unifiedcomms.TaskSyncE2ETest \
-  com.unifiedcomms.debug.test/androidx.test.runner.AndroidJUnitRunner
-# expect: OK (2 tests)
+VERIFICATION (run this session on emulator-5556, clean install, both mocks + reverses up):
 ```
-THEN before committing:
-- Strip every `Log.d(TAG, "DIAG ...` line from `CalDAVClient.kt` (restore to clean).
-- Keep `tools/dav_mock.py` + `DavMockConnectivityTest` (they are the real DAV test harness).
-- Delete `tools/dav_diag.py` and `DavDiscoverDiagTest.kt` (one-off debug aids) OR keep
-  `DavDiscoverDiagTest` if you want a reusable diagnostic. Recommend deleting both.
-- `git add -A && git commit -m "test(dav): CardDAV/CalDAV write round-trip vs local mock"` and push.
+am instrument -w -r -e class com.unifiedcomms.ContactSyncE2ETest,com.unifiedcomms.TaskSyncE2ETest \
+  com.unifiedcomms.debug.test/androidx.test.runner.AndroidJUnitRunner
+→ OK (2 tests)   [ContactSyncE2ETest OK, TaskSyncE2ETest OK]
+```
+Contact PUT vCard → GET → DELETE and Task PUT VTODO → GET → DELETE both confirmed through
+the REAL production engine paths. This was the previously-missing DAV write proof.
+
+RE-RUN LATER (repro): host `python3 tools/dav_mock.py 8088 &`, `… 8089 &`; then
+`adb -s emulator-5556 reverse tcp:8088 tcp:8088` + `… tcp:8089 tcp:8089`; install
+debug + androidTest APKs; run the instrument command above.
 
 ## Biometric lock bug — FIXED (2026-07-16)
 - **Symptom**: user reported "Biometric not available on this device" on the V2170A
@@ -139,10 +112,10 @@ THEN before committing:
 ## Honest carry-over (NOT shipped, NOT faked)
 - **Live OAuth round-trip** (real Google/Outlook token refresh) never run against a real
   provider — verified by compile/install only. Highest remaining confidence gap.
-  Needs `GOOGLE_CLIENT_ID` / `MICROSOFT_CLIENT_ID` in BuildConfig.
-- **Calendar/Task write round-trip** now has a working Contact proof; Task proof pending
-  the re-run above. Both currently rest on the LOCAL mock, not a third-party provider
-  (Fastmail/Nextcloud). That is a stronger proof than before, but not a real-provider one.
+  Needs `GOOGLE_CLIENT_ID` / `MICROSOFT_CLIENT_ID` in BuildConfig (Keith must supply).
+- **Calendar/Task write round-trip — PROVEN on local mock** (commit 64187b0): both
+  ContactSyncE2ETest + TaskSyncE2ETest pass PUT/GET/DELETE via the real engine. Still NOT
+  against a real third-party provider (Fastmail/Nextcloud) — mock proof, not provider proof.
 - **RECURRENCE-ID / EXDATE** server overrides not consumed (masters-only expansion).
 - **Per-account avatar tint (P3)** wired but not pixel-verified (demo email list empty on
   email screen, so no avatar rows render to screenshot). Code path build+unit verified.
