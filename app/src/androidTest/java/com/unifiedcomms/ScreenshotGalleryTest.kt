@@ -97,7 +97,11 @@ class ScreenshotGalleryTest {
         unlock("light")
         seedNow()
 
-        shot("01_inbox")                 // default tab, seeded card
+        shot("01_inbox")                 // default tab, seeded card (app guaranteed foreground)
+
+        // Capture Search now, while the app is reliably in the foreground.
+        search(); Thread.sleep(500); shot("09_search")
+        ui.pressBack(); Thread.sleep(500)   // SearchActivity -> inbox
 
         tabEmail(); shot("02_email_overview")
 
@@ -113,11 +117,11 @@ class ScreenshotGalleryTest {
         tabMessages(); shot("06_messages")
 
         settings(); Thread.sleep(600); shot("07_settings")   // settings screen
-        ui.pressBack(); Thread.sleep(500)                    // back to inbox
-        addAccount(); Thread.sleep(400); shot("08_add_account")
-
-        ui.pressBack(); Thread.sleep(500)                    // close add-account -> inbox
-        search(); Thread.sleep(500); shot("09_search")
+        // Add Account is opened from Settings (top-bar Add button was removed to de-crowd
+        // the title bar). Tap the "Add Account" TextButton at the bottom of the Accounts card.
+        tap(221, 786); Thread.sleep(700); shot("08_add_account")
+        ui.pressBack(); Thread.sleep(500)                    // add-account -> settings
+        ui.pressBack(); Thread.sleep(500)                    // settings -> inbox
     }
 
     @Test

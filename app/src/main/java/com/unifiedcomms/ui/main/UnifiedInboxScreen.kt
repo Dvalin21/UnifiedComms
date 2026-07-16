@@ -110,9 +110,6 @@ fun UnifiedInboxScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                    IconButton(onClick = onNavigateToAddAccount) {
-                        Icon(Icons.Default.Add, contentDescription = "Add Account")
-                    }
                     IconButton(onClick = {
                         coroutineScope.launch {
                             viewModel.syncAllAccounts()
