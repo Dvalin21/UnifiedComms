@@ -97,6 +97,33 @@ object DemoDataSeeder {
             )
         )
 
+        // Demo emails so the Unified Inbox / folder views render real content (not blank).
+        val now = kotlinx.datetime.Clock.System.now()
+        val localUser = com.unifiedcomms.data.model.EmailAddress("Demo User", "demo@example.com")
+        fun mail(uid: String, fromName: String, fromEmail: String, subject: String, body: String, folder: String, read: Boolean, minsAgo: Long) =
+            com.unifiedcomms.data.model.Email(
+                accountId = accountId,
+                folder = folder,
+                uid = uid,
+                messageId = "<$uid@unifiedcomms.local>",
+                threadId = uid,
+                sender = com.unifiedcomms.data.model.EmailAddress(fromName, fromEmail),
+                recipients = com.unifiedcomms.data.model.EmailRecipients(to = listOf(localUser)),
+                subject = subject,
+                bodyText = body,
+                preview = body.take(80),
+                sentAt = kotlinx.datetime.Instant.fromEpochMilliseconds(now.toEpochMilliseconds() - minsAgo * 60_000),
+                receivedAt = kotlinx.datetime.Instant.fromEpochMilliseconds(now.toEpochMilliseconds() - minsAgo * 60_000),
+                flags = com.unifiedcomms.data.model.EmailFlags(isRead = read)
+            )
+        db.emailDao().insertAll(
+            listOf(
+                mail("demo-mail-1", "Alice Example", "alice@example.test", "Quarterly roadmap", "Hi! Attached the draft roadmap for next quarter. Can you review the security section before Thursday?", "INBOX", false, 42),
+                mail("demo-mail-2", "Bob Example", "bob@example.test", "Lunch this week?", "Want to grab lunch Wednesday? There's a new place near the office.", "INBOX", false, 18),
+                mail("demo-mail-3", "Demo User", "demo@example.com", "Re: Demo account active", "Thanks — calendar and tasks are showing up correctly on their tabs now.", "Sent", true, 120)
+            )
+        )
+
         val localUserId = com.unifiedcomms.data.model.getCurrentUserId()
         var conversationId = java.util.UUID.randomUUID().toString()
         db.conversationDao().insert(Conversation(id = conversationId, participantIds = listOf(localUserId, a1, a2), participantNames = mapOf(localUserId to "Demo User", a1 to "Alice Example", a2 to "Bob Example"), title = "Demo group"))

@@ -116,6 +116,14 @@ class MainActivity : ComponentActivity() {
                 else -> systemDark
             }
 
+            // Drive system bar icon contrast from the active theme. The base style leaves
+            // statusBarColor transparent and no static light/dark flag, so we set the
+            // appearance here: dark theme -> light icons, light theme -> dark icons.
+            val window = this.window
+            val wic = androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
+            wic.isAppearanceLightStatusBars = !effectiveDark
+            wic.isAppearanceLightNavigationBars = !effectiveDark
+
             UnifiedCommsTheme(darkTheme = effectiveDark) {
             val navController = rememberNavController()
             val viewModel: MainViewModel = viewModel()

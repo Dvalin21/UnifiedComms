@@ -108,6 +108,31 @@ fun EmailScreen(
             }
         }
     ) { innerPadding ->
+        if (messages.isEmpty()) {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(innerPadding).padding(top = 96.dp, bottom = 96.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    Icons.Default.Email,
+                    contentDescription = null,
+                    modifier = Modifier.size(56.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "No emails yet",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Emails for this folder will appear here.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        } else {
         LazyColumn(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
             items(messages) { message ->
                 var localMessage by remember(message.id) { mutableStateOf(message) }
@@ -145,6 +170,7 @@ fun EmailScreen(
                 }
                 HorizontalDivider()
             }
+        }
         }
     }
 }

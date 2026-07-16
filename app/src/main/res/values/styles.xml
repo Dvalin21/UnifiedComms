@@ -15,8 +15,8 @@
         <!-- Status bar color -->
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
-        <item name="android:windowLightStatusBar">false</item>
-        <item name="android:windowLightNavigationBar">false</item>
+        <!-- ponytail: appearance (light/dark icons) is driven dynamically from the
+             active theme in MainActivity via WindowInsetsController, not a static flag. -->
         <!-- Window background -->
         <item name="android:windowBackground">@color/material_dynamic_background40</item>
         <!-- Ripple -->
