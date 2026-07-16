@@ -26,6 +26,7 @@ import com.unifiedcomms.sync.ContactSyncEngineImpl
 import com.unifiedcomms.sync.EmailSyncEngineImpl
 import com.unifiedcomms.sync.SendResult
 import com.unifiedcomms.sync.SyncManager
+import com.unifiedcomms.sync.SyncResult
 import com.unifiedcomms.sync.TaskSyncEngineImpl
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -138,10 +139,13 @@ class MainViewModel(
         _syncProgress.value = 100
     }
 
-    suspend fun syncAccount(account: Account) {
+    suspend fun syncAccount(account: Account): SyncResult {
         _isSyncing.value = true
-        syncManager.performFullSync(account)
-        _isSyncing.value = false
+        return try {
+            syncManager.performFullSync(account)
+        } finally {
+            _isSyncing.value = false
+        }
     }
 
     suspend fun sendMessage(conversationId: String, content: String) {

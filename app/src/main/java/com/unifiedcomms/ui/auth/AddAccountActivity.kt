@@ -171,11 +171,24 @@ class AddAccountActivity : AppCompatActivity() {
                 accountRepo.setDefault(account.id)
 
                 // Trigger immediate full sync for the newly connected account.
-                // Without this, the app shows empty folders and requires manual sync.
-                runCatching {
+                // Surface failure instead of swallowing it (ponytail: no silent lies).
+                try {
                     val app = application as com.unifiedcomms.UnifiedCommsApplication
                     val vm = com.unifiedcomms.ui.main.MainViewModel(app)
-                    vm.syncAccount(account)
+                    val result = vm.syncAccount(account)
+                    if (!result.success) {
+                        val msg = "Account saved, but sync failed: ${result.errorMessage}"
+                        Log.w("AddAccountActivity", msg)
+                        runOnUiThread {
+                            android.widget.Toast.makeText(this@AddAccountActivity, msg, android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    }
+                } catch (e: Exception) {
+                    val msg = "Sync error: ${e.message ?: e::class.simpleName}"
+                    Log.e("AddAccountActivity", msg, e)
+                        runOnUiThread {
+                            android.widget.Toast.makeText(this@AddAccountActivity, msg, android.widget.Toast.LENGTH_LONG).show()
+                        }
                 }
 
                 finishWithResult(account)
@@ -280,7 +293,13 @@ class AddAccountActivity : AppCompatActivity() {
             .build()
         val req = Request.Builder().url(tokenUrl).post(form).build()
         val tokenResp = http.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) return
+            if (!resp.isSuccessful) {
+                val msg = "Token exchange failed (${resp.code}): ${resp.body?.string()?.take(200)}"
+                Log.e("AddAccountActivity", msg)
+                runOnUiThread { android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show() }
+                finishWithError()
+                return
+            }
             json.decodeFromString(TokenResponse.serializer(), resp.body!!.string())
         }
         val userReq = Request.Builder()
@@ -305,7 +324,13 @@ class AddAccountActivity : AppCompatActivity() {
             .build()
         val req = Request.Builder().url(tokenUrl).post(form).build()
         val tokenResp = http.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) return
+            if (!resp.isSuccessful) {
+                val msg = "Token exchange failed (${resp.code}): ${resp.body?.string()?.take(200)}"
+                Log.e("AddAccountActivity", msg)
+                runOnUiThread { android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show() }
+                finishWithError()
+                return
+            }
             json.decodeFromString(TokenResponse.serializer(), resp.body!!.string())
         }
         val userReq = Request.Builder()
@@ -313,7 +338,11 @@ class AddAccountActivity : AppCompatActivity() {
             .addHeader("Authorization", "Bearer ${tokenResp.accessToken}")
             .build()
         val userInfo = http.newCall(userReq).execute().use { resp ->
-            if (!resp.isSuccessful) return
+            if (!resp.isSuccessful) {
+                Log.e("AddAccountActivity", "Outlook userinfo failed (${resp.code})")
+                finishWithError()
+                return
+            }
             json.decodeFromString(MicrosoftUserInfo.serializer(), resp.body!!.string())
         }
         val email = userInfo.mail ?: userInfo.userPrincipalName ?: return
@@ -335,7 +364,13 @@ class AddAccountActivity : AppCompatActivity() {
         val form = formBuilder.build()
         val req = Request.Builder().url(tokenUrl).post(form).build()
         val tokenResp = http.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) return
+            if (!resp.isSuccessful) {
+                val msg = "Token exchange failed (${resp.code}): ${resp.body?.string()?.take(200)}"
+                Log.e("AddAccountActivity", msg)
+                runOnUiThread { android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show() }
+                finishWithError()
+                return
+            }
             json.decodeFromString(TokenResponse.serializer(), resp.body!!.string())
         }
         val userReq = Request.Builder()
@@ -360,13 +395,22 @@ class AddAccountActivity : AppCompatActivity() {
             .build()
         val req = Request.Builder().url(tokenUrl).post(form).build()
         val tokenResp = http.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) return
+            if (!resp.isSuccessful) {
+                val msg = "Token exchange failed (${resp.code}): ${resp.body?.string()?.take(200)}"
+                Log.e("AddAccountActivity", msg)
+                runOnUiThread { android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show() }
+                finishWithError()
+                return
+            }
             json.decodeFromString(TokenResponse.serializer(), resp.body!!.string())
         }
         // ponytail: Apple normally returns id_token; if it is absent we must fail
         // honestly (log + return) rather than silently creating no account.
         val idToken = tokenResp.idToken ?: run {
-            Log.e("AddAccountActivity", "iCloud OAuth: id_token missing from token response; cannot derive email")
+            val msg = "iCloud OAuth: id_token missing; cannot derive email"
+            Log.e("AddAccountActivity", msg)
+            runOnUiThread { android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show() }
+            finishWithError()
             return
         }
         val email = idToken.substringBefore("@") + "@icloud.com"
@@ -403,6 +447,15 @@ class AddAccountActivity : AppCompatActivity() {
         accountRepo.insert(account)
         accountRepo.setDefault(account.id)
         finishWithResult(account)
+    }
+
+    private fun finishWithError() {
+        setResult(Activity.RESULT_CANCELED)
+        pendingIntent?.let { pending ->
+            try { pending.send(this, Activity.RESULT_CANCELED, Intent()) }
+            catch (e: Exception) { Log.e("AddAccountActivity", "Failed to send error result", e) }
+        }
+        finish()
     }
 
     private fun finishWithResult(account: Account) {
