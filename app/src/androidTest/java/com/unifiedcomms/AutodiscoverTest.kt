@@ -22,6 +22,9 @@ class AutodiscoverTest {
         assertNotNull("Gmail autodiscover returned null (no config found)", d)
         assertTrue("Expected imap.gmail.com, got ${d?.imapHost}", d?.imapHost?.contains("gmail.com") == true)
         assertTrue("Expected smtp.gmail.com, got ${d?.smtpHost}", d?.smtpHost?.contains("gmail.com") == true)
+        // DAV autodiscovery (RFC 6764 / provider override) must resolve real CalDAV/CardDAV URLs.
+        assertTrue("Gmail CalDAV URL missing: ${d?.caldavUrl}", d?.caldavUrl?.contains("google") == true)
+        assertTrue("Gmail CardDAV URL missing: ${d?.carddavUrl}", d?.carddavUrl?.contains("google") == true)
     }
 
     @Test
