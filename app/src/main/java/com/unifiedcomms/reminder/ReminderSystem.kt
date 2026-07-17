@@ -183,8 +183,12 @@ class FullScreenReminderActivity : Activity() {
         finish()
     }
 
+    // ponytail: FullScreenReminderActivity is a plain Activity that only reads
+    // event_id/account_id — it never interprets navigate_to, so relaunching it just
+    // re-shows the reminder (a dead View button). Route to MainActivity, which owns
+    // the event_detail route, via the same navigate_to extra the rest of the app uses.
     private fun openEventDetail(event: CalendarEvent) {
-        val intent = Intent(this, FullScreenReminderActivity::class.java).apply {
+        val intent = Intent(this, com.unifiedcomms.ui.main.MainActivity::class.java).apply {
             putExtra("navigate_to", "event_detail/${event.id}")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
