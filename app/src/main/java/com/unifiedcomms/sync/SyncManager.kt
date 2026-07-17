@@ -202,5 +202,53 @@ class SyncManager(
         "contacts" to contactSync.testConnection(account)
     )
 
+    /**
+     * Gate persistence on a PROVEN connection. Refreshes OAuth, then probes
+     * every enabled sync leg over TLS. Returns which legs succeeded. The caller
+     * MUST NOT save the account unless [ProvisionResult.emailOk] is true
+     * (RFC 8314 §5.1: never persist until an authenticated TLS session is
+     * proven; never "save, but sync failed").
+     */
+    suspend fun provision(account: Account): ProvisionResult {
+        val fresh = tokenRefresher.ensureFreshToken(account)
+        val email = if (account.syncConfig.syncEmail) emailSync.testConnection(fresh)
+            else ConnectionTestResult(true, 0, listOf("IMAP"), null)
+        val cal = if (account.syncConfig.syncCalendar) calendarSync.testConnection(fresh)
+            else ConnectionTestResult(true, 0, listOf("CalDAV"), null)
+        val con = if (account.syncConfig.syncContacts) contactSync.testConnection(fresh)
+            else ConnectionTestResult(true, 0, listOf("CardDAV"), null)
+        val task = if (account.syncConfig.syncTasks) taskSync.testConnection(fresh)
+            else ConnectionTestResult(true, 0, listOf("CalDAV VTODO"), null)
+        return ProvisionResult(
+            emailOk = email.success,
+            emailError = email.errorMessage,
+            calendarOk = cal.success,
+            calendarError = cal.errorMessage,
+            contactsOk = con.success,
+            contactsError = con.errorMessage,
+            tasksOk = task.success,
+            tasksError = task.errorMessage
+        )
+    }
+
     class SyncException(message: String) : Exception(message)
+}
+
+/**
+ * Result of a pre-persist connection test. The account is ONLY saved if
+ * [emailOk] is true. Calendar/contacts/tasks are optional: if they fail
+ * they are reported and the caller disables those syncs (per RFC 8314 §5.1 +
+ * the knowledgebase) — but a dead EMAIL connection means nothing is saved at all.
+ */
+data class ProvisionResult(
+    val emailOk: Boolean,
+    val emailError: String? = null,
+    val calendarOk: Boolean = true,
+    val calendarError: String? = null,
+    val contactsOk: Boolean = true,
+    val contactsError: String? = null,
+    val tasksOk: Boolean = true,
+    val tasksError: String? = null
+) {
+    val ok: Boolean get() = emailOk
 }

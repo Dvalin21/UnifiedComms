@@ -148,6 +148,10 @@ class MainViewModel(
         }
     }
 
+    /** Pre-persist gate: prove the connection over TLS before saving. See SyncManager.provision. */
+    suspend fun provisionAccount(account: Account): com.unifiedcomms.sync.ProvisionResult =
+        syncManager.provision(account)
+
     suspend fun sendMessage(conversationId: String, content: String) {
         val currentUserId = com.unifiedcomms.data.model.getCurrentUserId()
         val existing = messagingRepo.getConversationById(conversationId)

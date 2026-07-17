@@ -451,21 +451,50 @@ fun AddAccountScreen(
                             uiConfig = UIConfig.Defaults()
                         )
                         coroutineScope.launch {
-                            // ponytail: surface real sync failure instead of swallowing it.
-                            try {
-                                // addAccount() throws on DB failure; success = no exception.
-                                viewModel.addAccount(account)
+                            // ponytail: prove the connection BEFORE persisting. RFC 8314 §5.1 —
+                            // never save until an authenticated TLS session is verified. If
+                            // email (IMAP) fails to connect, nothing is saved and the
+                            // user sees the exact reason. CalDAV/CardDAV failures are
+                            // reported but the (still-useful) mail account may proceed
+                            // with those syncs disabled.
+                            val draft = account
+                            val provision = viewModel.provisionAccount(draft)
+                            if (!provision.emailOk) {
                                 saving = false
-                                val result = viewModel.syncAccount(account)
-                                if (result.success) {
-                                    saved = true
-                                } else {
-                                    error = "Account saved, but sync failed: ${result.errorMessage}"
-                                }
-                            } catch (e: Exception) {
-                                saving = false
-                                error = "Sync error: ${e.message ?: e::class.simpleName}"
+                                error = "Could not connect: ${provision.emailError ?: "IMAP login failed"}"
+                                return@launch
                             }
+                            // Disable any DAV sync legs that failed to connect (honest,
+                            // not silent — the user is told which failed after save).
+                            val withSync = draft.copy(
+                                syncConfig = draft.syncConfig.copy(
+                                    syncCalendar = draft.syncConfig.syncCalendar && provision.calendarOk,
+                                    syncContacts = draft.syncConfig.syncContacts && provision.contactsOk,
+                                    syncTasks = draft.syncConfig.syncTasks && provision.tasksOk
+                                )
+                            )
+                            runCatching { viewModel.addAccount(withSync) }
+                                .onFailure { e ->
+                                    saving = false
+                                    error = "Could not save account: ${e.message ?: e::class.simpleName}"
+                                    return@launch
+                                }
+                            saving = false
+                            saved = true
+                            val davNotes = buildList<String> {
+                                if (draft.syncConfig.syncCalendar && !provision.calendarOk)
+                                    add("Calendar: ${provision.calendarError ?: "connection failed"}")
+                                if (draft.syncConfig.syncContacts && !provision.contactsOk)
+                                    add("Contacts: ${provision.contactsError ?: "connection failed"}")
+                                if (draft.syncConfig.syncTasks && !provision.tasksOk)
+                                    add("Tasks: ${provision.tasksError ?: "connection failed"}")
+                            }
+                            if (davNotes.isNotEmpty()) {
+                                error = "Saved (email only — DAV disabled):\n" + davNotes.joinToString("\n")
+                            }
+                            // Background sync kicks in via SyncManager observers; trigger an
+                            // immediate sync so the inbox populates without another tap.
+                            viewModel.syncAccount(withSync)
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
