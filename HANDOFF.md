@@ -1,9 +1,9 @@
 # UnifiedComms — HANDOFF (session restart)
 
-Last updated: 2026-07-16 (resumed session)
+Last updated: 2026-07-17 (Linus/Ponytail bug hunt — entire project)
 Authoritative branch: `master`  (single branch; `fix/add-account-email-sync` was DELETED — never restore it)
-Current HEAD: `6ed5f5e`  (fix(calendar): consume RECURRENCE-ID/EXDATE server overrides; case-insensitive TZID)
-Latest release: **v1.0.1** (versionCode 2) — https://github.com/Dvalin21/UnifiedComms/releases/tag/v1.0.1
+Current HEAD: `c33722f`  (docs(screenshots): add release-build smoke screenshot (com.unifiedcomms, v1.0.2))
+Latest release: **v1.0.2** (versionCode 2) — https://github.com/Dvalin21/UnifiedComms/releases/tag/v1.0.2
 
 > WARNING: This file rots. Before trusting any claim here, run `git log -5` and
 > `git status`. Git is the source of truth, not this doc.
@@ -31,8 +31,9 @@ export ANDROID_HOME=/home/keith/Android/Sdk
 - UI proof: `ScreenshotGalleryTest` (com.unifiedcomms) writes uc_01..uc_13 to /sdcard,
   pulls into docs/screenshots/, vision-reviewed. Gallery PASS (2 tests) = minimum gate.
 
-## Status: shipped & verified (git HEAD 6ed5f5e)
-- **Release v1.0.1** published (signed, v2).
+## Status: shipped & verified (git HEAD c33722f)
+- **Release v1.0.2** published (signed, v2) — see "Full-project bug hunt (2026-07-17)" block below.
+- **Release v1.0.1** published (signed, v2) — prior baseline.
 - **Add Account overhaul + autodiscover wire-through** (verified on emulator-5556):
   - Email-first flow with provider buttons; autodiscover fires on email IME-Done AND
     manual provider chip select; auto-expands Advanced on failure; Save surfaces errors.
@@ -201,6 +202,63 @@ debug + androidTest APKs; run the instrument command above.
      prefix (`startsWith("EXDATE")`, `startsWith("RECURRENCE-ID")`) since the keys carry
      `;TZID=` params. Added `resolveZoneId` for DST-correct parsing of exception dates.
 
+## Full-project bug hunt — DONE (2026-07-17)
+Linus/Ponytail style entire-codebase bug hunt + emulator/uiemulator verification + release.
+
+SCOPE COVERED (read the actual files; grep all 75 Kotlin for fake-success/TODO/stub):
+- Security: `CryptoManager` (AES-GCM, key in AndroidKeyStore), `BiometricManager`,
+  `OAuthTokenRefresher`, `Authenticator`, `OAuthCallbackActivity`→`AddAccountActivity`
+  (intent.data read in onCreate — OAuth routing closed).
+- Sync: `SyncManager` lifecycle, `BackgroundSyncWorker`/`BackgroundSyncScheduler`
+  (WorkManager scheduled from `UnifiedCommsApplication.onCreate`), `EmailSyncEngineImpl`,
+  `CalDAVClient` (per-response etag, URI.resolve), `CalendarSyncEngineImpl`,
+  `ContactSyncEngineImpl`, `TaskSyncEngineImpl`.
+- Parsers/serializers: `ICalParser`, `VCardParser`, `VEventSerializer`, `VTaskSerializer`,
+  `VCardSerializer`.
+- Data: `UnifiedCommsDatabase`, `Migrations` (MIGRATION_1_1 is a no-op self-migration — fine),
+  `Converters` (AuthConfig decrypt on every repo insert/update — confirmed).
+- UI: `MainActivity`, `MainViewModel`, `UnifiedInboxScreen`, `EmailScreen`,
+  `AddAccountScreen`, `SettingsScreen`, `CalendarScreen`, `ReminderSystem`.
+- Misc: `Autodiscover` (corrected URL strategy), `RuntimePermissionGate` (line 41 `return true`
+  is the granted branch — correct, NOT a stub), all 9 manifest-declared components resolve.
+
+ONLY ONE REAL BUG FOUND + FIXED:
+- `ReminderSystem.openEventDetail()` relaunched `FullScreenReminderActivity` with a
+  `navigate_to` extra that Activity never reads → the reminder "View" button just re-shows
+  the reminder (dead button / broken window). Re-routed to `MainActivity` (owns the
+  `event_detail` route) via the same `navigate_to` extra. Commit `3069f95`.
+
+NON-REPRODUCING FLAKE (deliberately NOT fixed — no speculative code):
+- `ContactSyncE2ETest` failed once inside a 3-in-1 combined run, then passed 3/3 standalone
+  AND 3/3 on re-running the same 3-in-1 combo. Contact sync logic is correct; it was an
+  environment/timing one-off. Characterized empirically before deciding.
+
+VERIFICATION (all real, on emulator-5556 + uiemulator):
+- Build GREEN: `:app:assembleDebug` + `:app:assembleAndroidTest` + `:app:testDebugUnitTest`
+  (67 unit tests pass).
+- UI emulator: `ScreenshotGalleryTest` (uc_01..uc_13, light+dark) PASS (2 tests). Fresh
+  shots in `docs/screenshots/fresh/`; vision-reviewed — inbox/calendar/tasks/add-account/
+  settings (both themes) render correctly, no crashes/overflow, status-bar icons visible
+  in both themes. (Settings screen scrolls — lower groups are below the fold in a still;
+  dark settings shot confirms the top region is correct.)
+- DAV E2E (Contact/Task/Calendar write round-trips vs `dav_mock.py` 8088/8089): PASS,
+  2x with unique per-run keys.
+- Release APK v1.0.2: built (R8 shrink + lintVital clean), `apksigner verify` → v2=true,
+  v1/v3=false (correct). Installed clean, launched crash-free (vision-confirmed render;
+  shows "No accounts yet" because it's a separate package from the debug-seeded data — expected).
+
+BUILD/RELEASE NOTES (carried forward):
+- Debug and release share the authenticator authority `com.unifiedcomms.authenticator`,
+  so they CANNOT co-install on one device. To UI-verify the release: uninstall debug +
+  test APKs, install release, launch/screencap, then reinstall debug + test APKs. The
+  release APK is a separate installable artifact (not left on the emulator).
+- `ScreenshotGalleryTest` lives in the DEBUG test APK (`com.unifiedcomms.debug.test`,
+  target `com.unifiedcomms.debug`); it cannot run against the release package.
+
+DELIVERED: commits `3069f95` (reminder fix + doc-rot refresh + fresh screenshots) and
+`c33722f` (release smoke shot) pushed to `master`; tag `v1.0.2` pushed to origin.
+Emulator left in working state (debug + test APKs reinstalled, gallery green).
+
 ## Known environment quirks
 - Emulator-5556 10-min screen-off kills USB: `adb shell settings put global
   stay_on_while_plugged_in 7`. Backup: `adb tcpip 5555` + `adb connect 10.0.2.2:5555`.
@@ -215,7 +273,7 @@ debug + androidTest APKs; run the instrument command above.
   `am force-stop com.android.packageinstaller` + reboot.
 
 ## Restart checklist
-1. `git status` + `git log -3` — confirm clean tree, HEAD = 71b2841 (or newer).
+1. `git status` + `git log -3` — confirm clean tree, HEAD = c33722f (or newer).
 2. `./gradlew :app:assembleDebug :app:testDebugUnitTest` — must be GREEN.
 3. If resuming DAV write-proof: start both mocks (8088/8089) + `adb reverse` both, then run
    ContactSyncE2ETest + TaskSyncE2ETest. Strip DIAG logs from CalDAVClient.kt first/after.
