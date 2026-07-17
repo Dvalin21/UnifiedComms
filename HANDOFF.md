@@ -162,6 +162,23 @@ debug + androidTest APKs; run the instrument command above.
   paths are unit-verified and use the SAME `CalDAVClient` plumbing proven for tasks/contacts in
   64187b0, but a real-server calendar write has not been exercised end-to-end. Low risk; flagged
   for the next session if you want full provider-proof.
+
+## Calendar write E2E — DONE (2026-07-16)
+- **`CalendarSyncE2ETest`** added and PASSES on emulator-5556 against `dav_mock.py` (port 8088):
+  `testConnection -> createEvent (PUT) -> syncAccount (download) -> updateEvent (PUT) ->
+  deleteEvent (DELETE)`. Proves the full VEVENT write round-trip through `CalDAVClient`.
+- **REAL BUG FOUND + FIXED by the E2E** (would have shipped as data loss): the down-sync cleanup
+  sweep checked `event.calendarId !in masterServerHrefs` with raw string equality. `discover-
+  Calendars` stores `cal.path` as a FULL URL (`http://host/calendars/default`), but `getETagList`
+  returns the server's hrefs as-is (often RELATIVE, e.g. `/calendars/default/x.ics`). So a full
+  URL never matched a relative href → **every downloaded event was deleted on the next sync**
+  against any server returning relative hrefs (Baikal/Nextcloud do). Fixed by comparing the
+  event's expected server href path-normalized (`pathOf()` strips scheme://host) against a
+  path-normalized `masterServerPaths` set. Correct regardless of relative/absolute href form.
+  This was a latent production data-loss bug, not a mock artifact — surfaced only because the E2E
+  exercises a real down-sync + cleanup cycle.
+- Verification: `CalendarSyncE2ETest OK (1 test)`; Contact/Task E2E still OK; 67 unit tests pass;
+  `assembleDebug` + `assembleAndroidTest` green.
 - **What shipped**: `ICalParser` now parses `EXDATE` (server-side deletions) and
   `RECURRENCE-ID` override VEVENTs (same UID, no RRULE) and folds them into
   `CalendarEvent.recurrenceExceptions`. `RecurrenceExpander.expand()` now drops EXDATE'd

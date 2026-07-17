@@ -56,6 +56,7 @@ class CalendarSyncEngineImpl(
                 val localEventByUid = localEvents.associateBy { it.uid }
 
                 val masterServerHrefs = mutableSetOf<String>()
+                val masterServerPaths = mutableSetOf<String>()
                 var eventsImported = 0
                 val newItems = mutableListOf<String>()
                 val updatedItems = mutableListOf<String>()
@@ -63,6 +64,7 @@ class CalendarSyncEngineImpl(
                 for (cal in allCalendars) {
                     val etagEntries = calDav.getETagList(cal.path)
                     masterServerHrefs.addAll(etagEntries.map { localEt -> localEt.href })
+                    masterServerPaths.addAll(etagEntries.map { localEt -> pathOf(localEt.href) })
                     val toFetch = etagEntries.filter { entry ->
                         val local = localEventByUid[entry.uidFromHref()]
                         local == null || local.etag != entry.etag
@@ -105,9 +107,13 @@ class CalendarSyncEngineImpl(
                 for (event in localEvents) {
                     // ponytail: never delete locally-created events during a server down-sync.
                     if (event.isLocalOnly) continue
-                    // now calendarId is the collection path (cal.path), which matches the
-                    // paths in masterServerHrefs — so a real local event is no longer deleted.
-                    if (event.calendarId.isNotBlank() && event.calendarId !in masterServerHrefs) {
+                    // Compare by the event's expected server href (path-normalized), NOT by raw
+                    // calendarId string. The server may return relative hrefs while cal.path is a
+                    // full URL (or vice-versa); a raw string compare deleted every downloaded
+                    // event on the next sync. Path-normalizing both sides makes the membership
+                    // check correct regardless of URL form.
+                    val expectedHref = pathOf(VEventSerializer.hrefFor(event))
+                    if (expectedHref.isNotBlank() && masterServerPaths.none { pathOf(it) == expectedHref }) {
                         calendarRepo.deleteEvent(event)
                     }
                 }
@@ -221,6 +227,13 @@ class CalendarSyncEngineImpl(
     // ponytail: the VEVENT UID is the .ics filename stem in the collection href.
     private fun CalDAVClient.ETagEntry.uidFromHref(): String =
         href.substringAfterLast('/').substringBefore('.')
+
+    // ponytail: normalize a DAV href to its URL path, stripping scheme://host so relative
+    // (/calendars/x.ics) and absolute (http://host/calendars/x.ics) hrefs compare equal.
+    private fun pathOf(href: String): String {
+        if (href.isBlank()) return ""
+        return runCatching { java.net.URI(href).path }.getOrDefault(href.substringAfterLast('/').let { if (it.contains('.')) "/$it" else it })
+    }
 
     override fun observeSyncProgress(accountId: String): kotlinx.coroutines.flow.Flow<SyncProgress> {
         return allProgress().map { list -> list.firstOrNull { it.accountId == accountId } ?: SyncProgress(accountId, null, SyncStage.COMPLETED, 0, 0) }
