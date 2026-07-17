@@ -3,9 +3,11 @@ package com.unifiedcomms.sync
 import android.util.Log
 import com.unifiedcomms.data.model.CalendarEvent
 import com.unifiedcomms.data.model.EventColor
+import com.unifiedcomms.data.model.RecurrenceException
 import com.unifiedcomms.data.model.Task
 import com.unifiedcomms.data.model.TaskPriority
 import com.unifiedcomms.data.model.TaskStatus
+import kotlinx.datetime.Instant
 import java.time.*
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
@@ -16,33 +18,81 @@ object ICalParser {
     data class ParseResult(val events: List<CalendarEvent>, val tasks: List<Task>)
 
     fun parse(ical: String, accountId: String, calendarPath: String, etag: String): ParseResult {
-        val events = mutableListOf<CalendarEvent>()
         val tasks = mutableListOf<Task>()
         val lines = unfoldLines(ical)
+        val veventBlocks = mutableListOf<List<String>>()
+        val vtodoBlocks = mutableListOf<List<String>>()
         var i = 0
         while (i < lines.size) {
             val line = lines[i].trim()
             when {
                 line.equals("BEGIN:VEVENT", true) -> {
                     val (component, next) = extractComponent(lines, i, "VEVENT")
-                    val parsed = parseVEvent(component, accountId, calendarPath, etag)
-                    if (parsed != null) events.add(parsed)
-                    else {
-                        val uid = component.firstOrNull { it.trim().uppercase().startsWith("UID:") }?.substringAfter(":") ?: "unknown"
-                        Log.w(TAG, "VEVENT parse failed; uid=$uid calendarPath=$calendarPath accountId=$accountId")
-                    }
+                    veventBlocks.add(component)
                     i = next
                 }
                 line.equals("BEGIN:VTODO", true) -> {
                     val (component, next) = extractComponent(lines, i, "VTODO")
-                    val parsed = parseVTodo(component, accountId, calendarPath, etag)
-                    if (parsed != null) tasks.add(parsed)
+                    vtodoBlocks.add(component)
                     i = next
                 }
                 else -> i++
             }
         }
+        vtodoBlocks.mapNotNull { parseVTodo(it, accountId, calendarPath, etag) }.toCollection(tasks)
+        // ponytail: group sibling VEVENTs by UID so a RECURRENCE-ID override (same UID,
+        // no RRULE) is attached to its master as a RecurrenceException instead of being
+        // emitted as a phantom standalone event. EXDATEs are folded into the master too.
+        val events = mergeVEvents(veventBlocks, accountId, calendarPath, etag)
         return ParseResult(events, tasks)
+    }
+
+    private fun mergeVEvents(
+        blocks: List<List<String>>,
+        accountId: String,
+        calendarPath: String,
+        etag: String
+    ): List<CalendarEvent> {
+        val parsed = blocks.mapNotNull { parseVEventWithRecurrenceId(it, accountId, calendarPath, etag) }
+        val byUid = parsed.groupBy { it.event.uid }
+        val out = mutableListOf<CalendarEvent>()
+        for ((_, group) in byUid) {
+            val master = group.firstOrNull { it.event.isMaster() } ?: group.first()
+            val overrides = group.filter { it !== master }
+            if (overrides.isEmpty()) {
+                out.add(master.event)
+                continue
+            }
+            val exceptions = master.event.recurrenceExceptions.toMutableList()
+            for (o in overrides) {
+                val rid = o.recurrenceId ?: continue
+                exceptions.add(
+                    RecurrenceException(
+                        originalDate = rid,
+                        exceptionEvent = o.event,
+                        isDeleted = o.event.status == com.unifiedcomms.data.model.EventStatus.CANCELLED
+                    )
+                )
+            }
+            out.add(master.event.copy(recurrenceExceptions = exceptions))
+        }
+        return out
+    }
+
+    private data class ParsedVEvent(val event: CalendarEvent, val recurrenceId: Instant?)
+
+    private fun parseVEventWithRecurrenceId(
+        lines: List<String>,
+        accountId: String,
+        calendarPath: String,
+        etag: String
+    ): ParsedVEvent? {
+        val event = parseVEvent(lines, accountId, calendarPath, etag) ?: return null
+        val map = parseProperties(lines)
+        // ponytail: RECURRENCE-ID carries params (TZID); look it up by prefix, not exact key.
+        val ridEntry = map.entries.firstOrNull { it.key.startsWith("RECURRENCE-ID") }
+        val rid = ridEntry?.let { parseRecurrenceId(it.value, map) }
+        return ParsedVEvent(event, rid)
     }
 
     private fun parseVEvent(lines: List<String>, accountId: String, calendarPath: String, etag: String): CalendarEvent? {
@@ -64,6 +114,9 @@ object ICalParser {
             }
             val colorHex = map["X-APPLE-COLOR"] ?: map["COLOR"] ?: map["X-MICROSOFT-CALENDAR-CALCOLOR"] ?: ""
             val organizerEmail = extractEmail(map.entries.firstOrNull { it.key.startsWith("ORGANIZER") }?.value)
+            // ponytail: EXDATE lines delete specific occurrences (server-side cancellation /
+            // reschedule). Merge them into recurrenceExceptions as deleted overrides.
+            val exdates = extractExdates(lines)
 
             CalendarEvent(
                 accountId = accountId,
@@ -74,16 +127,17 @@ object ICalParser {
                 location = map["LOCATION"] ?: "",
                 startAt = com.unifiedcomms.data.model.EventDateTime.fromInstant(
                     kotlinx.datetime.Instant.fromEpochMilliseconds(startMs),
-                    startTzId?.let { kotlinx.datetime.TimeZone.of(it) } ?: kotlinx.datetime.TimeZone.currentSystemDefault(),
+                    startTzId?.let { com.unifiedcomms.data.model.TimeZoneUtil.toKtxZone(it) } ?: kotlinx.datetime.TimeZone.currentSystemDefault(),
                     allDay
                 ),
                 endAt = com.unifiedcomms.data.model.EventDateTime.fromInstant(
                     kotlinx.datetime.Instant.fromEpochMilliseconds(endMs),
-                    startTzId?.let { kotlinx.datetime.TimeZone.of(it) } ?: kotlinx.datetime.TimeZone.currentSystemDefault(),
+                    startTzId?.let { com.unifiedcomms.data.model.TimeZoneUtil.toKtxZone(it) } ?: kotlinx.datetime.TimeZone.currentSystemDefault(),
                     allDay
                 ),
-                timezone = startTzId ?: ZoneId.systemDefault().id,
+                timezone = startTzId?.let { com.unifiedcomms.data.model.TimeZoneUtil.normalize(it) } ?: ZoneId.systemDefault().id,
                 recurrenceRule = map["RRULE"]?.let { com.unifiedcomms.data.model.RecurrenceRule.parse(it) },
+                recurrenceExceptions = exdates,
                 color = if (colorHex.isNotBlank()) EventColor(colorHex, if (isLightColor(colorHex)) "#000000" else "#FFFFFF") else EventColor.Default(),
                 organizer = organizerEmail?.let { com.unifiedcomms.data.model.EventAttendee(email = it) },
                 etag = etag,
@@ -137,7 +191,11 @@ object ICalParser {
         for (line in lines) {
             val idx = line.indexOf(':')
             if (idx <= 0) continue
-            val key = line.substring(0, idx).trim().uppercase()
+            // ponytail: uppercase only the property name (up to ';'), NOT the params
+            // (e.g. TZID). Uppercasing the whole key broke RECURRENCE-ID;TZID=... lookups.
+            val rawKey = line.substring(0, idx).trim()
+            val semi = rawKey.indexOf(';')
+            val key = if (semi >= 0) rawKey.substring(0, semi).uppercase() + rawKey.substring(semi) else rawKey.uppercase()
             val value = line.substring(idx + 1)
             if (key == "UID" || !map.containsKey(key)) map[key] = value
         }
@@ -146,7 +204,7 @@ object ICalParser {
 
     private fun parseDateTime(key: String, value: String, tzId: String? = null): Long {
         val clean = value.trim()
-        val zone = tzId?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault()
+        val zone = resolveZoneId(tzId) ?: ZoneId.systemDefault()
         return when {
             clean.endsWith("Z") -> LocalDateTime.parse(clean.replace("Z", ""), DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss"))
                 .atZone(ZoneOffset.UTC).toInstant().toEpochMilli()
@@ -163,6 +221,23 @@ object ICalParser {
         val idx = key.indexOf("TZID=", ignoreCase = true)
         if (idx < 0) return null
         return key.substring(idx + 5).substringBefore(':').trim().takeIf { it.isNotBlank() }
+    }
+
+    // ponytail: Java ZoneId.of() is case-sensitive, but servers frequently emit TZIDs in
+    // non-canonical case (e.g. "AMERICA/NEW_YORK"). A direct ZoneId.of() miss silently falls
+    // back to systemDefault() and corrupts every timestamp in that zone — so resolve
+    // case-insensitively against the available zone ids, memoized.
+    private val zoneIdCache = mutableMapOf<String, ZoneId?>()
+    private fun resolveZoneId(raw: String?): ZoneId? {
+        if (raw.isNullOrBlank()) return null
+        zoneIdCache[raw]?.let { return it }
+        val direct = runCatching { ZoneId.of(raw) }.getOrNull()
+        if (direct != null) { zoneIdCache[raw] = direct; return direct }
+        val lower = raw.lowercase()
+        val matched = ZoneId.getAvailableZoneIds().firstOrNull { it.lowercase() == lower }
+        val resolved = matched?.let { runCatching { ZoneId.of(it) }.getOrNull() }
+        zoneIdCache[raw] = resolved
+        return resolved
     }
 
     private fun extractEmail(value: String?): String? {
@@ -190,6 +265,35 @@ object ICalParser {
             i++
         }
         return out to i
+    }
+
+    // EXDATE may repeat (one line per source) and each value may list comma-separated
+    // datetimes. The TZID param (if present on the line) applies to all values on it.
+    // RFC: an EXDATE marks a generated occurrence as cancelled — surfaced as a deleted
+    // RecurrenceException so the expander can drop the generated instance.
+    private fun extractExdates(lines: List<String>): List<RecurrenceException> {
+        val out = mutableListOf<RecurrenceException>()
+        for (line in lines) {
+            val idx = line.indexOf(':')
+            if (idx <= 0) continue
+            val key = line.substring(0, idx).trim().uppercase()
+            if (!key.startsWith("EXDATE")) continue
+            val tzId = tzIdFromKey(key)
+            for (tok in line.substring(idx + 1).split(',')) {
+                val ms = runCatching { parseDateTime(key, tok.trim(), tzId) }.getOrNull() ?: continue
+                out.add(RecurrenceException(originalDate = Instant.fromEpochMilliseconds(ms), isDeleted = true))
+            }
+        }
+        return out
+    }
+
+    // RECURRENCE-ID:19980101T120000Z  or  RECURRENCE-ID;TZID=America/New_York:19980101T120000
+    // The TZID (if any) is needed to resolve the instant correctly — recover it from the prop key.
+    private fun parseRecurrenceId(value: String, map: Map<String, String>): Instant? {
+        val key = map.entries.firstOrNull { it.key.startsWith("RECURRENCE-ID") }?.key ?: "RECURRENCE-ID:$value"
+        val tzId = tzIdFromKey(key)
+        val ms = runCatching { parseDateTime(key, value.trim(), tzId) }.getOrNull() ?: return null
+        return Instant.fromEpochMilliseconds(ms)
     }
 
     private fun unfoldLines(text: String): List<String> {
