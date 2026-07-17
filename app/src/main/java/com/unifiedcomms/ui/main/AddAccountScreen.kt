@@ -6,11 +6,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -49,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.unifiedcomms.data.model.Account
@@ -225,7 +228,12 @@ fun AddAccountScreen(
                                 // manual/IMAP: autodiscover from the email (or reveal advanced)
                                 runDiscovery()
                             },
-                            label = { androidx.compose.material3.Text(p.label) }
+                            modifier = Modifier.defaultMinSize(minWidth = 112.dp),
+                            label = {
+                                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                    androidx.compose.material3.Text(p.label, textAlign = TextAlign.Center)
+                                }
+                            }
                         )
                     }
                 }
@@ -243,8 +251,9 @@ fun AddAccountScreen(
                     ) {
                         Text(
                             text = "Server settings found automatically.",
-                            modifier = Modifier.padding(16.dp),
-                            fontWeight = FontWeight.Bold
+                            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
                         )
                     }
                     Spacer(modifier = Modifier.height(16.dp))

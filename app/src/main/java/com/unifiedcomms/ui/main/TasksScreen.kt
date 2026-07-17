@@ -55,6 +55,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -118,7 +119,11 @@ fun TasksScreen(
                         FilterChip(
                             onClick = { filter = f },
                             selected = filter == f,
-                            label = { Text(f.label) }
+                            label = {
+                                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                    Text(f.label, textAlign = TextAlign.Center)
+                                }
+                            }
                         )
                     }
                 }
