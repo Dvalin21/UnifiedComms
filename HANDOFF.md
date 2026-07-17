@@ -129,9 +129,32 @@ debug + androidTest APKs; run the instrument command above.
 - **Calendar/Task write round-trip — PROVEN on local mock** (commit 64187b0): both
   ContactSyncE2ETest + TaskSyncE2ETest pass PUT/GET/DELETE via the real engine. Still NOT
   against a real third-party provider (Fastmail/Nextcloud) — mock proof, not provider proof.
-- **RECURRENCE-ID / EXDATE** server overrides not consumed (masters-only expansion).
 - **Per-account avatar tint (P3)** wired but not pixel-verified (demo email list empty on
   email screen, so no avatar rows render to screenshot). Code path build+unit verified.
+- **Calendar recurrence exceptions — DONE (2026-07-16, this session)**. See block below.
+
+## Calendar recurrence exceptions — DONE (2026-07-16)
+- **What shipped**: `ICalParser` now parses `EXDATE` (server-side deletions) and
+  `RECURRENCE-ID` override VEVENTs (same UID, no RRULE) and folds them into
+  `CalendarEvent.recurrenceExceptions`. `RecurrenceExpander.expand()` now drops EXDATE'd
+  occurrences and re-emits moved/cancelled overrides from their override event instead of
+  the generated master slot. New tests: `ICalParserRecurrenceExceptionTest` (parse EXDATE,
+  parse RECURRENCE-ID move, parse cancelled override) + 2 `RecurrenceExpanderTest` cases
+  (EXDATE suppression, RECURRENCE-ID replacement). All 63 unit tests pass; assembleDebug +
+  assembleAndroidTest green.
+- **Root-cause bugs found and fixed (these were the REAL blockers, not just #3):**
+  1. **Case-sensitive TZID crash.** `parseProperties` uppercased the ENTIRE iCal key
+     including params (`RECURRENCE-ID;TZID=AMERICA/NEW_YORK`), so `RECURRENCE-ID` lookups
+     missed. Worse, both `ZoneId.of()`/`TimeZone.of()` and the event construction passed the
+     raw (often non-canonical-case) TZID straight to `kotlinx.datetime.TimeZone.of()`, which
+     THROWS `IllegalTimeZoneException` on anything but canonical IANA case — silently dropping
+     the WHOLE VEVENT (any event with a `TZID` param, not just recurring ones). Fixed by
+     (a) uppercasing only the property name in `parseProperties`, and (b) new `TimeZoneUtil`
+     (`data/model/TimeZoneUtil.kt`) that resolves TZIDs case-insensitively and NEVER throws.
+     **This was a latent data-loss bug affecting every DAV calendar event with a TZID.**
+  2. **EXDATE/RECURRENCE-ID exact-key lookup.** `extractExdates` + the rid lookup now scan by
+     prefix (`startsWith("EXDATE")`, `startsWith("RECURRENCE-ID")`) since the keys carry
+     `;TZID=` params. Added `resolveZoneId` for DST-correct parsing of exception dates.
 
 ## Known environment quirks
 - Emulator-5556 10-min screen-off kills USB: `adb shell settings put global
@@ -147,7 +170,7 @@ debug + androidTest APKs; run the instrument command above.
   `am force-stop com.android.packageinstaller` + reboot.
 
 ## Restart checklist
-1. `git status` + `git log -3` — confirm clean tree, HEAD = beb112b (or newer).
+1. `git status` + `git log -3` — confirm clean tree, HEAD = c72b538 (or newer).
 2. `./gradlew :app:assembleDebug :app:testDebugUnitTest` — must be GREEN.
 3. If resuming DAV write-proof: start both mocks (8088/8089) + `adb reverse` both, then run
    ContactSyncE2ETest + TaskSyncE2ETest. Strip DIAG logs from CalDAVClient.kt first/after.

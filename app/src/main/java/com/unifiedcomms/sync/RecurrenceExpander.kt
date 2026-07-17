@@ -56,6 +56,10 @@ object RecurrenceExpander {
 
         val seq = occurrenceSequence(base, rule)
 
+        // Index exception overrides by their original occurrence instant (ms) for O(1) lookup.
+        // EXDATE (deleted) and RECURRENCE-ID (moved/cancelled) instances both live here.
+        val exceptionsByDate = master.recurrenceExceptions.associateBy { it.originalDate.toEpochMilliseconds() }
+
         val out = mutableListOf<CalendarEvent>()
         var index = 0L
         for (occ in seq) {
@@ -63,12 +67,30 @@ object RecurrenceExpander {
             val ms = occ.toInstant().toEpochMilli()
             if (untilMs != null && ms > untilMs) break
             if (ms > horizon) break
+            val ex = exceptionsByDate[ms]
+            if (ex != null) {
+                // Any exception (EXDATE delete, or RECURRENCE-ID move/cancel) means this
+                // generated occurrence is replaced/removed — never emit the original slot.
+                // Moved overrides are re-emitted from their override event in the post-loop.
+                index++
+                if (rule.count != null && index >= rule.count) break
+                continue
+            }
             if (ms in windowStart..windowEnd) {
                 out += if (ms == startMs) master
                 else instanceFor(master, occ, durationMs, zone, allDay, index)
             }
             index++
             if (rule.count != null && index >= rule.count) break
+        }
+
+        // ponytail: emit non-deleted RECURRENCE-ID overrides as their own rows so a moved
+        // instance shows its new time. Their original occurrence was suppressed above.
+        for (ex in master.recurrenceExceptions) {
+            val ev = ex.exceptionEvent ?: continue
+            if (ex.isDeleted || ev.status == com.unifiedcomms.data.model.EventStatus.CANCELLED) continue
+            val evMs = ev.startAt.toInstant().toEpochMilliseconds()
+            if (evMs in windowStart..windowEnd) out.add(ev)
         }
         return out
     }
