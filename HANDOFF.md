@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-16 (resumed session)
 Authoritative branch: `master`  (single branch; `fix/add-account-email-sync` was DELETED — never restore it)
-Current HEAD: `64187b0`  (test(dav): CardDAV/CalDAV write round-trip vs local mock)
+Current HEAD: `57aefd3`  (fix(calendar): consume RECURRENCE-ID/EXDATE server overrides; case-insensitive TZID)
 Latest release: **v1.0.1** (versionCode 2) — https://github.com/Dvalin21/UnifiedComms/releases/tag/v1.0.1
 
 > WARNING: This file rots. Before trusting any claim here, run `git log -5` and
@@ -31,7 +31,7 @@ export ANDROID_HOME=/home/keith/Android/Sdk
 - UI proof: `ScreenshotGalleryTest` (com.unifiedcomms) writes uc_01..uc_13 to /sdcard,
   pulls into docs/screenshots/, vision-reviewed. Gallery PASS (2 tests) = minimum gate.
 
-## Status: shipped & verified (git HEAD f08b67c)
+## Status: shipped & verified (git HEAD 57aefd3)
 - **Release v1.0.1** published (signed, v2).
 - **Add Account overhaul + autodiscover wire-through** (verified on emulator-5556):
   - Email-first flow with provider buttons; autodiscover fires on email IME-Done AND
