@@ -6,6 +6,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.MediaType.Companion.toMediaType
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 import java.io.StringReader
@@ -22,12 +25,17 @@ import kotlin.experimental.and
  * Email:
  *  1. Thunderbird central autoconfig (path-based v1.1 API)
  *  2. Per-domain autoconfig host (autoconfig.<domain>/mail/config-v1.1.xml)
- *  3. RFC 6186 /.well-known/autoconfig/mail/config-v1.1.xml
+ *     + RFC 6764 well-known autoconfig path
+ *  3. RFC 6186 SRV records (_imaps / _submissions / _submission / _imap) —
+ *     this is what actually resolves imap.<domain> / smtp.<domain> for
+ *     providers that publish SRV (e.g. houseofmanns.com) instead of the
+ *     Thunderbird XML. Never assume mail.<domain>.
  *
- * Calendar/Contacts (RFC 6764):
- *  1. SRV _caldavs._tcp / _carddavs._tcp (SSL) -> host:port:path
- *  2. .well-known/caldav + .well-known/carddav (redirect Location)
- *  3. Known-provider overrides for the majors that don't publish SRV correctly.
+ * Calendar/Contacts (RFC 6764 + RFC 5397):
+ *  1. Known-provider overrides for the majors that don't publish SRV correctly.
+ *  2. SRV _caldavs/_carddavs (SSL) + _caldav/_carddav, then .well-known.
+ *  3. Principal discovery: PROPFIND current-user-principal -> home-set, so we
+ *     return a URL that actually hosts collections (NOT a guess like $domain/dav/).
  *
  * ponytail: no MS Exchange POX autodiscover POST, no NAPTR. Minimal + real.
  */
@@ -38,6 +46,7 @@ object Autodiscover {
         .readTimeout(10, TimeUnit.SECONDS)
         .followRedirects(false)
         .build()
+    private val XML_MT = "application/xml; charset=utf-8".toMediaType()
 
     data class Discovered(
         val imapHost: String,
@@ -55,7 +64,6 @@ object Autodiscover {
         if (domain.isBlank() || !domain.contains('.')) return@withContext null
         val emailCfg = discoverEmail(domain)
         val dav = discoverDav(domain)
-        // If email autoconfig failed entirely but DAV resolved, still return DAV-only.
         if (emailCfg == null && dav == null) return@withContext null
         val e = emailCfg
         Discovered(
@@ -70,7 +78,7 @@ object Autodiscover {
         ).takeIf { it.imapHost.isNotBlank() || it.caldavUrl != null || it.carddavUrl != null }
     }
 
-    // ---- EMAIL (unchanged strategy, corrected URLs) ----
+    // ---- EMAIL: Thunderbird autoconfig (XML) + RFC 6186 SRV fallback ----
 
     private fun discoverEmail(domain: String): Discovered? {
         val urls = listOf(
@@ -93,7 +101,61 @@ object Autodiscover {
                 Log.d(TAG, "autoconfig miss at $url: ${e.message}")
             }
         }
+        // RFC 6186 fallback: SRV records. Never assume mail.<domain> — probe
+        // the published SRV targets (imaps/submissions/submission/imap) which is
+        // exactly how a real provider (e.g. houseofmanns.com) advertises
+        // imap.houseofmanns.com / smtp.houseofmanns.com.
+        srvEmailLookup(domain)?.let { return it }
         return null
+    }
+
+    /**
+     * RFC 6186 SRV-based email discovery. Tries the secure SRV labels first,
+     * then the STARTTLS/legacy ones, honouring the user's mandate: 993/465
+     * implicit TLS by default, 587 STARTTLS acceptable, 143 ONLY as a last
+     * resort (opt-in by nature of being last in the priority order).
+     */
+    private fun srvEmailLookup(domain: String): Discovered? {
+        data class Cand(val label: String, val ssl: Boolean, val port: Int, val startTls: Boolean)
+        val candidates = listOf(
+            Cand("_imaps._tcp.$domain", true, 993, false),
+            Cand("_submissions._tcp.$domain", true, 465, false),
+            Cand("_submission._tcp.$domain", false, 587, true),
+            Cand("_imap._tcp.$domain", false, 143, true)
+        )
+        var imap: Pair<String, Pair<Int, Boolean>>? = null   // host -> (port, ssl)
+        var smtp: Pair<String, Pair<Int, Boolean>>? = null
+        for (c in candidates) {
+            val target = srvLookupHost(c.label) ?: continue
+            if (c.label.startsWith("_imap") && imap == null) imap = target to (c.port to c.ssl)
+            if (c.label.startsWith("_submission") && smtp == null) smtp = target to (c.port to c.startTls)
+        }
+        if (imap == null && smtp == null) return null
+        return Discovered(
+            imapHost = imap?.first ?: "",
+            imapPort = imap?.second?.first ?: 993,
+            imapSsl = imap?.second?.second ?: true,
+            smtpHost = smtp?.first ?: "",
+            smtpPort = smtp?.second?.first ?: if (smtp?.second?.second == true) 587 else 465,
+            smtpStartTls = smtp?.second?.second ?: true
+        ).takeIf { it.imapHost.isNotBlank() || it.smtpHost.isNotBlank() }
+    }
+
+    /** Minimal SRV query returning just the target host (no path needed for email). */
+    private fun srvLookupHost(name: String): String? {
+        return try {
+            val q = buildSrvQuery(name)
+            val sock = DatagramSocket().apply { soTimeout = 4000 }
+            sock.send(DatagramPacket(q, q.size, InetAddress.getAllByName(resolver())[0], 53))
+            val buf = ByteArray(1024)
+            val pkt = DatagramPacket(buf, buf.size)
+            sock.receive(pkt)
+            sock.close()
+            parseSrvResponse(buf, pkt.length, name)?.first?.removeSuffix(".")
+        } catch (e: Exception) {
+            Log.d(TAG, "SRV $name failed: ${e.message}")
+            null
+        }
     }
 
     private fun parseEmail(xml: String): Discovered? {
@@ -160,7 +222,7 @@ object Autodiscover {
         }
     }
 
-    // ---- CALDAV / CARDDAV (RFC 6764) ----
+    // ---- CALDAV / CARDDAV (RFC 6764 + RFC 5397) ----
 
     /**
      * Returns (caldavUrl, carddavUrl) or null if neither could be discovered.
@@ -169,20 +231,58 @@ object Autodiscover {
         // 1) Known-provider overrides (SRV often absent/incorrect for the majors).
         knownDavOverrides(domain)?.let { return@withContextSafe it }
 
-        // 2) SRV records (SSL first).
-        val cal = srvLookup("_caldavs._tcp.$domain") ?: srvLookup("_caldav._tcp.$domain")
-        val card = srvLookup("_carddavs._tcp.$domain") ?: srvLookup("_carddav._tcp.$domain")
+        // 2) SRV records (SSL first), then .well-known. Either yields a base
+        //    URL we must then resolve to the real principal/home-set (RFC 6764 §6).
+        val calBase = srvLookup("_caldavs._tcp.$domain") ?: srvLookup("_caldav._tcp.$domain")
+            ?: wellKnownDav("https://$domain/.well-known/caldav")
+        val cardBase = srvLookup("_carddavs._tcp.$domain") ?: srvLookup("_carddav._tcp.$domain")
+            ?: wellKnownDav("https://$domain/.well-known/carddav")
+
+        // 3) Resolve each base to its home-set so we return a URL that actually
+        //    hosts collections (NOT a guess like $domain/dav/). If resolution
+        //    fails, fall back to the base root rather than a wrong guess.
+        val cal = calBase?.let { resolveDavHomeSet(it, "caldav") } ?: calBase
+        val card = cardBase?.let { resolveDavHomeSet(it, "carddav") } ?: cardBase
         if (cal != null || card != null) {
             return@withContextSafe Pair(cal ?: card!!, card ?: cal!!)
         }
-
-        // 3) .well-known redirects.
-        val calWk = wellKnownDav("https://$domain/.well-known/caldav")
-        val cardWk = wellKnownDav("https://$domain/.well-known/carddav")
-        if (calWk != null || cardWk != null) {
-            return@withContextSafe Pair(calWk ?: cardWk!!, cardWk ?: calWk!!)
-        }
         null
+    }
+
+    /**
+     * RFC 6764 / RFC 5397 principal discovery: from a CalDAV/CardDAV base URL,
+     * PROPFIND current-user-principal, then the home-set, and return the home-set
+     * URL. Returns null on any failure so the caller can fall back to the base.
+     */
+    private fun resolveDavHomeSet(base: String, kind: String): String? {
+        return try {
+            val principal = propfindHref(
+                base,
+                "<D:propfind xmlns:D=\"DAV:\"><D:prop><D:current-user-principal/></D:prop></D:propfind>"
+            ) ?: return null
+            val homeSetProp = if (kind == "caldav") "C:calendar-home-set" else "C:addressbook-home-set"
+            val ns = if (kind == "caldav") "urn:ietf:params:xml:ns:caldav" else "urn:ietf:params:xml:ns:carddav"
+            propfindHref(
+                principal,
+                "<D:propfind xmlns:D=\"DAV:\" xmlns:C=\"$ns\"><D:prop><$homeSetProp/></D:prop></D:propfind>"
+            )
+        } catch (_: Exception) { null }
+    }
+
+    private fun propfindHref(url: String, body: String): String? {
+        return try {
+            val req = Request.Builder().url(url)
+                .method("PROPFIND", body.toRequestBody(XML_MT))
+                .header("Depth", "0")
+                .header("User-Agent", "UnifiedComms")
+                .build()
+            http.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return null
+                val text = resp.body?.string().orEmpty()
+                val m = Regex("<href>(.*?)</href>", RegexOption.DOT_MATCHES_ALL).find(text)
+                m?.groupValues?.get(1)?.trim()?.takeIf { it.isNotBlank() }
+            }
+        } catch (_: Exception) { null }
     }
 
     private fun knownDavOverrides(domain: String): Pair<String, String>? = when (domain) {
@@ -195,7 +295,6 @@ object Autodiscover {
             "https://www.googleapis.com/carddav/v1/"
         )
         "outlook.com", "hotmail.com", "live.com", "office365.com" -> Pair(
-            // Outlook/M365 CalDAV is not generally available; leave null so UI can ask.
             "https://outlook.office.com/owa/calendar/",
             "https://outlook.office.com/owa/contacts/"
         )
@@ -332,19 +431,6 @@ object Autodiscover {
             Log.d(TAG, "well-known $url failed: ${e.message}")
             null
         }
-    }
-
-    fun toServerConfig(d: Discovered, server: String): ServerConfig {
-        return ServerConfig(
-            imapHost = d.imapHost.ifBlank { null },
-            imapPort = d.imapPort,
-            imapUseSsl = d.imapSsl,
-            smtpHost = d.smtpHost.ifBlank { null },
-            smtpPort = d.smtpPort,
-            smtpUseStartTls = d.smtpStartTls,
-            caldavUrl = d.caldavUrl ?: "$server/dav/",
-            carddavUrl = d.carddavUrl ?: "$server/dav/"
-        )
     }
 
     // WithContext is inline; this just gives a typed wrapper for nullable returns.
