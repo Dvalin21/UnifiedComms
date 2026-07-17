@@ -2,6 +2,8 @@ package com.unifiedcomms
 
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.UiScrollable
+import androidx.test.uiautomator.UiSelector
 import com.unifiedcomms.ui.main.MainActivity
 import com.unifiedcomms.util.DemoDataSeeder
 import com.unifiedcomms.util.PreferencesManager
@@ -91,6 +93,15 @@ class ScreenshotGalleryTest {
     private fun tabCalendar() = tap(530, 2171)
     private fun tabTasks() = tap(750, 2171)
     private fun tabMessages() = tap(960, 2171)
+    // Open Add Account from Settings via text-based UiAutomator scroll+tap. A hardcoded
+    // coordinate breaks when the seeded demo account card pushes "Add Account" lower; this
+    // scrolls the Settings column until the control is visible, then taps it by text.
+    private fun addAccountViaSettings() {
+        val scroll = UiScrollable(UiSelector().scrollable(true))
+        scroll.scrollIntoView(UiSelector().text("Add Account"))
+        ui.findObject(UiSelector().text("Add Account")).click()
+        Thread.sleep(800)
+    }
 
     @Test
     fun lightGallery() {
@@ -117,9 +128,9 @@ class ScreenshotGalleryTest {
         tabMessages(); shot("06_messages")
 
         settings(); Thread.sleep(600); shot("07_settings")   // settings screen
-        // Add Account is opened from Settings (top-bar Add button was removed to de-crowd
-        // the title bar). Tap the "Add Account" TextButton at the bottom of the Accounts card.
-        tap(221, 551); Thread.sleep(700); shot("08_add_account")   // Add Account TextButton (verified bounds center 221,551)
+        // Add Account is reached from Settings (top-bar Add button was removed to de-crowd
+        // the title bar). Scroll the Settings column to the "Add Account" control and tap by text.
+        addAccountViaSettings(); shot("08_add_account")
         ui.pressBack(); Thread.sleep(500)                    // add-account -> settings
         ui.pressBack(); Thread.sleep(500)                    // settings -> inbox
     }
