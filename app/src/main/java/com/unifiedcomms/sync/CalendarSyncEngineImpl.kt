@@ -123,10 +123,11 @@ class CalendarSyncEngineImpl(
     }
 
     override suspend fun syncCalendar(account: Account, calendar: Calendar): SyncResult {
-        return withContext(Dispatchers.IO) {
-            updateProgress(account.id, calendar.name, SyncStage.COMPLETED, 0, 0)
-            SyncResult.success(0, emptyList(), emptyList())
-        }
+        // ponytail: this per-calendar variant was a no-op stub reporting COMPLETED.
+        // Nothing in the app calls it (SyncManager routes to syncAccount), but leaving a
+        // fake-success path in the interface contract is a broken window. Delegate to the
+        // real account-wide sync so it does actual work instead of lying.
+        return syncAccount(account)
     }
 
     override suspend fun fetchEvent(account: Account, calendarId: String, uid: String): CalendarEvent? {
@@ -145,8 +146,16 @@ class CalendarSyncEngineImpl(
 
     override suspend fun createEvent(account: Account, event: CalendarEvent): com.unifiedcomms.sync.CreateResult {
         return try {
-            calendarRepo.insertEvent(event)
-            com.unifiedcomms.sync.CreateResult.success(event.id, event.uid, event.etag.orEmpty())
+            val client = clientFor(account)
+            val href = VEventSerializer.hrefFor(event)
+            val ical = VEventSerializer.toVevent(event)
+            val etag = client.putResource(href, ical)
+                ?: return com.unifiedcomms.sync.CreateResult.failure("Calendar server write failed")
+            // ponytail: persist local copy with the server etag so the next down-sync
+            // sees a matching etag and does not re-fetch/duplicate.
+            val stored = event.copy(etag = etag, needsSync = false, isLocalOnly = false)
+            calendarRepo.insertEvent(stored)
+            com.unifiedcomms.sync.CreateResult.success(stored.id, stored.uid, etag)
         } catch (e: Exception) {
             com.unifiedcomms.sync.CreateResult.failure(e.message ?: "Calendar create failed")
         }
@@ -154,7 +163,12 @@ class CalendarSyncEngineImpl(
 
     override suspend fun updateEvent(account: Account, event: CalendarEvent): SyncResult {
         return try {
-            calendarRepo.updateEvent(event)
+            val client = clientFor(account)
+            val href = VEventSerializer.hrefFor(event)
+            val ical = VEventSerializer.toVevent(event)
+            val etag = client.putResource(href, ical)
+                ?: return SyncResult.failure("Calendar server update failed")
+            calendarRepo.updateEvent(event.copy(etag = etag, needsSync = false))
             SyncResult.success()
         } catch (e: Exception) {
             SyncResult.failure(e.message ?: "Calendar update failed")
@@ -162,12 +176,29 @@ class CalendarSyncEngineImpl(
     }
 
     override suspend fun deleteEvent(account: Account, calendarId: String, uid: String): SyncResult {
+        // ponytail: delete both server object (if any) and local row. Server 404 is
+        // treated as success (already gone). A local-only event has no server object.
         return try {
+            val href = "$calendarId/${uid}.ics".trimEnd('/').let { if (it.endsWith(".ics")) it else "$it.ics" }
+            val local = calendarRepo.getEventByUid(uid, account.id)
+            if (local != null && !local.isLocalOnly) {
+                val client = clientFor(account)
+                if (!client.deleteResource(href)) return SyncResult.failure("Calendar server delete failed")
+            }
             calendarRepo.getEventByUid(uid, account.id)?.let { calendarRepo.deleteEvent(it) }
             SyncResult.success()
         } catch (e: Exception) {
             SyncResult.failure(e.message ?: "Calendar delete failed")
         }
+    }
+
+    // ponytail: build a CalDAVClient for a one-off write/delete (mirrors fetchEvent).
+    private suspend fun clientFor(account: Account): CalDAVClient {
+        val url = account.serverConfig.caldavUrl
+            ?: throw IllegalArgumentException("Missing CalDAV URL")
+        val auth = crypto.decryptAuthConfig(account.authConfig)
+        val client = OkHttpClient.Builder().connectTimeout(30, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
+        return newCalDav(url, auth, client)
     }
 
     override suspend fun respondToInvite(account: Account, eventUid: String, status: com.unifiedcomms.data.model.AttendeeStatus, comment: String?): SyncResult {

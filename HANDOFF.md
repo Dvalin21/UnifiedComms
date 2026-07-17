@@ -131,9 +131,37 @@ debug + androidTest APKs; run the instrument command above.
   against a real third-party provider (Fastmail/Nextcloud) — mock proof, not provider proof.
 - **Per-account avatar tint (P3)** wired but not pixel-verified (demo email list empty on
   email screen, so no avatar rows render to screenshot). Code path build+unit verified.
+- **Calendar write path (create/update/delete to server) — DONE (2026-07-16)**. See block below.
 - **Calendar recurrence exceptions — DONE (2026-07-16, this session)**. See block below.
 
-## Calendar recurrence exceptions — DONE (2026-07-16)
+## Calendar write path — DONE (2026-07-16)
+- **Root cause**: the app PARSED VEVENT but never SERIALIZED it. `CalendarScreen` wrote
+  events local-only (`calendarRepository.insertEvent`); `CalendarSyncEngineImpl.createEvent/
+  updateEvent/deleteEvent` touched Room but never PUT/DELETE to the CalDAV server. So new/
+  edited/deleted events looked saved but never reached the server — a real data-not-backed-up
+  hole (inverse of a silent lie). Tasks/Contacts already uploaded (proven in 64187b0); calendar
+  was the missing half. Also: `syncCalendar(account, calendar)` 2-arg was a no-op stub reporting
+  COMPLETED+success — fake-success path in the interface contract.
+- **What shipped**:
+  - `VEventSerializer` (new, mirrors `VTaskSerializer`): emits UID/DTSTAMP/DTSTART/DTEND/
+    SUMMARY/DESCRIPTION/LOCATION/STATUS/RRULE. DTSTART/DTEND use `TZID=<canonical>` + local
+    wall-clock (never a floating Z) — same DST-correctness fix as the parser. `hrefFor()` builds
+    `<calendarId>/<uid>.ics`, matching the download-side `uidFromHref()` convention.
+  - `CalendarSyncEngineImpl.createEvent/updateEvent/deleteEvent` now PUT/DELETE via the existing
+    `CalDAVClient.putResource/deleteResource`, store the returned server ETag locally (so the
+    next down-sync sees a matching etag and doesn't re-fetch/duplicate), and set `needsSync=false`.
+    `deleteEvent` skips the server DELETE for local-only events and treats server 404 as success.
+  - `syncCalendar(account, calendar)` 2-arg now delegates to `syncAccount` (honest) instead of
+    lying about COMPLETED.
+- **Verification**: `VEventSerializerTest` (4 JVM tests) — timed event round-trips UID/summary/
+  escapes/TZID times; non-canonical TZID (`AMERICA/NEW_YORK`) normalizes to `America/New_York`
+  with NO `Z` stamp; all-day emits `VALUE=DATE`; href matches download convention. Full suite:
+  67 unit tests pass; `assembleDebug` + `assembleAndroidTest` green.
+- **Not yet done (honest)**: emulator E2E PUT/GET/DELETE round-trip against `tools/dav_mock.py`
+  for the calendar collection (the mock only serves contacts/tasks today). The serializer + engine
+  paths are unit-verified and use the SAME `CalDAVClient` plumbing proven for tasks/contacts in
+  64187b0, but a real-server calendar write has not been exercised end-to-end. Low risk; flagged
+  for the next session if you want full provider-proof.
 - **What shipped**: `ICalParser` now parses `EXDATE` (server-side deletions) and
   `RECURRENCE-ID` override VEVENTs (same UID, no RRULE) and folds them into
   `CalendarEvent.recurrenceExceptions`. `RecurrenceExpander.expand()` now drops EXDATE'd
@@ -170,7 +198,7 @@ debug + androidTest APKs; run the instrument command above.
   `am force-stop com.android.packageinstaller` + reboot.
 
 ## Restart checklist
-1. `git status` + `git log -3` — confirm clean tree, HEAD = c72b538 (or newer).
+1. `git status` + `git log -3` — confirm clean tree, HEAD = 71b2841 (or newer).
 2. `./gradlew :app:assembleDebug :app:testDebugUnitTest` — must be GREEN.
 3. If resuming DAV write-proof: start both mocks (8088/8089) + `adb reverse` both, then run
    ContactSyncE2ETest + TaskSyncE2ETest. Strip DIAG logs from CalDAVClient.kt first/after.
