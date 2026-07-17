@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import com.unifiedcomms.R
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -69,37 +71,37 @@ import com.unifiedcomms.util.Autodiscover
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
+import androidx.compose.ui.res.painterResource
+
 /**
- * Provider chips shown first. Choosing OAuth launches AddAccountActivity (which owns
- * the browser + token exchange). Choosing a manual/IMAP type stays on this screen
- * and triggers autodiscover from the email address before revealing advanced fields.
+ * Provider tiles shown first. Each renders its brand logo (VectorDrawable) on a brand-tinted
+ * square with a caption, so it is identifiable. OAuth providers hand off to AddAccountActivity
+ * (which owns the browser + token exchange); manual/IMAP types stay here and autodiscover from
+ * the email before revealing advanced fields.
  */
 private data class Provider(
     val label: String,
     val type: AccountType,
     val oauth: Boolean,
-    val monogram: String,
+    val iconRes: Int,
     val color: Long
 )
 
-// Brand-colored monogram tiles (F-Droid-friendly: no trademarked raster logos).
-// To use real brand SVGs instead: add res/drawable/ic_provider_<x>.xml and swap the
-// ProviderTile Surface content for an Image(painter = painterResource(...)).
 private val PROVIDERS = listOf(
-    Provider("Google", AccountType.GOOGLE, true, "G", 0xFF4285F4),
-    Provider("Outlook", AccountType.OUTLOOK, true, "O", 0xFF0078D4),
-    Provider("Yahoo", AccountType.YAHOO, true, "Y", 0xFF6001D2),
-    Provider("iCloud", AccountType.ICLOUD, true, "i", 0xFF3693F3),
-    Provider("Mailcow", AccountType.MAILCOW, false, "M", 0xFF4A6FE3),
-    Provider("Exchange", AccountType.EXCHANGE, false, "E", 0xFF0072C6),
-    Provider("ProtonMail", AccountType.PROTONMAIL, false, "P", 0xFF8B89ED),
-    Provider("Fastmail", AccountType.FASTMAIL, false, "F", 0xFF3B5BDB),
-    Provider("Zoho", AccountType.ZOHO, false, "Z", 0xFFE03A1D),
-    Provider("GMX", AccountType.GMX, false, "G", 0xFFEC1C24),
-    Provider("AOL", AccountType.AOL, false, "A", 0xFF0060AF),
-    Provider("Generic IMAP/SMTP", AccountType.GENERIC_IMAP_SMTP, false, "@", 0xFF6750A4),
-    Provider("Generic CalDAV/CardDAV", AccountType.GENERIC_CALDAV_CARDDAV, false, "D", 0xFF00897B),
-    Provider("Custom", AccountType.CUSTOM, false, "+", 0xFF625B71)
+    Provider("Google", AccountType.GOOGLE, true, R.drawable.ic_provider_google, 0xFF4285F4),
+    Provider("Outlook", AccountType.OUTLOOK, true, R.drawable.ic_provider_outlook, 0xFF0078D4),
+    Provider("Yahoo", AccountType.YAHOO, true, R.drawable.ic_provider_yahoo, 0xFF6001D2),
+    Provider("iCloud", AccountType.ICLOUD, true, R.drawable.ic_provider_icloud, 0xFF3693F3),
+    Provider("Mailcow", AccountType.MAILCOW, false, R.drawable.ic_provider_mailcow, 0xFF4A6FE3),
+    Provider("Exchange", AccountType.EXCHANGE, false, R.drawable.ic_provider_exchange, 0xFF0072C6),
+    Provider("ProtonMail", AccountType.PROTONMAIL, false, R.drawable.ic_provider_protonmail, 0xFF8B89ED),
+    Provider("Fastmail", AccountType.FASTMAIL, false, R.drawable.ic_provider_fastmail, 0xFF3B5BDB),
+    Provider("Zoho", AccountType.ZOHO, false, R.drawable.ic_provider_zoho, 0xFFE03A1D),
+    Provider("GMX", AccountType.GMX, false, R.drawable.ic_provider_gmx, 0xFFEC1C24),
+    Provider("AOL", AccountType.AOL, false, R.drawable.ic_provider_aol, 0xFF0060AF),
+    Provider("Generic IMAP/SMTP", AccountType.GENERIC_IMAP_SMTP, false, R.drawable.ic_provider_generic_imap, 0xFF6750A4),
+    Provider("Generic CalDAV/CardDAV", AccountType.GENERIC_CALDAV_CARDDAV, false, R.drawable.ic_provider_generic_caldav, 0xFF00897B),
+    Provider("Custom", AccountType.CUSTOM, false, R.drawable.ic_provider_custom, 0xFF625B71)
 )
 
 @Composable
@@ -109,20 +111,38 @@ private fun ProviderTile(
     onClick: () -> Unit
 ) {
     val bg = if (selected) MaterialTheme.colorScheme.primaryContainer else Color(provider.color)
-    val fg = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else Color.White
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = bg,
-        border = if (selected) BorderStroke(3.dp, MaterialTheme.colorScheme.primary) else null,
-        tonalElevation = 2.dp,
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .size(64.dp)
-            .semantics { contentDescription = provider.label }
+            .width(72.dp)
             .clickable(onClick = onClick)
+            .semantics { contentDescription = provider.label }
     ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-            Text(text = provider.monogram, color = fg, fontWeight = FontWeight.Bold, fontSize = 26.sp)
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = bg,
+            border = if (selected) BorderStroke(3.dp, MaterialTheme.colorScheme.primary) else null,
+            tonalElevation = 2.dp,
+            modifier = Modifier.size(64.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                Icon(
+                    painter = painterResource(provider.iconRes),
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(34.dp)
+                )
+            }
         }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = provider.label,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontSize = 11.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            textAlign = TextAlign.Center,
+            maxLines = 1
+        )
     }
 }
 
