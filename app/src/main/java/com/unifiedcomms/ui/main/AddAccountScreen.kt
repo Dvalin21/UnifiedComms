@@ -471,7 +471,7 @@ fun AddAccountScreen(
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !saving && !saved
                 ) {
-                    Text(if (saving) "Saving…" else if (saved) "Saved" else "Save")
+                    Text(if (saving) "Saving…" else if (saved) "Confirmed" else "Confirm")
                 }
             }
         }
