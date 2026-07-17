@@ -4,6 +4,7 @@ import com.unifiedcomms.data.model.CalendarEvent
 import com.unifiedcomms.data.model.DayOfWeek
 import com.unifiedcomms.data.model.EventDateTime
 import com.unifiedcomms.data.model.RecurrenceDay
+import com.unifiedcomms.data.model.RecurrenceException
 import com.unifiedcomms.data.model.RecurrenceFrequency
 import com.unifiedcomms.data.model.RecurrenceRule
 import kotlinx.datetime.Instant
@@ -140,5 +141,44 @@ class RecurrenceExpanderTest {
         assertEquals("r", inst.recurrenceId)
         assertEquals(true, inst.isInstance())
         assertEquals(null, inst.recurrenceRule)
+    }
+
+    @Test
+    fun `EXDATE deletes the matching occurrence`() {
+        // Daily 09:00 UTC from 2026-07-01; EXDATE the 2026-07-03 occurrence.
+        val start = epochMs(2026, 7, 1, 9, 0, "UTC")
+        val rule = RecurrenceRule(freq = RecurrenceFrequency.DAILY)
+        val exMs = epochMs(2026, 7, 3, 9, 0, "UTC")  // 1783069200000
+        val m = master("x", start, 3_600_000, rule, "UTC")
+            .copy(recurrenceExceptions = listOf(RecurrenceException(originalDate = Instant.fromEpochMilliseconds(exMs), isDeleted = true)))
+        val out = RecurrenceExpander.expand(m, start, epochMs(2026, 7, 6, 0, 0, "UTC"))
+        // 7/1, 7/2, (7/3 deleted), 7/4, 7/5 = 4 occurrences
+        assertEquals(4, out.size)
+        val starts = out.map { it.startAt.toInstant().toEpochMilliseconds() }
+        assertEquals(false, starts.contains(exMs))
+    }
+
+    @Test
+    fun `RECURRENCE-ID override replaces the original occurrence`() {
+        // Daily 09:00 UTC from 2026-07-01; the 7/3 instance is moved to 7/3 15:00.
+        val start = epochMs(2026, 7, 1, 9, 0, "UTC")
+        val rule = RecurrenceRule(freq = RecurrenceFrequency.DAILY)
+        val origMs = epochMs(2026, 7, 3, 9, 0, "UTC")   // 1783069200000
+        val movedMs = epochMs(2026, 7, 3, 15, 0, "UTC")  // 1783090800000
+        val moved = CalendarEvent(
+            id = "x#override", accountId = "a", calendarId = "c", uid = "x",
+            title = "Moved",
+            startAt = EventDateTime.fromInstant(Instant.fromEpochMilliseconds(movedMs), TimeZone.of("UTC")),
+            endAt = EventDateTime.fromInstant(Instant.fromEpochMilliseconds(movedMs + 3_600_000), TimeZone.of("UTC")),
+            recurrenceRule = null
+        )
+        val m = master("x", start, 3_600_000, rule, "UTC")
+            .copy(recurrenceExceptions = listOf(RecurrenceException(originalDate = Instant.fromEpochMilliseconds(origMs), exceptionEvent = moved)))
+        val out = RecurrenceExpander.expand(m, start, epochMs(2026, 7, 6, 0, 0, "UTC"))
+        // 7/1, 7/2, (7/3 orig suppressed, 7/3 moved added), 7/4, 7/5 = 5 occurrences
+        assertEquals(5, out.size)
+        val starts = out.map { it.startAt.toInstant().toEpochMilliseconds() }
+        assertEquals(false, starts.contains(origMs))   // original slot suppressed
+        assertEquals(true, starts.contains(movedMs))     // moved slot present
     }
 }
