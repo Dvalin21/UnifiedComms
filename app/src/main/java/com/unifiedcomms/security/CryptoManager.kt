@@ -54,8 +54,13 @@ class CryptoManagerImpl(private val context: android.content.Context) : CryptoMa
 
     private fun decryptField(value: String?): String? {
         if (value == null) return null
-        val bytes = android.util.Base64.decode(value, android.util.Base64.DEFAULT)
-        return String(decrypt(bytes), Charsets.UTF_8)
+        val raw = android.util.Base64.decode(value, android.util.Base64.DEFAULT)
+        // In-memory drafts (UI-built, not yet persisted) carry the raw password,
+        // not our IV+ciphertext form. If it's too short to be our GCM blob,
+        // treat it as already-plaintext so testConnection/pre-save provisioning
+        // doesn't wrongly fail with a decrypt exception.
+        if (raw.size < 12) return String(raw, Charsets.UTF_8)
+        return String(decrypt(raw), Charsets.UTF_8)
     }
 
     private fun encryptField(value: String): String {

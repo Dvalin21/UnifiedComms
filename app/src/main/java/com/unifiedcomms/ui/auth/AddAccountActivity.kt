@@ -166,32 +166,37 @@ class AddAccountActivity : AppCompatActivity() {
             if (email.isBlank() || password.isBlank() || server.isBlank()) return@setOnClickListener
 
             scope.launch {
-                val account = createManualAccount(accountType!!, email, password, server, name)
-                accountRepo.insert(account)
-                accountRepo.setDefault(account.id)
-
-                // Trigger immediate full sync for the newly connected account.
-                // Surface failure instead of swallowing it (ponytail: no silent lies).
-                try {
-                    val app = application as com.unifiedcomms.UnifiedCommsApplication
-                    val vm = com.unifiedcomms.ui.main.MainViewModel(app)
-                    val result = vm.syncAccount(account)
-                    if (!result.success) {
-                        val msg = "Account saved, but sync failed: ${result.errorMessage}"
-                        Log.w("AddAccountActivity", msg)
-                        runOnUiThread {
-                            android.widget.Toast.makeText(this@AddAccountActivity, msg, android.widget.Toast.LENGTH_LONG).show()
-                        }
+                // ponytail: prove the connection BEFORE persisting (RFC 8314 §5.1).
+                // If email (IMAP) fails to connect, nothing is saved and the user
+                // sees the real reason. DAV failures disable those syncs, not the account.
+                val draft = createManualAccount(accountType!!, email, password, server, name)
+                val app = application as com.unifiedcomms.UnifiedCommsApplication
+                val vm = com.unifiedcomms.ui.main.MainViewModel(app)
+                val provision = vm.provisionAccount(draft)
+                if (!provision.emailOk) {
+                    val msg = "Could not connect: ${provision.emailError ?: "IMAP login failed"}"
+                    Log.w("AddAccountActivity", msg)
+                    runOnUiThread {
+                        android.widget.Toast.makeText(this@AddAccountActivity, msg, android.widget.Toast.LENGTH_LONG).show()
                     }
-                } catch (e: Exception) {
-                    val msg = "Sync error: ${e.message ?: e::class.simpleName}"
-                    Log.e("AddAccountActivity", msg, e)
-                        runOnUiThread {
-                            android.widget.Toast.makeText(this@AddAccountActivity, msg, android.widget.Toast.LENGTH_LONG).show()
-                        }
+                    finishWithError()
+                    return@launch
                 }
-
-                finishWithResult(account)
+                val withSync = draft.copy(
+                    syncConfig = draft.syncConfig.copy(
+                        syncCalendar = draft.syncConfig.syncCalendar && provision.calendarOk,
+                        syncContacts = draft.syncConfig.syncContacts && provision.contactsOk,
+                        syncTasks = draft.syncConfig.syncTasks && provision.tasksOk
+                    )
+                )
+                accountRepo.insert(withSync)
+                accountRepo.setDefault(withSync.id)
+                // Immediate sync so the inbox populates; failure is logged, not fatal
+                // now that the account is proven good.
+                try { vm.syncAccount(withSync) } catch (e: Exception) {
+                    Log.w("AddAccountActivity", "post-add sync failed: ${e.message}", e)
+                }
+                finishWithResult(withSync)
             }
         }
     }
