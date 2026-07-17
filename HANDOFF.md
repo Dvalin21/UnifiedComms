@@ -48,6 +48,9 @@ export ANDROID_HOME=/home/keith/Android/Sdk
   - EmailScreen has a 'No emails yet' empty state (was a blank list).
   - DemoDataSeeder seeds 3 demo emails so Unified Inbox / folder views show real content.
   - Tasks filter chips use FlowRow (wrap) — 'Overdue' no longer clipped at screen edge.
+  - Add Account provider chips: labels centered in each chip + uniform min-width, so the
+    grid renders as a tidy uniform list (no jagged uneven wrap). Task filter chip labels
+    centered too. 'Server settings found' banner text centered.
   - ScreenshotGalleryTest harness: Add Account reached via Settings (top-bar Add removed);
     Search captured while app foreground (kills coordinate flakiness). uc_01..uc_13 all verified.
   - `AutodiscoverTest` (live net) PASSED: Gmail (IMAP/SMTP + DAV), Outlook, bogus→null.
