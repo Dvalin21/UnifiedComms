@@ -47,6 +47,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -74,25 +77,54 @@ import kotlinx.coroutines.launch
 private data class Provider(
     val label: String,
     val type: AccountType,
-    val oauth: Boolean
+    val oauth: Boolean,
+    val monogram: String,
+    val color: Long
 )
 
+// Brand-colored monogram tiles (F-Droid-friendly: no trademarked raster logos).
+// To use real brand SVGs instead: add res/drawable/ic_provider_<x>.xml and swap the
+// ProviderTile Surface content for an Image(painter = painterResource(...)).
 private val PROVIDERS = listOf(
-    Provider("Google", AccountType.GOOGLE, true),
-    Provider("Outlook", AccountType.OUTLOOK, true),
-    Provider("Yahoo", AccountType.YAHOO, true),
-    Provider("iCloud", AccountType.ICLOUD, true),
-    Provider("Mailcow", AccountType.MAILCOW, false),
-    Provider("Exchange", AccountType.EXCHANGE, false),
-    Provider("ProtonMail", AccountType.PROTONMAIL, false),
-    Provider("Fastmail", AccountType.FASTMAIL, false),
-    Provider("Zoho", AccountType.ZOHO, false),
-    Provider("GMX", AccountType.GMX, false),
-    Provider("AOL", AccountType.AOL, false),
-    Provider("Generic IMAP/SMTP", AccountType.GENERIC_IMAP_SMTP, false),
-    Provider("Generic CalDAV/CardDAV", AccountType.GENERIC_CALDAV_CARDDAV, false),
-    Provider("Custom", AccountType.CUSTOM, false)
+    Provider("Google", AccountType.GOOGLE, true, "G", 0xFF4285F4),
+    Provider("Outlook", AccountType.OUTLOOK, true, "O", 0xFF0078D4),
+    Provider("Yahoo", AccountType.YAHOO, true, "Y", 0xFF6001D2),
+    Provider("iCloud", AccountType.ICLOUD, true, "i", 0xFF3693F3),
+    Provider("Mailcow", AccountType.MAILCOW, false, "M", 0xFF4A6FE3),
+    Provider("Exchange", AccountType.EXCHANGE, false, "E", 0xFF0072C6),
+    Provider("ProtonMail", AccountType.PROTONMAIL, false, "P", 0xFF8B89ED),
+    Provider("Fastmail", AccountType.FASTMAIL, false, "F", 0xFF3B5BDB),
+    Provider("Zoho", AccountType.ZOHO, false, "Z", 0xFFE03A1D),
+    Provider("GMX", AccountType.GMX, false, "G", 0xFFEC1C24),
+    Provider("AOL", AccountType.AOL, false, "A", 0xFF0060AF),
+    Provider("Generic IMAP/SMTP", AccountType.GENERIC_IMAP_SMTP, false, "@", 0xFF6750A4),
+    Provider("Generic CalDAV/CardDAV", AccountType.GENERIC_CALDAV_CARDDAV, false, "D", 0xFF00897B),
+    Provider("Custom", AccountType.CUSTOM, false, "+", 0xFF625B71)
 )
+
+@Composable
+private fun ProviderTile(
+    provider: Provider,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val bg = if (selected) MaterialTheme.colorScheme.primaryContainer else Color(provider.color)
+    val fg = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else Color.White
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = bg,
+        border = if (selected) BorderStroke(3.dp, MaterialTheme.colorScheme.primary) else null,
+        tonalElevation = 2.dp,
+        modifier = Modifier
+            .size(64.dp)
+            .semantics { contentDescription = provider.label }
+            .clickable(onClick = onClick)
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            Text(text = provider.monogram, color = fg, fontWeight = FontWeight.Bold, fontSize = 26.sp)
+        }
+    }
+}
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
@@ -212,9 +244,9 @@ fun AddAccountScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     PROVIDERS.forEach { p ->
-                        val selected = selectedProvider == p
-                        androidx.compose.material3.FilterChip(
-                            selected = selected,
+                        ProviderTile(
+                            provider = p,
+                            selected = selectedProvider == p,
                             onClick = {
                                 selectedProvider = p
                                 if (p.oauth) {
@@ -223,16 +255,10 @@ fun AddAccountScreen(
                                         Intent(ctx, AddAccountActivity::class.java)
                                             .putExtra("accountType", p.type.name)
                                     )
-                                    return@FilterChip
+                                    return@ProviderTile
                                 }
                                 // manual/IMAP: autodiscover from the email (or reveal advanced)
                                 runDiscovery()
-                            },
-                            modifier = Modifier.defaultMinSize(minWidth = 112.dp),
-                            label = {
-                                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                    androidx.compose.material3.Text(p.label, textAlign = TextAlign.Center)
-                                }
                             }
                         )
                     }

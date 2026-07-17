@@ -119,7 +119,7 @@ class ScreenshotGalleryTest {
         settings(); Thread.sleep(600); shot("07_settings")   // settings screen
         // Add Account is opened from Settings (top-bar Add button was removed to de-crowd
         // the title bar). Tap the "Add Account" TextButton at the bottom of the Accounts card.
-        tap(221, 786); Thread.sleep(700); shot("08_add_account")
+        tap(221, 551); Thread.sleep(700); shot("08_add_account")   // Add Account TextButton (verified bounds center 221,551)
         ui.pressBack(); Thread.sleep(500)                    // add-account -> settings
         ui.pressBack(); Thread.sleep(500)                    // settings -> inbox
     }
