@@ -4,5 +4,7 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <path android:fillColor="#000000" android:pathData="M4 7h11l-2.5-2.5L14 3l5 5-5 5-1.5-1.5L15 9H4V7zm16 10H9l2.5 2.5L8 21l-5-5 5-5 1.5 1.5L9 15h11v2z"/>
+    <!-- Microsoft Exchange: sync / mail-flow arrows (distinct from envelope marks) -->
+    <path android:fillColor="#000000"
+        android:pathData="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0 0 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74A7.93 7.93 0 0 0 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
 </vector>
