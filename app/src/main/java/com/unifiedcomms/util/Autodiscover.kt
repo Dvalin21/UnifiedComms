@@ -253,24 +253,44 @@ object Autodiscover {
      * RFC 6764 / RFC 5397 principal discovery: from a CalDAV/CardDAV base URL,
      * PROPFIND current-user-principal, then the home-set, and return the home-set
      * URL. Returns null on any failure so the caller can fall back to the base.
+     *
+     * ponytail: the home-set lives INSIDE the home-set property element
+     * (<C:calendar-home-set><D:href>...</D:href></C:calendar-home-set>). The old
+     * code scraped a global <href> with a regex that REQUIRED a non-namespaced
+     * <href> tag — but DAV XML is always namespaced (<D:href>/<d:href>), so the
+     * regex never matched and principal discovery silently returned null. We now
+     * walk each <response>, find the home-set property element, and read the href
+     * nested inside IT (never the response's own principal href).
      */
     private fun resolveDavHomeSet(base: String, kind: String): String? {
         return try {
-            val principal = propfindHref(
+            val principal = principalHref(
                 base,
                 "<D:propfind xmlns:D=\"DAV:\"><D:prop><D:current-user-principal/></D:prop></D:propfind>"
             ) ?: return null
-            val homeSetProp = if (kind == "caldav") "C:calendar-home-set" else "C:addressbook-home-set"
+            val homeSetProp = if (kind == "caldav") "calendar-home-set" else "addressbook-home-set"
             val ns = if (kind == "caldav") "urn:ietf:params:xml:ns:caldav" else "urn:ietf:params:xml:ns:carddav"
-            propfindHref(
+            homeSetHref(
                 principal,
-                "<D:propfind xmlns:D=\"DAV:\" xmlns:C=\"$ns\"><D:prop><$homeSetProp/></D:prop></D:propfind>"
+                "<D:propfind xmlns:D=\"DAV:\" xmlns:C=\"$ns\"><D:prop><C:$homeSetProp/></D:prop></D:propfind>",
+                homeSetProp
             )
         } catch (_: Exception) { null }
     }
 
-    private fun propfindHref(url: String, body: String): String? {
-        return try {
+    /** Read the principal URL: the href inside the current-user-principal property. */
+    private fun principalHref(url: String, body: String): String? = propfindInnerHref(url, body, "current-user-principal")
+
+    /**
+     * Read the href nested INSIDE the named property element (e.g. calendar-home-set),
+     * walking each <response> so we never confuse the response's own href with the
+     * property's href. Namespace-agnostic (matches local name only).
+     */
+    private fun homeSetHref(url: String, body: String, propLocalName: String): String? =
+        propfindInnerHref(url, body, propLocalName)
+
+    private fun propfindInnerHref(url: String, body: String, propLocalName: String): String? {
+        val text = try {
             val req = Request.Builder().url(url)
                 .method("PROPFIND", body.toRequestBody(XML_MT))
                 .header("Depth", "0")
@@ -278,12 +298,43 @@ object Autodiscover {
                 .build()
             http.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) return null
-                val text = resp.body?.string().orEmpty()
-                val m = Regex("<href>(.*?)</href>", RegexOption.DOT_MATCHES_ALL).find(text)
-                m?.groupValues?.get(1)?.trim()?.takeIf { it.isNotBlank() }
+                resp.body?.string().orEmpty()
             }
-        } catch (_: Exception) { null }
+        } catch (_: Exception) { return null }
+
+        return parsePropHref(text, propLocalName)
     }
+
+    /**
+     * Parse a DAV multistatus and return the href nested INSIDE the named property
+     * element (e.g. calendar-home-set / current-user-principal). Namespace-agnostic:
+     * matches local element names only, so <D:href>/<d:href> both work. Walking each
+     * <response> avoids cross-contaminating the response's own href with the
+     * property's href (the bug that made principal discovery silently return null).
+     */
+    internal fun parsePropHref(text: String, propLocalName: String): String? {
+        // ponytail: DAV elements are ALWAYS namespaced (<d:response>,
+        // <c:calendar-home-set>, <d:href>). Match the LOCAL name with an optional
+        // ns prefix so <response>/<calendar-home-set>/<href> all resolve. Walk each
+        // <response> and read the href nested INSIDE the named property element —
+        // never the response's own href — so principal/home-set hrefs never cross.
+        val responses = Regex("<(?:[A-Za-z0-9_]*:)?response\\b[^>]*>(.*?)</(?:[A-Za-z0-9_]*:)?response>", RegexOption.DOT_MATCHES_ALL)
+            .findAll(text).map { it.groupValues[1] }.toList()
+        for (resp in responses) {
+            val prop = Regex("<(?:[A-Za-z0-9_]*:)?$propLocalName\\b[^>]*>(.*?)</(?:[A-Za-z0-9_]*:)?$propLocalName>", RegexOption.DOT_MATCHES_ALL)
+                .find(resp)?.groupValues?.get(1) ?: continue
+            val hrefMatch = Regex(
+                "<(?:[A-Za-z0-9_]*:)?href\\b[^>]*>(.*?)</(?:[A-Za-z0-9_]*:)?href>",
+                RegexOption.DOT_MATCHES_ALL
+            ).find(prop) ?: continue
+            val value = hrefMatch.groupValues[1].trim()
+            if (value.isNotBlank()) return value
+        }
+        return null
+    }
+
+    private fun findAll(text: String, re: Regex): List<String> = re.findAll(text).map { it.groupValues[1] }.toList()
+    private fun findFirst(text: String, re: Regex): String? = re.find(text)?.groupValues?.get(1)
 
     private fun knownDavOverrides(domain: String): Pair<String, String>? = when (domain) {
         "gmail.com" -> Pair(

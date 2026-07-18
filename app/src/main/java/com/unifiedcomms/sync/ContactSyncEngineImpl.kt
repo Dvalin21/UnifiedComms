@@ -119,7 +119,13 @@ class ContactSyncEngineImpl(
             .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
             .build()
         val dav = newCardDav(carddavUrl, auth, client)
-        val href = if (serverId.contains('/')) serverId else "${carddavUrl.trimEnd('/')}/${serverId.removePrefix("/")}"
+        // ponytail: resolve the href via URI().resolve() (matches CalDAVClient) so a
+        // full/absolute serverId is used verbatim and a relative one is joined to
+        // carddavUrl WITHOUT doubling the path (naive concat "$base/$id" doubled it
+        // when serverId already carried a path prefix).
+        val href = if (serverId.startsWith("http://", true) || serverId.startsWith("https://", true))
+            serverId
+        else java.net.URI(carddavUrl).resolve(serverId.removePrefix("/")).toString()
         val res = dav.fetchVCard(href) ?: return@withContext null
         val uid = href.substringAfterLast('/').substringBeforeLast('.')
         VCardParser.parse(res.ical, account.id, ContactSource.CARDDAV, uid)
@@ -184,7 +190,11 @@ class ContactSyncEngineImpl(
             .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
             .build()
         val dav = newCardDav(carddavUrl, auth, client)
-        val href = if (serverId.contains('/')) serverId else "${carddavUrl.trimEnd('/')}/${serverId.removeSuffix(".vcf")}.vcf"
+        // ponytail: resolve via URI().resolve() (matches CalDAVClient) — never double
+        // the path. serverId may already be an absolute/URL form or a bare id.
+        val href = if (serverId.startsWith("http://", true) || serverId.startsWith("https://", true))
+            serverId
+        else java.net.URI(carddavUrl).resolve(serverId.removeSuffix(".vcf").removePrefix("/")).toString()
         if (dav.deleteResource(href)) SyncResult.success(1, emptyList(), emptyList(), listOf(serverId))
         else SyncResult.failure("Contact delete failed")
     }
