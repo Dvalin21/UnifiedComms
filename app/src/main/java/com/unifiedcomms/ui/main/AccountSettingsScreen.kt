@@ -121,7 +121,7 @@ fun AccountSettingsScreen(
                     Spacer(modifier = Modifier.width(16.dp))
                     Column {
                         Text(
-                            text = accountState.name,
+                            text = accountState.name.ifBlank { accountState.email.ifBlank { "Account" } },
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp
                         )
