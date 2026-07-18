@@ -91,10 +91,14 @@ private fun BiometricLockScreen(onUnlocked: () -> Unit) {
                     }
                 } else {
                     Text("Biometric not available on this device.", color = androidx.compose.material3.MaterialTheme.colorScheme.error)
-                }
-                // Never brick the app: always allow continuing past the lock.
-                androidx.compose.material3.TextButton(onClick = onUnlocked, modifier = Modifier.fillMaxWidth()) {
-                    Text("Continue without biometrics")
+                    // ponytail: NO unconditional "continue" — that made the lock decorative
+                    // and let anyone with physical access in. If the user enabled biometric_lock
+                    // but the device has no usable authenticator, the app must not silently open.
+                    Text(
+                        "Lock is enabled but no biometric or device credential is enrolled. " +
+                            "Disable the lock from Settings > Security to access the app.",
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         },
