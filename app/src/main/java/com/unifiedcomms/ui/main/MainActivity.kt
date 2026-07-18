@@ -203,7 +203,21 @@ class MainActivity : ComponentActivity() {
                                     accountId = accountId,
                                     folder = folder,
                                     onNavigateBack = { navController.popBackStack() },
-                                    onCompose = { navController.navigate("compose_email/$accountId") }
+                                    onCompose = { navController.navigate("compose_email/$accountId") },
+                                    onEmailClick = { emailId -> navController.navigate("email_detail/$emailId") }
+                                )
+                            }
+                            composable(
+                                route = "email_detail/{emailId}",
+                                arguments = listOf(
+                                    androidx.navigation.navArgument("emailId") { type = androidx.navigation.NavType.StringType }
+                                )
+                            ) { backStackEntry ->
+                                val emailId = backStackEntry.arguments?.getString("emailId").orEmpty()
+                                EmailDetailScreen(
+                                    emailId = emailId,
+                                    viewModel = viewModel,
+                                    onBack = { navController.popBackStack() }
                                 )
                             }
                             composable("compose_email/{accountId}") { backStackEntry ->
