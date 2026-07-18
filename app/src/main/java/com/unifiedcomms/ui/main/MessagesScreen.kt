@@ -301,7 +301,7 @@ fun ConversationListItem(
                 contentAlignment = Alignment.Center
             ) {
                 androidx.compose.material3.Text(
-                    text = conversation.name.first().uppercase(),
+                    text = (conversation.name.firstOrNull()?.uppercase() ?: "?"),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,

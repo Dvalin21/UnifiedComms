@@ -10,6 +10,7 @@ import android.graphics.Color
 import android.media.AudioAttributes
 import android.net.Uri
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -31,12 +32,18 @@ object NotificationHelper {
     private fun Context.notifySafe(id: Int, notification: Notification) {
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
             NotificationManagerCompat.from(this).notify(id, notification)
+        } else {
+            // ponytail: never silently drop. Surface that notifications are blocked so the
+            // caller/UI can re-prompt via RuntimePermissionGate instead of losing the alert.
+            Log.w("NotificationHelper", "notifySafe($id): POST_NOTIFICATIONS denied — notification dropped (re-prompt user)")
         }
     }
 
     private fun Context.notifySafe(tag: String?, id: Int, notification: Notification) {
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
             NotificationManagerCompat.from(this).notify(tag, id, notification)
+        } else {
+            Log.w("NotificationHelper", "notifySafe($tag,$id): POST_NOTIFICATIONS denied — notification dropped (re-prompt user)")
         }
     }
 

@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.sp
 import kotlin.math.abs
 
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.LaunchedEffect
 import com.unifiedcomms.data.model.Email
 import com.unifiedcomms.data.model.EmailAddress
 import com.unifiedcomms.data.model.EmailRecipients
@@ -66,7 +67,8 @@ fun EmailScreen(
     accountId: String,
     folder: String,
     onNavigateBack: () -> Unit,
-    onCompose: () -> Unit
+    onCompose: () -> Unit,
+    onEmailClick: (emailId: String) -> Unit
 ) {
     val resolvedFolder = when (folder) {
         "Sent" -> "Sent"
@@ -139,13 +141,13 @@ fun EmailScreen(
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { /* open */ },
+                        .clickable { onEmailClick(localMessage.id) },
                     color = if (localMessage.isUnread) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.surface,
                     tonalElevation = if (localMessage.isUnread) 1.dp else 0.dp
                 ) {
                     Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(modifier = Modifier.size(40.dp).background(avatarColor, CircleShape), contentAlignment = Alignment.Center) {
-                            Text(text = localMessage.from.first().uppercase(), fontWeight = FontWeight.Bold, color = Color.White)
+                            Text(text = (localMessage.from.firstOrNull()?.uppercase() ?: "?"), fontWeight = FontWeight.Bold, color = Color.White)
                         }
                         Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -273,4 +275,62 @@ private fun Email.toEmailMessage(): EmailMessage {
         isUnread = isUnread(),
         accountColor = Color.Unspecified
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EmailDetailScreen(
+    emailId: String,
+    viewModel: MainViewModel,
+    onBack: () -> Unit
+) {
+    val coroutineScope = rememberCoroutineScope()
+    var email by remember { mutableStateOf<Email?>(null) }
+
+    LaunchedEffect(emailId) {
+        coroutineScope.launch {
+            val loaded = viewModel.emailRepository.getById(emailId)
+            if (loaded != null && loaded.isUnread()) {
+                viewModel.emailRepository.markAsRead(listOf(emailId))
+            }
+            email = loaded
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(email?.subject ?: "Email", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Back") }
+                }
+            )
+        }
+    ) { innerPadding ->
+        val e = email
+        if (e == null) {
+            Column(modifier = Modifier.fillMaxSize().padding(innerPadding).padding(16.dp)) {
+                Text("Email not found", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        } else {
+            LazyColumn(modifier = Modifier.padding(innerPadding).fillMaxSize().padding(16.dp)) {
+                item {
+                    Text(e.sender.toString(), fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(e.subject, style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = java.time.format.DateTimeFormatter.ofPattern("EEE, d MMM yyyy HH:mm")
+                            .format(java.time.LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(e.receivedAt.toEpochMilliseconds()), java.time.ZoneId.systemDefault())),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    HorizontalDivider()
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(e.bodyText ?: "(no content)", style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+        }
+    }
 }
