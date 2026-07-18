@@ -34,23 +34,30 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         val eventId = intent.getStringExtra("event_id") ?: return
         val accountId = intent.getStringExtra("account_id") ?: return
 
-        // Launch full-screen reminder activity
-        val launchIntent = Intent(context, FullScreenReminderActivity::class.java).apply {
-            putExtra("event_id", eventId)
-            putExtra("account_id", accountId)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        }
+        // goAsync so the broadcast isn't torn down mid-launch (process death would
+        // otherwise drop the reminder entirely).
+        val pending = goAsync()
+        try {
+            // Launch full-screen reminder activity
+            val launchIntent = Intent(context, FullScreenReminderActivity::class.java).apply {
+                putExtra("event_id", eventId)
+                putExtra("account_id", accountId)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
 
-        // Turn on screen and show over lock screen
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            ContextCompat.startActivity(context, launchIntent, null)
-        } else {
-            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(launchIntent)
-        }
+            // Turn on screen and show over lock screen
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                ContextCompat.startActivity(context, launchIntent, null)
+            } else {
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(launchIntent)
+            }
 
-        // Also show notification as backup
-        showNotification(context, eventId)
+            // Also show notification as backup
+            showNotification(context, eventId)
+        } finally {
+            pending.finish()
+        }
     }
 
     private fun showNotification(context: Context, eventId: String) {
@@ -170,12 +177,13 @@ class FullScreenReminderActivity : Activity() {
         )
 
         val triggerTime = System.currentTimeMillis() + 5 * 60 * 1000 // 5 minutes
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            alarmManager.setExactAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP,
-                triggerTime,
-                pendingIntent
-            )
+        // ponytail: guard exact-alarm on API 31+. Without SCHEDULE_EXACT_ALARM/USE_EXACT_ALARM
+        // (revoked on 12+ in battery saver), setExactAndAllowWhileIdle throws SecurityException.
+        // Fall back to an inexact set() so the snooze still fires instead of crashing.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
+            alarmManager.set(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
         } else {
             alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
         }
@@ -238,7 +246,10 @@ class ReminderScheduler(
                 )
                 synchronized(scheduledKeys) { scheduledKeys.add(key) }
 
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
+                    // ponytail: exact-alarm revoked on 12+ → inexact set() instead of crashing.
+                    alarmManager.set(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     alarmManager.setExactAndAllowWhileIdle(
                         AlarmManager.RTC_WAKEUP,
                         triggerTime,

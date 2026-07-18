@@ -260,7 +260,7 @@ fun AccountInboxCard(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = account.name.first().uppercase(),
+                    text = (account.name.firstOrNull()?.uppercase() ?: "?"),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = color.onContainer

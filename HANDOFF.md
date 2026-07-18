@@ -423,6 +423,38 @@ Claims re-verified against source; two HANDOFF claims did NOT hold and were NOT 
   user by `account.email` (lowercase) instead of stamping every NEEDS_ACTION attendee.
 NOT pushed (Keith decides when to push). Branch is local only.
 
+## BRANCH B — fix/batch-b-sev2 (2026-07-18, EXECUTED)
+Isolated off `fix/batch-a-sev1` (HEAD of A). Build GREEN (`:app:assembleDebug` + `:app:testDebugUnitTest`, EXIT=0).
+Claims re-verified against source; three HANDOFF claims did NOT hold as stated:
+- #7 [FIXED] ReminderSystem — added `canScheduleExactAlarms()` guard (API 31+) before both
+  `setExactAndAllowWhileIdle` calls (schedule + snooze); falls back to `set()` instead of throwing
+  SecurityException. Also wrapped `ReminderAlarmReceiver.onReceive` in `goAsync()` so the launch +
+  notification survive process death. Reboot loss is NOT a real gap: BootReceiver.scheduleReminders
+  re-schedules all accounts on BOOT_COMPLETED/MY_PACKAGE_REPLACED.
+- #8 [FIXED] NotificationHelper.notifySafe — now `Log.w` when POST_NOTIFICATIONS is denied instead of
+  silently dropping. Callers/UI can re-prompt via RuntimePermissionGate. (Re-prompt can't fire from a
+  static helper with no Activity; logging is the honest minimum.)
+- #9 [DISPROVED — NOT churned] CryptoManager.decryptField: the `raw.size < 12` branch is the
+  INTENTIONAL in-memory draft path (UI-built password, not yet persisted). The `>= 12` branch calls
+  `decrypt(raw)` which throws on malformed/truncated ciphertext — so corrupted/truncated stored creds
+  are REJECTED, not accepted. There is no plain "return raw as trusted" downgrade. The only narrow
+  edge (a >=12-char raw draft password at pre-persist provision) needs a draft flag; out of scope and
+  self-limited by encrypt-on-write. Leave as-is.
+- #10 [FIXED] EmailScreen — the row `clickable { /* open */ }` was dead. Added `onEmailClick(emailId)`
+  callback + a new `email_detail/{emailId}` route + a minimal read-only EmailDetailScreen (loads by id,
+  marks read, shows from/subject/time/body). Real navigation, no stub.
+- #11 [DEFERRED — LATENT, misattributed] moveToFolder/deleteMessages: the HANDOFF claims UI passes
+  `uids` that match Message-ID. VERIFIED FALSE — MainViewModel.moveEmails/deleteEmails pass
+  `email.messageId` (real Message-ID). Local move/delete WORKS (EmailDao updates on success). The
+  residual bug: for Message-ID-less mail (synthetic uid `$folder#$start+msgNum`), the *server* IMAP
+  path's `getHeader("Message-ID")==mid` match fails → server move/delete no-ops and the message
+  reappears next sync. Fix needs IMAP-UID persistence (schema + engine change) — out of scope for a
+  safe SEV-2 pass. Flagged as latent; local semantics correct today.
+- #12 [FIXED] `String.first()` crash on blank names at 3 sites — EmailScreen:148 (localMessage.from),
+  MessagesScreen:304 (conversation.name), UnifiedInboxScreen:263 (account.name). Replaced with
+  `firstOrNull()?.uppercase() ?: "?"`. AccountSettingsScreen:114 already used the safe form.
+NOT pushed (Keith decides when to push). Branch is local only.
+
 ## Known environment quirks
 - Emulator-5556 10-min screen-off kills USB: `adb shell settings put global
   stay_on_while_plugged_in 7`. Backup: `adb tcpip 5555` + `adb connect 10.0.2.2:5555`.
