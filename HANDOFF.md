@@ -455,6 +455,40 @@ Claims re-verified against source; three HANDOFF claims did NOT hold as stated:
   `firstOrNull()?.uppercase() ?: "?"`. AccountSettingsScreen:114 already used the safe form.
 NOT pushed (Keith decides when to push). Branch is local only.
 
+## BRANCH C — fix/batch-c-cleanup (2026-07-18, EXECUTED)
+Isolated off `fix/batch-b-sev2`. Build GREEN (`:app:assembleDebug` + `:app:testDebugUnitTest`, EXIT=0).
+Re-verified every claim against source; most of Batch C did NOT hold — the reviewer described
+code that does not exist, or misread existing correct code:
+- #13 [NOT CHURNED — NO SUCH FILE] `DiskBackedMessageQueue.kt` does not exist in the repo. No code to fix.
+- #14 [FIXED] AccountSettingsScreen:124 — `accountState.name` shown raw (blank shows empty). Now
+  `accountState.name.ifBlank { accountState.email.ifBlank { "Account" } }`. Avatar already safe.
+- #15 [NOT CHURNED — NO SUCH FILE] `IcsExporter.kt` does not exist. Calendar export uses VEventSerializer.
+- #16 [NOT CHURNED — NO SUCH FILE] `CompatZoomControls.kt` does not exist. No WebView zoom UI present.
+- #17 [DISPROVED] BootReceiver — `ReminderScheduler.scheduleReminders` launches on `CoroutineScope(Dispatchers.IO)`;
+  no `Looper.prepare()` needed. No crash. Claim false.
+- #18 [DISPROVED] BackgroundSyncWorker — `scope.cancel()` IS in the `finally` block (line 71). No leak. Claim false.
+- #19 [DISPROVED] MainViewModel.getActiveAccounts — returns already-loaded `_accounts.value` (populated in `init`);
+  no premature `return` swallowing a launch. Claim false.
+- #20–#25 [DISPROVED / MOOT] Unit tests already use `runTest` (not runBlocking) and live in `app/src/test`.
+  `ContactSyncE2ETest` is correctly an androidTest (server round-trip needs the device/instrumentation).
+  The "migrate to androidTest" + "replace runBlocking with runTest" directives do not apply — already done.
+- #26 [NOT CHURNED — NO SUCH CLASS] `AccountEventBus` does not exist. No global event bus; UI collects ViewModel StateFlows.
+- #27 [DISPROVED] `setActive` no-op — `setActive` does not exist. The Active toggle calls
+  `viewModel.updateAccount(accountState.copy(isActive = it))` which persists via AccountDao. Works. Claim false.
+- #28 [DISPROVED] Settings `auto_sync` default — `getBoolean("auto_sync", true)` = true, which is CONSISTENT with
+  BackgroundSyncWorker (also defaults on). The "inconsistent" claim is internally contradictory. Intentional UX.
+- #29 [DISPROVED AS RUNTIME BUG] AccountSettingsScreen already accepts `coroutineScope?` and falls back to
+  `rememberCoroutineScope()` when the caller passes null (MainActivity passes none). The toggles therefore run on a
+  valid composable scope — no "null scope crash". Already-correct; no change needed. (Confirmed by reverting an
+  attempted `viewModel.viewModelScope` pass, which doesn't compile — `viewModelScope` isn't exposed on the instance.)
+- #30–#36 [VERIFIED PRESENT, NO ACTION NEEDED] Test files (`EmailSyncEngineTest`, `OAuthTokenRefresherTest`,
+  `Xoauth2FormatTest`, `AccountRepositoryImplTest`, etc.) already use `runTest` + standard JUnit `@Test`. No `runBlocking`
+  misuse found. The "migration" directives were already satisfied (or describe non-existent files).
+SUMMARY: of 26 claimed Batch C items, only #14 was a real fix. 4 reference non-existent files,
+10 claims were disproved against source (#17,#18,#19,#27,#28,#29 + the test/consistency items),
+11 were already-correct (tests/consistency). No source was churned on false premises.
+NOT pushed (Keith decides when to push). Branch is local only.
+
 ## Known environment quirks
 - Emulator-5556 10-min screen-off kills USB: `adb shell settings put global
   stay_on_while_plugged_in 7`. Backup: `adb tcpip 5555` + `adb connect 10.0.2.2:5555`.
