@@ -50,10 +50,14 @@ class CalendarSyncEngineImpl(
                 }
 
                 val localEvents = calendarRepo.getAllEventsForAccount(account.id).first()
-                // ponytail: key by uid, not calendarId — a calendar can hold many
-                // events, so keying by calendarId collapsed them to a single entry and
-                // broke the etag-skip (every sync re-fetched). uid is unique per event.
-                val localEventByUid = localEvents.associateBy { it.uid }
+                // ponytail: key the local cache by NORMALIZED SERVER PATH (the .ics
+                // href), not by UID. The fetch/dedup filter below compares against the
+                // server href too, so the two sides must use the same key. Keying by
+                // UID-from-href only matched when the server stored the object as
+                // $UID.ics AND returned a relative href — for any other server layout
+                // every event looked "new" each sync (dupe-storm) and the delete pass
+                // couldn't match either.
+                val localEventByPath = localEvents.associateBy { pathOf(VEventSerializer.hrefFor(it)) }
 
                 val masterServerHrefs = mutableSetOf<String>()
                 val masterServerPaths = mutableSetOf<String>()
@@ -66,7 +70,7 @@ class CalendarSyncEngineImpl(
                     masterServerHrefs.addAll(etagEntries.map { localEt -> localEt.href })
                     masterServerPaths.addAll(etagEntries.map { localEt -> pathOf(localEt.href) })
                     val toFetch = etagEntries.filter { entry ->
-                        val local = localEventByUid[entry.uidFromHref()]
+                        val local = localEventByPath[pathOf(entry.href)]
                         local == null || local.etag != entry.etag
                     }.map { it.href }
 
@@ -223,10 +227,6 @@ class CalendarSyncEngineImpl(
     }
 
     fun allProgress() = _syncProgress.map { it.values.toList() }.distinctUntilChanged()
-
-    // ponytail: the VEVENT UID is the .ics filename stem in the collection href.
-    private fun CalDAVClient.ETagEntry.uidFromHref(): String =
-        href.substringAfterLast('/').substringBefore('.')
 
     // ponytail: normalize a DAV href to its URL path, stripping scheme://host so relative
     // (/calendars/x.ics) and absolute (http://host/calendars/x.ics) hrefs compare equal.
