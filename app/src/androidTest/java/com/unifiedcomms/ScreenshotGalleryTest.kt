@@ -88,11 +88,11 @@ class ScreenshotGalleryTest {
     private fun settings() = tap(880, 211)
     private fun search() = tap(1005, 211)
     private fun addAccount() = tap(565, 212)
-    private fun tabInbox() = tap(100, 2171)
-    private fun tabEmail() = tap(310, 2171)
-    private fun tabCalendar() = tap(530, 2171)
-    private fun tabTasks() = tap(750, 2171)
-    private fun tabMessages() = tap(960, 2171)
+    private fun tabInbox() = tap(107, 2171)
+    private fun tabEmail() = tap(280, 2171)
+    private fun tabCalendar() = tap(453, 2171)
+    private fun tabTasks() = tap(626, 2171)
+    private fun tabMessages() = tap(799, 2171)
     // Open Add Account from Settings via text-based UiAutomator scroll+tap. A hardcoded
     // coordinate breaks when the seeded demo account card pushes "Add Account" lower; this
     // scrolls the Settings column until the control is visible, then taps it by text.

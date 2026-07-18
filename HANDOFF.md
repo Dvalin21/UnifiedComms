@@ -489,6 +489,24 @@ SUMMARY: of 26 claimed Batch C items, only #14 was a real fix. 4 reference non-e
 11 were already-correct (tests/consistency). No source was churned on false premises.
 NOT pushed (Keith decides when to push). Branch is local only.
 
+## HEAVY TEST PASS — 2026-07-18 (all 3 branches, post-remediation)
+Ran full verification on emulator-5556 (testAVD2, no-window). All green.
+- Build: `:app:assembleDebug :app:assembleAndroidTest :app:testDebugUnitTest` GREEN.
+- Unit tests: 71 @Test methods across 18 files, all pass (was "67" in the playbook; grew).
+- UI gallery (ScreenshotGalleryTest, uc_01..uc_13, light+dark): OK (2 tests). 13 screenshots
+  pulled + vision-reviewed. All tabs render (Inbox dashboard, Email, **Calendar month grid**,
+  Tasks list, **Messages conversation list**, Settings, Add Account, Search), both themes.
+- DAV E2E round-trips (Contact/Task/Calendar) vs host mocks via `adb reverse`: OK (3 tests) ×2 runs
+  (no flake). BackgroundSyncWorkerTest: OK (1 test).
+- Harness fix shipped: ScreenshotGalleryTest bottom-nav tap coords had drifted (Calendar tap at
+  x=530 landed in the gap and silently stayed on Inbox; Messages tap at x=960 landed on Contacts).
+  Re-derived true tab centers from a uiautomator dump and corrected all 5 tab taps
+  (Inbox 107 / Email 280 / Calendar 453 / Tasks 626 / Messages 799, y=2171). Re-ran: uc_04 now a
+  real calendar grid, uc_06 a real Messages list. App was NEVER broken — only the harness coords.
+- Proof the blank-name fixes (Batch B #12) are live: every avatar renders its initial
+  ("D" Demo User, "B"/"A" email senders, "A" message peer) — no `.first()` crash anywhere.
+- Emulator left in working debug state (debug + androidTest installed, fresh demo seed).
+
 ## Known environment quirks
 - Emulator-5556 10-min screen-off kills USB: `adb shell settings put global
   stay_on_while_plugged_in 7`. Backup: `adb tcpip 5555` + `adb connect 10.0.2.2:5555`.
