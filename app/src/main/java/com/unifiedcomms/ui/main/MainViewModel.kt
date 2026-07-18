@@ -22,12 +22,14 @@ import com.unifiedcomms.data.repository.TaskRepository
 import com.unifiedcomms.data.repository.TaskRepositoryImpl
 import com.unifiedcomms.security.CryptoManagerImpl
 import com.unifiedcomms.sync.CalendarSyncEngineImpl
+import com.unifiedcomms.sync.ContactSyncEngine
 import com.unifiedcomms.sync.ContactSyncEngineImpl
 import com.unifiedcomms.sync.EmailSyncEngineImpl
 import com.unifiedcomms.sync.SendResult
 import com.unifiedcomms.sync.SyncManager
 import com.unifiedcomms.sync.SyncResult
 import com.unifiedcomms.sync.TaskSyncEngineImpl
+import com.unifiedcomms.data.model.UnifiedContact
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.Dispatchers
@@ -221,5 +223,55 @@ class MainViewModel(
     val taskRepository: TaskRepository = taskRepo
     val messagingRepository: MessagingRepository = messagingRepo
     val contactRepository: ContactRepository = contactRepo
+    val contactSyncEngine: ContactSyncEngine = ContactSyncEngineImpl(contactRepo, accountRepo, crypto, viewModelScope)
     val syncManagerInstance: SyncManager = syncManager
+
+    /** All contacts across accounts (for the Contacts tab). */
+    fun getAllContacts() = contactRepo.getUnifiedCommsContacts()
+
+    /**
+     * Create a contact on its owning account (CardDAV server + local row). For a
+     * LOCAL contact (no accountId) we only persist locally. The engine writes the
+     * server row and returns the serverId/etag; we then hand that back to the
+     * caller so the local row can be persisted with the correct sourceId.
+     */
+    suspend fun createContact(contact: UnifiedContact): ContactOpResult {
+        val account = contact.accountId?.let { getAccountById(it) }
+        return if (account != null) {
+            val r = contactSyncEngine.createContact(account, contact)
+            if (r.success) ContactOpResult(true, r.uid, r.etag)
+            else ContactOpResult(false, error = r.errorMessage)
+        } else {
+            contactRepo.insert(contact.copy(needsSync = false))
+            ContactOpResult(true)
+        }
+    }
+
+    suspend fun updateContact(contact: UnifiedContact): SyncResult {
+        val account = contact.accountId?.let { getAccountById(it) }
+        return if (account != null) contactSyncEngine.updateContact(account, contact)
+        else { contactRepo.update(contact.copy(needsSync = false)); SyncResult.success() }
+    }
+
+    suspend fun deleteContact(contact: UnifiedContact): SyncResult {
+        val account = contact.accountId?.let { getAccountById(it) }
+        val serverId = contact.sourceId
+        return if (account != null && serverId != null) {
+            val r = contactSyncEngine.deleteContact(account, serverId)
+            if (r.success) contactRepo.deleteById(contact.id)
+            r
+        } else {
+            contactRepo.deleteById(contact.id)
+            SyncResult.success()
+        }
+    }
 }
+
+/** Result of a contact create op: carries the server-assigned uid/etag so the
+ *  caller can persist the local row with the correct sourceId/etag. */
+data class ContactOpResult(
+    val success: Boolean,
+    val uid: String? = null,
+    val etag: String? = null,
+    val error: String? = null
+)

@@ -180,6 +180,8 @@ class MainActivity : ComponentActivity() {
                                     onNavigateToConversation = { conversationId -> navController.navigate("conversation/$conversationId") },
                                     onNavigateToComposeMessage = { navController.navigate("compose_message") },
                                     onEventClick = { eventId -> navController.navigate("event_detail/$eventId") },
+                                    onNavigateToContact = { contactId -> navController.navigate("contact_edit/$contactId") },
+                                    onNavigateToContactNew = { navController.navigate("contact_new") },
                                     initialTab = pendingTab
                                 )
                             }
@@ -321,6 +323,25 @@ class MainActivity : ComponentActivity() {
                             }
                             composable("encryption") {
                                 EncryptionScreen(onBack = { navController.popBackStack() })
+                            }
+                            composable("contact_new") {
+                                ContactEditScreen(
+                                    viewModel = viewModel,
+                                    onDone = { navController.popBackStack() }
+                                )
+                            }
+                            composable(
+                                route = "contact_edit/{contactId}",
+                                arguments = listOf(
+                                    androidx.navigation.navArgument("contactId") { type = androidx.navigation.NavType.StringType }
+                                )
+                            ) { backStackEntry ->
+                                val contactId = backStackEntry.arguments?.getString("contactId").orEmpty()
+                                ContactEditScreen(
+                                    viewModel = viewModel,
+                                    contactId = contactId,
+                                    onDone = { navController.popBackStack() }
+                                )
                             }
                         }
                     }

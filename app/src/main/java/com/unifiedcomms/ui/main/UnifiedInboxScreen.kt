@@ -31,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -81,17 +82,19 @@ fun UnifiedInboxScreen(
     onNavigateToConversation: (String) -> Unit = {},
     onNavigateToComposeMessage: () -> Unit = {},
     onEventClick: (String) -> Unit = {},
+    onNavigateToContact: (String) -> Unit = {},
+    onNavigateToContactNew: () -> Unit = {},
     initialTab: Int? = null
 ) {
     val accounts = viewModel.accounts.collectAsStateWithLifecycle()
     val activeAccounts = accounts.value.filter { it.isActive }.distinctBy { it.id }
     val coroutineScope = rememberCoroutineScope()
 
-    var selectedTab by rememberSaveable { mutableIntStateOf(initialTab?.coerceIn(0, 4) ?: 0) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(initialTab?.coerceIn(0, 5) ?: 0) }
     val pendingTab by viewModel.pendingTab.collectAsStateWithLifecycle()
     LaunchedEffect(pendingTab) {
         pendingTab?.let {
-            selectedTab = it.coerceIn(0, 4)
+            selectedTab = it.coerceIn(0, 5)
             viewModel.clearPendingTab()
         }
     }
@@ -148,7 +151,8 @@ fun UnifiedInboxScreen(
      NavigationItem("Email", Icons.Default.Email, 1),
      NavigationItem("Calendar", Icons.Default.CalendarMonth, 2),
      NavigationItem("Tasks", Icons.Default.Checklist, 3),
-     NavigationItem("Messages", Icons.AutoMirrored.Default.Message, 4)
+     NavigationItem("Messages", Icons.AutoMirrored.Default.Message, 4),
+     NavigationItem("Contacts", Icons.Default.Contacts, 5)
  )
                     items.forEach { item ->
                         NavigationBarItem(
@@ -174,6 +178,7 @@ fun UnifiedInboxScreen(
                 2 -> CalendarScreen(viewModel, onNavigateToCalendar, onEventClick)
                 3 -> TasksScreen(viewModel, onCreateTask = { }, onTaskClick = { /* TODO: task detail */ })
                 4 -> MessagesScreen(viewModel, onConversationClick = onNavigateToConversation, onNewMessage = onNavigateToComposeMessage)
+                5 -> ContactsScreen(viewModel, onContactClick = onNavigateToContact, onAddContact = onNavigateToContactNew)
             }
         }
     }
