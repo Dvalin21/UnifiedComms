@@ -114,6 +114,12 @@
             android:name=".reminder.ReminderAlarmReceiver"
             android:exported="false" />
 
+        <!-- Calendar invite RSVP receiver. Declared here (was missing) so the
+             accept/decline/tentative intents from NotificationHelper route correctly. -->
+        <receiver
+            android:name=".util.InviteActionReceiver"
+            android:exported="false" />
+
         <!-- Sync Adapters -->
         <provider
             android:name=".sync.accounts.UnifiedCommsAuthenticatorProvider"

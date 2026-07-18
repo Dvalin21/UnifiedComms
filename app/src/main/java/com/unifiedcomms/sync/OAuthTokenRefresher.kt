@@ -71,7 +71,11 @@ class OAuthTokenRefresher(
                     val updatedAccount = account.copy(authConfig = updatedAuth)
                     accountRepo.update(updatedAccount)
                     Log.i(TAG, "token refreshed for ${account.email}")
-                    updatedAccount
+                    // ponytail: re-read from repo so callers get the re-encrypted
+                    // AuthConfig (engines decryptAuthConfig on it). Returning the in-memory
+                    // `updatedAccount` would hand engines a PLAINTEXT token and make GCM
+                    // decrypt throw on every post-refresh sync.
+                    accountRepo.getById(account.id) ?: updatedAccount
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "token refresh error for ${account.email}", e)

@@ -1,8 +1,8 @@
 # UnifiedComms — HANDOFF (session restart)
 
-Last updated: 2026-07-17 (Linus/Ponytail bug hunt — entire project)
+Last updated: 2026-07-18 (EXHAUSTIVE line-by-line bug review — full project, all 105 Kotlin src files + manifest + 45 build/resource files + 29 test files)
 Authoritative branch: `master`  (single branch; `fix/add-account-email-sync` was DELETED — never restore it)
-Current HEAD: `c33722f`  (docs(screenshots): add release-build smoke screenshot (com.unifiedcomms, v1.0.2))
+Current HEAD: `1ae34aeb`  (post exhaustive-review snapshot; assembleDebug GREEN, EXIT=0)
 Latest release: **v1.0.2** (versionCode 2) — https://github.com/Dvalin21/UnifiedComms/releases/tag/v1.0.2
 
 > WARNING: This file rots. Before trusting any claim here, run `git log -5` and
@@ -259,6 +259,170 @@ DELIVERED: commits `3069f95` (reminder fix + doc-rot refresh + fresh screenshots
 `c33722f` (release smoke shot) pushed to `master`; tag `v1.0.2` pushed to origin.
 Emulator left in working state (debug + test APKs reinstalled, gallery green).
 
+## EXHAUSTIVE BUG REVIEW — FIX PLAN (2026-07-18)
+
+Full line-by-line review of ALL 105 Kotlin source files (~16.7k LOC) + AndroidManifest +
+45 build/resource files + 29 test files. Done via 6 partitioned review subagents (every line
+of every assigned file) + primary-source verification of every SEV-1/SEV-2 and every subagent
+LIVE claim by the orchestrator. Build baseline: `:app:assembleDebug` GREEN (EXIT=0).
+
+Verification legend: [V] = orchestrator read source and confirmed. [A] = subagent, in-repo,
+cross-checked. [X] = subagent claim DISPROVED at source (do NOT act on these).
+
+### TIER 1 — LIVE SEV-1 (ship-blockers)
+1. [V] OAuth refresh returns PLAINTEXT → engine re-decrypt throws. `OAuthTokenRefresher.kt:74`
+   returns `updatedAccount` (plaintext AuthConfig built at 67-71) after `accountRepo.update`
+   re-encrypts to DB. `SyncManager.performFullSync:91` feeds that `fresh` into email/calendar/
+   task/contact engines (99/112/120/128), each calls `decryptAuthConfig` → real OAuth token
+   (>12 bytes) GCM-decrypts non-ciphertext → throws → OAuth accounts fail every sync after
+   token refresh. FIX: `return accountRepo.getById(account.id) ?: updatedAccount` at line 74.
+2. [V] Four widget receivers are DEAD manifest components. `AndroidManifest.xml:133/146/159/172`
+   declare EmailWidgetReceiver/CalendarWidgetReceiver/TasksWidgetReceiver/UnifiedWidgetReceiver,
+   but only `*.kt.bak` exist (Gradle won't compile `.bak`). ClassNotFoundException on widget
+   re-bind/reboot. FIX: delete the 4 `<receiver>` blocks + 8 `*.kt.bak` files, OR restore real
+   sources + AppWidgetProviderInfo XML.
+3. [V] ConversationDao JSON-`IN` → empty messaging inbox. `MessageDao.kt:123/126/129/132/138/141`
+   `WHERE :userId IN (participantIds)` — `participantIds` is a JSON-array STRING column; SQLite
+   `IN` compares the whole blob → never matches real userId. `MessagesScreen:83` calls
+   `getAllConversationsForUser(getCurrentUserId())` → empty. (Demo coincidentally works only
+   because both sides are literal `"current_user"`.) FIX: normalize participants (junction
+   table) or query `participantIds LIKE '%"userId"%'`.
+4. [V] `getCurrentUserId()` returns constant `"current_user"`. `Message.kt:273-275`. LIVE callers:
+   MessagesScreen (82/510/532), MainViewModel:158, DemoDataSeeder:127. `senderId == "current_user"`
+   never matches real ids → outgoing mail shown as incoming; read-receipt filter wrong. FIX: wire
+   to real authenticated user id (account id / email), not a TODO constant.
+5. [V] Biometric lock fully bypassable. `MainActivity.kt:96` "Continue without biometrics"
+   TextButton unconditionally calls `onUnlocked()`. Anyone with physical access gets in. The
+   WEAK-or-CREDENTIAL gate (60-70) is cosmetic. FIX: remove the unconditional bypass; gate behind
+   real fallback or require device credential.
+6. [V] InviteActionReceiver corrupts RSVPs + dead + unsafe. `InviteActionReceiver.kt:42-53` updates
+   ALL `NEEDS_ACTION` attendees (not current user) and syncs upstream (comment admits "just update
+   all"); receiver NOT declared in manifest → action buttons dead; no `goAsync()` → work lost on
+   process death. `showCalendarInviteNotification` has no callers today (LATENT-but-poisoned).
+   FIX: declare receiver `exported=false`, match attendee by account email, wrap in `goAsync()`.
+
+### TIER 2 — LIVE SEV-2
+7. [V] ReminderSystem exact-alarm unguarded + cancel lost on reboot. `ReminderSystem.kt:172/242`
+   `setExactAndAllowWhileIdle` with no `canScheduleExactAlarms()` guard → SecurityException on 12+
+   with alarms revoked. `scheduledKeys` in-memory (207/254) → stale reminders for deleted events
+   survive reboot (key `${eventId}_${minutesBefore}` is deterministic, so cancel can regenerate).
+   `ReminderAlarmReceiver:46` also launches Activity from broadcast (BAL-restricted 10+). FIX: guard
+   exact-alarm; regenerate PendingIntent deterministically at cancel; rely on full-screen-intent
+   notification only.
+8. [V] NotificationHelper.notifySafe silent drop. `NotificationHelper.kt:31-41` — when
+   POST_NOTIFICATIONS denied (13+), every notification vanishes, no log/re-prompt. FIX: `Log.w` +
+   surface in-app re-prompt via RuntimePermissionGate.
+9. [V] CryptoManager.decryptField downgrade. `CryptoManager.kt:62` — `raw.size < 12` returned as
+   trusted plaintext. Truncated/corrupted stored creds accepted. (Round-trip encrypt-on-write/
+   decrypt-on-read is correct elsewhere.) FIX: explicit draft flag, else throw on malformed ciphertext.
+10. [V] Email row tap is a no-op. `EmailScreen.kt:142` `clickable { /* open */ }`. Core inbox
+    interaction dead. FIX: add onEmailClick callback → detail route.
+11. [V] moveToFolder/deleteMessages Message-ID-only match. `EmailSyncEngineImpl.kt:479/508` match
+    UI-passed `uids` against `Message-ID` header, but Message-ID-less mail has synthetic uid
+    `"$folder#$start+msgNum"` (line 144) → `msgs` empty → `SyncResult.success(0)`. Move/delete
+    silently no-ops. FIX: match by stored uid (persist lookup) or IMAP UID.
+12. [V] `String.first()` crash on blank names. `EmailScreen:148` `localMessage.from.first()`,
+    `MessagesScreen:303` `conversation.name.first()`, `UnifiedInboxScreen:263` `account.name.first()`.
+    Blank sender/name → IndexOutOfBoundsException → crashes the list row. (AccountSettingsScreen:114
+    already uses the safe form.) FIX: `firstOrNull()?.uppercase() ?: "?"` x3.
+
+### TIER 3 — LIVE SEV-3 / correctness
+13. [V] RecurrenceExpander MONTHLY multi-BYDAY dropped. `RecurrenceExpander.kt:137`
+    `rule.byDay.first()` — `RRULE:FREQ=MONTHLY;BYDAY=MO,WE,FR` collapses to Monday. FIX: iterate `byDay`.
+14. [V] Tasks tab "create" no-op. `UnifiedInboxScreen.kt:179` `onCreateTask = { }` empty lambda. FIX: wire to CreateTaskScreen.
+15. [A] Dead Attendees TextField. `CalendarScreen.kt:477` `TextField(value="", onValueChange={}, ...)`.
+    Event attendees can't be set/edited. FIX: wire to state + parse into CalendarEvent.attendees.
+16. [A] Dead "More" menu. `MessagesScreen.kt:202` `MoreVert` → `"menu"`; dialogMessage when-block
+    (163-171) has no `"menu"` branch → dead tap. FIX: add branch or remove button.
+17. [A] Dead mock helpers. MessagesScreen `getMockConversations:456` / `getMockMessages:458`,
+    CalendarScreen `getMockEventsForDate:295`, TasksScreen `getMockTasks:303` — no callers. DELETE.
+18. [V] DemoDataSeeder direct DAO insert bypasses encryption. `DemoDataSeeder.kt:75`
+    `db.accountDao().insert(account)` (no crypto). Low impact: seeder is a no-op on fresh install +
+    demo-only. FIX: route through accountRepo.
+
+### TIER 4 — DEAD (delete)
+19. [V] `BiometricManager.kt` — entire file dead (zero instantiations; MainActivity has the live gate). DELETE.
+20. [V] 8 × `*.kt.bak` widget files — dead weight (see #2).
+
+### TIER 5 — LATENT / forward-risk (fix before wiring)
+21. [A] No FileProvider/provider_paths.xml. Will `FileUriExposedException` the moment attachment/share
+    is wired. ADD FileProvider + provider_paths.xml.
+22. [A] `ic_provider_fastmail` ("F") / `ic_provider_mailcow` (squiggle) not brand-identifiable —
+    violates the spec's identifiable-tile requirement. REPLACE.
+23. [A] `build.gradle.kts:216` duplicate `work-runtime-ktx` (2.9.1 + 2.9.0). DELETE duplicate.
+24. [A] `build.gradle.kts:212-213` alpha `security-crypto`/`biometric`. PROMOTE to stable.
+25. [A] `activity_fullscreen_reminder.xml` uses `androidx.cardview.CardView` (transitive only).
+    SWITCH to MaterialCardView or add explicit dep.
+26. [A] Both SCHEDULE_EXACT_ALARM + USE_EXACT_ALARM (Manifest:13-14) — Play policy risk.
+    DROP SCHEDULE_EXACT_ALARM unless justified.
+27. [A] Hardcoded strings in `activity_fullscreen_reminder.xml` (i18n). USE @string/.
+28. [A] Flows built inline in `by` delegate (CalendarScreen:93, TasksScreen:76, MainActivity create/
+    edit routes) → re-subscription churn. HOIST with remember.
+29. [V] Account type string mismatch: AddAccountActivity:469 `com.unifiedcomms.account` vs provider
+    authority `com.unifiedcomms.authenticator` — latent while AccountManager path is dead; reconcile
+    if ever wired.
+
+### TEST SUITE — FALSE CONFIDENCE (verified)
+30. [V] `IsOkTest.kt:9` `assertEquals(1,1)` — pure noise. DELETE.
+31. [V] `EmailSyncEngineTest.kt:45/72` `assertTrue(true)`; result only println'd; crypto mocked
+    identity + getAllActive empty → LIVE class, ZERO coverage. This test CANNOT catch #1 or #11.
+    REWRITE with real assertions + real crypto.
+32. [A] `ScreenshotGalleryTest` — zero assertions (screenshot harness mislabeled as UI test).
+    ADD semantic assertions or demote to harness.
+33. [A] `BackgroundSyncWorkerTest.kt:51` — green only because clean emulator has no accounts. SEED an account.
+34. [A] `EtherealEmailSyncTest.kt:62-103` — no cleanup (cross-run account/row pollution). ADD finally-delete.
+35. [A] `AccountRepositoryImplTest.kt:31-52` — sync-flag filter has no negative case. ADD negative test.
+36. [V] `OAuthTokenRefresherTest` uses FakeCrypto + 13-char token → masks #1 entirely. Must use
+    real-length token + real CryptoManager round-trip.
+KEEP (good): RecurrenceExpanderTest, ICalParserRecurrenceExceptionTest, VEventSerializerTest,
+VTaskSerializerTest, VCardTest, AutodiscoverDavTest, Xoauth2FormatTest, DateTimeConverterTest,
+ConvertersTest, EmailRepositoryImplTest, ContactRepositoryImplTest.mergeContacts, CalDAV/CardDAV
+E2E (correct per-run-unique keys + cleanup).
+
+### SUBAGENT CLAIMS DISPROVED (do NOT act on these)
+[X] "Secrets stored plaintext on disk" (data agent) → FALSE: encrypt applied at
+    AccountRepositoryImpl.insert/update:16/18.
+[X] "Room won't compile (LongArray/ByteArray)" (data agent) → FALSE: build is green.
+[X] "Authenticator broken → accounts can't be created" (manifest agent) → OVERSTATED: app uses Room
+    + WorkManager directly; no AccountManager.addAccount call; provider is dead scaffolding.
+[X] "Dark mode broken/unreadable" (manifest agent) → FALSE: Theme.kt applies real DarkColorScheme;
+    MainActivity feeds effectiveDark. Agent inspected only native styles.xml.
+[X] "Theme toggle non-reactive" (UI agent) → FALSE: putThemeMode→putString→PreferencesManager:50
+    `_themeMode.update`. Flow emits.
+[X] "ContactsScreen:245 Attendees dead field" (UI agent) → LINE MISMATCH: 245 is the wired Phones
+    field; real dead Attendees field is CalendarScreen:477.
+
+### EXECUTION PLAN (per fix; isolated branch, green build + proof after each)
+- Batch A (SEV-1): #1 OAuth return, #2 widget receivers, #3 ConversationDao, #4 getCurrentUserId,
+  #5 biometric bypass, #6 invite receiver.
+- Batch B (SEV-2): #7–#12.
+- Batch C (cleanup/LATENT + tests): #13–#29 + test fixes #30–#36.
+STATUS: review delivered 2026-07-18; execution pending user go-ahead.
+
+## BRANCH A — fix/batch-a-sev1 (2026-07-18, EXECUTED)
+Isolated off `1ae34ae`. Build GREEN (`:app:assembleDebug` + `:app:testDebugUnitTest`, EXIT=0).
+Claims re-verified against source; two HANDOFF claims did NOT hold and were NOT churned:
+- #1 [FIXED] OAuthTokenRefresher.kt:74 — returns `accountRepo.getById(account.id)` (re-encrypted
+  AuthConfig) instead of the in-memory plaintext `updatedAccount`. Engines decryptAuthConfig on it;
+  old code handed them plaintext → GCM decrypt threw on every post-refresh sync.
+- #2 [DISPROVED — NOT churned] The four widget `<receiver>` blocks are INSIDE an `<!-- -->` comment
+  in AndroidManifest.xml (lines 130–183), not active components. ClassNotFoundException-on-rebind
+  claim is false. 8 `*.kt.bak` files are also dead but harmless (Gradle ignores `.bak`).
+- #3 [FIXED] ConversationDao 4 queries — `:userId IN (participantIds)` compared a JSON-array STRING
+  blob and never matched. Replaced with `participantIds LIKE '%' || :userId || '%'` (stored format
+  is `["id1","id2"]`). This was the real empty-messaging-inbox root cause.
+- #4 [DELIBERATELY NOT CHURNED] `getCurrentUserId()` returns constant "current_user". The messaging
+  layer has NO account-bound identity (peer model + demo). Wiring it to an email account id would
+  corrupt `Message.isOutgoing()` and demo data and there is no plumbing for it. Empty inbox was
+  caused by #3 (fixed). If a real identity is ever introduced, wire it then. Left as a documented TODO.
+- #5 [FIXED] MainActivity.kt — removed the unconditional "Continue without biometrics" TextButton
+  that called `onUnlocked()` (anyone with physical access got in). If lock enabled but no usable
+  authenticator, the dialog now explains how to disable it instead of silently opening.
+- #6 [FIXED] InviteActionReceiver — (a) declared in manifest `exported=false` (was missing → dead
+  buttons); (b) added `goAsync()` so work survives process death; (c) RSVP now matches the CURRENT
+  user by `account.email` (lowercase) instead of stamping every NEEDS_ACTION attendee.
+NOT pushed (Keith decides when to push). Branch is local only.
+
 ## Known environment quirks
 - Emulator-5556 10-min screen-off kills USB: `adb shell settings put global
   stay_on_while_plugged_in 7`. Backup: `adb tcpip 5555` + `adb connect 10.0.2.2:5555`.
@@ -273,7 +437,7 @@ Emulator left in working state (debug + test APKs reinstalled, gallery green).
   `am force-stop com.android.packageinstaller` + reboot.
 
 ## Restart checklist
-1. `git status` + `git log -3` — confirm clean tree, HEAD = c33722f (or newer).
+1. `git status` + `git log -3` — confirm clean tree, HEAD = 1ae34aeb (or newer).
 2. `./gradlew :app:assembleDebug :app:testDebugUnitTest` — must be GREEN.
 3. If resuming DAV write-proof: start both mocks (8088/8089) + `adb reverse` both, then run
    ContactSyncE2ETest + TaskSyncE2ETest. Strip DIAG logs from CalDAVClient.kt first/after.
