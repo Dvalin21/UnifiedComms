@@ -120,16 +120,19 @@ interface ConversationDao {
     @Query("SELECT * FROM conversations WHERE id IN (:ids)")
     suspend fun getByIds(ids: List<String>): List<Conversation>
 
-    @Query("SELECT * FROM conversations WHERE :userId IN (participantIds) ORDER BY isPinned DESC, lastActivityAt DESC")
+    // ponytail: participantIds is a JSON-array STRING column (StringListConverter), so
+    // `:userId IN (participantIds)` compares the whole blob and never matches a real id.
+    // Match by JSON containment instead. Format is ["id1","id2"], so LIKE '%"userId"%' is exact.
+    @Query("SELECT * FROM conversations WHERE participantIds LIKE '%' || :userId || '%' ORDER BY isPinned DESC, lastActivityAt DESC")
     fun getAllForUser(userId: String): Flow<List<Conversation>>
 
-    @Query("SELECT * FROM conversations WHERE :userId IN (participantIds) AND isArchived = 0 ORDER BY isPinned DESC, lastActivityAt DESC")
+    @Query("SELECT * FROM conversations WHERE participantIds LIKE '%' || :userId || '%' AND isArchived = 0 ORDER BY isPinned DESC, lastActivityAt DESC")
     fun getActiveForUser(userId: String): Flow<List<Conversation>>
 
-    @Query("SELECT * FROM conversations WHERE :userId IN (participantIds) AND isArchived = 1 ORDER BY lastActivityAt DESC")
+    @Query("SELECT * FROM conversations WHERE participantIds LIKE '%' || :userId || '%' AND isArchived = 1 ORDER BY lastActivityAt DESC")
     fun getArchivedForUser(userId: String): Flow<List<Conversation>>
 
-    @Query("SELECT * FROM conversations WHERE :userId IN (participantIds) AND isPinned = 1 ORDER BY lastActivityAt DESC")
+    @Query("SELECT * FROM conversations WHERE participantIds LIKE '%' || :userId || '%' AND isPinned = 1 ORDER BY lastActivityAt DESC")
     fun getPinnedForUser(userId: String): Flow<List<Conversation>>
 
     @Query("SELECT * FROM conversations WHERE (participantIds = :asc OR participantIds = :desc) AND type = :type")

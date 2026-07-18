@@ -26,40 +26,50 @@ class InviteActionReceiver : BroadcastReceiver() {
         val response = intent.getIntExtra("response", -1)
         val status = AttendeeStatus.values().getOrNull(response) ?: return
 
-        // Manually get dependencies since Hilt is disabled
-        val db = UnifiedCommsDatabase.getInstance(context)
-        val calendarEventDao = db.calendarEventDao()
-        val calendarDao = db.calendarDao()
-        val calendarRepo = CalendarRepositoryImpl(calendarEventDao, calendarDao)
-        val accountRepo = AccountRepositoryImpl(db.accountDao(), CryptoManagerImpl(context))
-        val crypto = CryptoManagerImpl(context)
-        val calendarSync = CalendarSyncEngineImpl(calendarRepo, accountRepo, crypto, CoroutineScope(Dispatchers.IO))
+        // goAsync so the broadcast isn't torn down before the suspend work finishes.
+        val pending = goAsync()
+        val scope = CoroutineScope(Dispatchers.IO)
+        scope.launch {
+            try {
+                // Manually get dependencies since Hilt is disabled
+                val db = UnifiedCommsDatabase.getInstance(context)
+                val calendarEventDao = db.calendarEventDao()
+                val calendarDao = db.calendarDao()
+                val calendarRepo = CalendarRepositoryImpl(calendarEventDao, calendarDao)
+                val accountRepo = AccountRepositoryImpl(db.accountDao(), CryptoManagerImpl(context))
+                val crypto = CryptoManagerImpl(context)
+                val calendarSync = CalendarSyncEngineImpl(calendarRepo, accountRepo, crypto, scope)
 
-        CoroutineScope(Dispatchers.IO).launch {
-            val event = calendarRepo.getEventById(eventId)
-            event?.let { e ->
-                val account = accountRepo.getById(e.accountId) ?: return@launch
-                val updatedAttendees = e.attendees.map { attendee ->
-                    // Find current user and update their status
-                    // For now, just update all (would need user ID matching)
-                    if (attendee.status == AttendeeStatus.NEEDS_ACTION) {
-                        attendee.copy(
-                            status = status,
-                            respondedAt = kotlinx.datetime.Clock.System.now()
-                        )
-                    } else {
-                        attendee
+                val event = calendarRepo.getEventById(eventId)
+                event?.let { e ->
+                    val account = accountRepo.getById(e.accountId) ?: return@let
+                    val myEmail = account.email.lowercase()
+                    val updatedAttendees = e.attendees.map { attendee ->
+                        // ponytail: match the CURRENT user by their account email, not every
+                        // NEEDS_ACTION attendee. The old code stamped the RSVP on all attendees.
+                        if (attendee.email.equals(myEmail, ignoreCase = true) &&
+                            attendee.status == AttendeeStatus.NEEDS_ACTION
+                        ) {
+                            attendee.copy(
+                                status = status,
+                                respondedAt = kotlinx.datetime.Clock.System.now()
+                            )
+                        } else {
+                            attendee
+                        }
                     }
+
+                    val updatedEvent = e.copy(
+                        attendees = updatedAttendees,
+                        updatedAt = kotlinx.datetime.Clock.System.now(),
+                        needsSync = true
+                    )
+
+                    calendarRepo.updateEvent(updatedEvent)
+                    calendarSync.updateEvent(account, updatedEvent)
                 }
-
-                val updatedEvent = e.copy(
-                    attendees = updatedAttendees,
-                    updatedAt = kotlinx.datetime.Clock.System.now(),
-                    needsSync = true
-                )
-
-                calendarRepo.updateEvent(updatedEvent)
-                calendarSync.updateEvent(account, updatedEvent)
+            } finally {
+                pending.finish()
             }
         }
     }
