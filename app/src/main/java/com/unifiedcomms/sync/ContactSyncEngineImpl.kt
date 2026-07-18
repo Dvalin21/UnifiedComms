@@ -139,6 +139,22 @@ class ContactSyncEngineImpl(
         val href = "${bookPath.trimEnd('/')}/${uid}.vcf"
         val vcard = VCardSerializer.toVCard(contact, uid)
         val etag = dav.putVCard(href, vcard) ?: return@withContext CreateResult.failure("Contact write failed")
+        // ponytail: persist the local row with the server etag so the contact
+        // appears in the UI and the next down-sync matches it (no re-insert).
+        contactRepo.insert(
+            contact.copy(
+                id = contact.id.ifBlank { java.util.UUID.randomUUID().toString() },
+                accountId = account.id,
+                sourceId = uid,
+                source = when (account.accountType) {
+                    com.unifiedcomms.data.model.AccountType.GOOGLE -> com.unifiedcomms.data.model.ContactSource.GOOGLE
+                    com.unifiedcomms.data.model.AccountType.EXCHANGE -> com.unifiedcomms.data.model.ContactSource.EXCHANGE
+                    com.unifiedcomms.data.model.AccountType.ICLOUD -> com.unifiedcomms.data.model.ContactSource.ICLOUD
+                    else -> com.unifiedcomms.data.model.ContactSource.CARDDAV
+                },
+                needsSync = false
+            )
+        )
         CreateResult.success(href, uid, etag)
     }
 
