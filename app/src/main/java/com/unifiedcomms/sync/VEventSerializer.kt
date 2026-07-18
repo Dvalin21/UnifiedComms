@@ -53,8 +53,9 @@ object VEventSerializer {
     }
 
     /**
-     * Build the collection-relative item href for a VEVENT, matching the download-side
-     * [CalendarSyncEngineImpl.uidFromHref] convention: `<calendarId>/<uid>.ics`.
+     * Build the collection-relative item href for a VEVENT. The download-side dedup
+     * keys the local cache by pathOf(hrefFor(event)), so this must be the same
+     * normalized path the server returns for the object: `<calendarId>/<uid>.ics`.
      * [CalendarEvent.calendarId] is the collection path (e.g. `/caldav/.../work/`).
      */
     fun hrefFor(event: CalendarEvent): String {
