@@ -9,6 +9,8 @@ import com.unifiedcomms.security.CryptoManager
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.TestScope
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -38,15 +40,18 @@ class EmailSyncEngineTest {
     }
 
     @Test
-    fun `syncAccount returns a result`() = runTest {
+    fun `syncAccount fails cleanly with unconfigured account`() = runTest {
+        // createGoogle() has no real IMAP server config, so openImapSession throws and the
+        // engine must return a failure result (not crash, not a fake-green success).
         val account = Account.createGoogle("user@example.com")
         val result = engine.syncAccount(account)
-        println("syncAccount success=${result.success} synced=${result.itemsSynced} error=${result.errorMessage}")
-        assertTrue("syncAccount must return a result", true)
+        println("syncAccount success=${result.success} error=${result.errorMessage}")
+        assertFalse("syncAccount must report failure for an unconfigured account", result.success)
+        assertNotNull("failure result must carry an error message", result.errorMessage)
     }
 
     @Test
-    fun `sendEmail completes with failure when transport unusable`() = runTest {
+    fun `sendEmail fails when no SMTP transport is configured`() = runTest {
         val account = Account.createGoogle("user@example.com")
         val email = Email(
             accountId = account.id,
@@ -69,6 +74,7 @@ class EmailSyncEngineTest {
         )
         val result = engine.sendEmail(account, email)
         println("sendEmail success=${result.success} messageId=${result.messageId} error=${result.errorMessage}")
-        assertTrue("Send result path reachable", true)
+        assertFalse("sendEmail must report failure without a usable SMTP transport", result.success)
+        assertNotNull("failure result must carry an error message", result.errorMessage)
     }
 }
