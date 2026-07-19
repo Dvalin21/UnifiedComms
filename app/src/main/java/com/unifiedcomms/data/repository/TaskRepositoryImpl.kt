@@ -37,6 +37,9 @@ class TaskRepositoryImpl(
     override fun getActiveUnified(accountIds: List<String>, completedStatus: TaskStatus): Flow<List<Task>> =
         taskDao.getActiveUnified(accountIds, completedStatus)
 
+    override fun getAllUnified(accountIds: List<String>): Flow<List<Task>> =
+        taskDao.getAllUnified(accountIds)
+
     override fun getByStatus(accountId: String, status: TaskStatus): Flow<List<Task>> = taskDao.getByStatus(accountId, status)
 
     override fun getDueOnDate(accountId: String, date: Long): Flow<List<Task>> =

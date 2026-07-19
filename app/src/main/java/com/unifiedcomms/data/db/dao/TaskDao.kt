@@ -53,6 +53,11 @@ interface TaskDao {
     @Query("SELECT * FROM tasks WHERE accountId IN (:accountIds) AND status != :completedStatus ORDER BY dueAt ASC, position ASC")
     fun getActiveUnified(accountIds: List<String>, completedStatus: TaskStatus): Flow<List<Task>>
 
+    // ponytail: returns every task (open + completed) so the UI filter chips (Completed/
+    // Starred/Overdue/Today) can be applied in Kotlin instead of being limited to NEEDS_ACTION.
+    @Query("SELECT * FROM tasks WHERE accountId IN (:accountIds) ORDER BY dueAt ASC, position ASC")
+    fun getAllUnified(accountIds: List<String>): Flow<List<Task>>
+
     @Query("SELECT * FROM tasks WHERE accountId = :accountId AND status = :status ORDER BY dueAt ASC")
     fun getByStatus(accountId: String, status: TaskStatus): Flow<List<Task>>
 

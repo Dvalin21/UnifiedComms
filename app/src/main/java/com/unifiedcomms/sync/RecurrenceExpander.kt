@@ -134,7 +134,16 @@ object RecurrenceExpander {
                         var m = 0L
                         while (true) {
                             val monthBase = base.plus(Period.ofMonths((m * interval).toInt()))
-                            yield(monthWeekday(monthBase, rule.byDay.first()))
+                            // ponytail: RFC 5545 BYDAY=MO,WE,FR (no ordinal) = ALL Mondays,
+                            // Wednesdays, Fridays in the month. If a weekday carries an ordinal
+                            // (e.g. BYDAY=1MO), emit only that nth occurrence.
+                            for (day in rule.byDay) {
+                                if (day.weekNumber == null) {
+                                    for (occ in allWeekdaysInMonth(monthBase, day)) yield(occ)
+                                } else {
+                                    yield(monthWeekday(monthBase, day))
+                                }
+                            }
                             m++
                         }
                     }
@@ -197,6 +206,20 @@ object RecurrenceExpander {
             if (wn < -1) d.minusDays(((-wn - 1L) * 7)) else d
         }
         return ZonedDateTime.of(date, monthBase.toLocalTime(), monthBase.zone)
+    }
+
+    // Every occurrence of the given weekday within the month containing monthBase.
+    private fun allWeekdaysInMonth(monthBase: ZonedDateTime, recDay: RecurrenceDay): List<ZonedDateTime> {
+        val jdow = modelDowToJava(recDay.day)
+        val ym = YearMonth.of(monthBase.year, monthBase.month)
+        var d = ym.atDay(1)
+        while (d.dayOfWeek != jdow) d = d.plusDays(1)
+        val out = mutableListOf<ZonedDateTime>()
+        while (d.month == ym.month) {
+            out.add(ZonedDateTime.of(d, monthBase.toLocalTime(), monthBase.zone))
+            d = d.plusDays(7)
+        }
+        return out
     }
 
     private fun instanceFor(

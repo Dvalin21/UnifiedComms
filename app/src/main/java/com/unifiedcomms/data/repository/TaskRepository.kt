@@ -18,6 +18,7 @@ interface TaskRepository {
     fun getByList(accountId: String, listId: String): Flow<List<Task>>
     fun getActiveByAccount(accountId: String, completedStatus: TaskStatus): Flow<List<Task>>
     fun getActiveUnified(accountIds: List<String>, completedStatus: TaskStatus): Flow<List<Task>>
+    fun getAllUnified(accountIds: List<String>): Flow<List<Task>>
     fun getByStatus(accountId: String, status: TaskStatus): Flow<List<Task>>
     fun getDueOnDate(accountId: String, date: Long): Flow<List<Task>>
     fun getDueOnDateUnified(accountIds: List<String>, date: Long): Flow<List<Task>>

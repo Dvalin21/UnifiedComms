@@ -73,7 +73,7 @@ fun TasksScreen(
     var filter by remember { mutableStateOf(TaskFilter.ALL) }
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
     val activeAccountIds = accounts.filter { it.isActive }.map { it.id }
-    val tasks by viewModel.taskRepository.getActiveUnified(activeAccountIds, com.unifiedcomms.data.model.TaskStatus.NEEDS_ACTION)
+    val tasks by viewModel.taskRepository.getAllUnified(activeAccountIds)
         .collectAsStateWithLifecycle(initialValue = emptyList())
     var displayTasks by remember { mutableStateOf<List<MockTask>>(emptyList()) }
     LaunchedEffect(tasks) { displayTasks = tasks.map { it.toMockTask() } }
