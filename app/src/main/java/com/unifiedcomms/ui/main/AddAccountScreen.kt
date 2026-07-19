@@ -173,6 +173,7 @@ fun AddAccountScreen(
     var smtpUseStartTls by remember { mutableStateOf(true) }
     var caldavUrl by remember { mutableStateOf("") }
     var carddavUrl by remember { mutableStateOf("") }
+    var acceptAllCerts by remember { mutableStateOf(false) }
 
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope: CoroutineScope = rememberCoroutineScope()
@@ -364,6 +365,8 @@ fun AddAccountScreen(
                                     smtpUseStartTls = smtpUseStartTls,
                                     caldavUrl = caldavUrl,
                                     carddavUrl = carddavUrl,
+                                    acceptAllCerts = acceptAllCerts,
+                                    onAcceptAllCertsChange = { acceptAllCerts = it },
                                     onImapHostChange = { imapHost = it },
                                     onImapPortChange = { imapPort = it.toIntOrNull() ?: 993 },
                                     onImapSslChange = { imapUseSsl = it },
@@ -427,7 +430,8 @@ fun AddAccountScreen(
                             smtpPort = smtpPort,
                             smtpUseStartTls = smtpUseStartTls,
                             caldavUrl = calUrl,
-                            carddavUrl = cardUrl
+                            carddavUrl = cardUrl,
+                            acceptAllCerts = acceptAllCerts
                         )
                         val account = Account(
                             name = name.ifBlank { trimmed },
@@ -518,6 +522,8 @@ private fun AdvancedServerFields(
     smtpUseStartTls: Boolean,
     caldavUrl: String,
     carddavUrl: String,
+    acceptAllCerts: Boolean,
+    onAcceptAllCertsChange: (Boolean) -> Unit,
     onImapHostChange: (String) -> Unit,
     onImapPortChange: (String) -> Unit,
     onImapSslChange: (Boolean) -> Unit,
@@ -525,7 +531,7 @@ private fun AdvancedServerFields(
     onSmtpPortChange: (String) -> Unit,
     onSmtpTlsChange: (Boolean) -> Unit,
     onCalDavChange: (String) -> Unit,
-    onCardDavChange: (String) -> Unit
+    onCardDavChange: (String) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("IMAP / SMTP", fontWeight = FontWeight.Bold)
@@ -554,6 +560,23 @@ private fun AdvancedServerFields(
                     Checkbox(checked = imapUseSsl, onCheckedChange = onImapSslChange)
                     Spacer(modifier = Modifier.padding(start = 8.dp))
                     Text("IMAP SSL", fontSize = 14.sp)
+                }
+            }
+            // ponytail: opt-in escape for self-signed / internal-CA IMAP servers.
+            // android-mail 1.6.7 enforces cert hostname verification by default; a
+            // mismatched/self-signed cert hard-fails connect() even with a valid
+            // password. Default off (strict). Turn on only for YOUR own server.
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = acceptAllCerts, onCheckedChange = onAcceptAllCertsChange)
+                    Spacer(modifier = Modifier.padding(start = 8.dp))
+                    Text("Accept all certificates (self-signed IMAP)", fontSize = 14.sp)
                 }
             }
         }
