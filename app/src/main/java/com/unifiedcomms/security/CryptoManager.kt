@@ -54,13 +54,27 @@ class CryptoManagerImpl(private val context: android.content.Context) : CryptoMa
 
     private fun decryptField(value: String?): String? {
         if (value == null) return null
-        val raw = android.util.Base64.decode(value, android.util.Base64.DEFAULT)
-        // In-memory drafts (UI-built, not yet persisted) carry the raw password,
-        // not our IV+ciphertext form. If it's too short to be our GCM blob,
-        // treat it as already-plaintext so testConnection/pre-save provisioning
-        // doesn't wrongly fail with a decrypt exception.
-        if (raw.size < 12) return String(raw, Charsets.UTF_8)
-        return String(decrypt(raw), Charsets.UTF_8)
+        // The stored (persisted) form is our IV+ciphertext base64. But in-memory
+        // drafts (UI-built via AuthConfig.AppPassword) and direct-to-engine test
+        // accounts carry the RAW password here, NOT our GCM blob. We must NOT
+        // assume base64/decrypt succeeds on a raw password — doing so throws and
+        // every connect() fails ("Could not connect"). Only decrypt when the blob
+        // is genuinely ours; otherwise return the value as plaintext.
+        return try {
+            val raw = android.util.Base64.decode(value, android.util.Base64.DEFAULT)
+            if (raw.size < 12) {
+                // Too short to be a GCM blob (12-byte IV + ciphertext): plaintext.
+                String(raw, Charsets.UTF_8)
+            } else {
+                // Looks like a real blob — attempt decrypt; if it throws (e.g. the
+                // value was actually a long raw password that base64'd by chance to
+                // >=12 bytes but isn't our ciphertext), fall back to the original.
+                runCatching { String(decrypt(raw), Charsets.UTF_8) }.getOrElse { value }
+            }
+        } catch (_: IllegalArgumentException) {
+            // Not valid base64 at all -> it's a raw password. Return as-is.
+            value
+        }
     }
 
     private fun encryptField(value: String): String {
