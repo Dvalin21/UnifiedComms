@@ -39,6 +39,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -59,7 +60,11 @@ fun AccountSettingsScreen(
     onBack: () -> Unit,
     coroutineScope: CoroutineScope? = null
 ) {
-    val account = viewModel.getAccountById(accountId)
+    // ponytail: read the account from the collected accounts stream, not a direct call during
+    // composition — otherwise a not-yet-loaded list shows "Account not found" forever and the
+    // lookup re-runs every recomposition.
+    val allAccounts by viewModel.accounts.collectAsStateWithLifecycle(initialValue = emptyList())
+    val account = allAccounts.find { it.id == accountId }
     if (account == null) {
         UnifiedCommsTheme {
             Scaffold { innerPadding ->

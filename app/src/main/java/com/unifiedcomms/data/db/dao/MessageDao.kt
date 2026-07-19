@@ -138,10 +138,10 @@ interface ConversationDao {
     @Query("SELECT * FROM conversations WHERE (participantIds = :asc OR participantIds = :desc) AND type = :type")
     suspend fun findDirectConversation(asc: List<String>, desc: List<String>, type: com.unifiedcomms.data.model.ConversationType): Conversation?
 
-    @Query("SELECT * FROM conversations WHERE unreadCount > 0 AND :userId IN (participantIds)")
+    @Query("SELECT * FROM conversations WHERE unreadCount > 0 AND participantIds LIKE '%' || :userId || '%' ORDER BY lastActivityAt DESC")
     suspend fun getWithUnread(userId: String): List<Conversation>
 
-    @Query("SELECT SUM(unreadCount) FROM conversations WHERE :userId IN (participantIds)")
+    @Query("SELECT COALESCE(SUM(unreadCount), 0) FROM conversations WHERE participantIds LIKE '%' || :userId || '%'")
     suspend fun getTotalUnreadCount(userId: String): Int
 
     @Transaction

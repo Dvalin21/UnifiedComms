@@ -10,6 +10,7 @@ import com.unifiedcomms.data.model.RecurrenceRule
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.ZoneId
 
@@ -180,5 +181,30 @@ class RecurrenceExpanderTest {
         val starts = out.map { it.startAt.toInstant().toEpochMilliseconds() }
         assertEquals(false, starts.contains(origMs))   // original slot suppressed
         assertEquals(true, starts.contains(movedMs))     // moved slot present
+    }
+
+    @Test
+    fun `monthly BYDAY multi-weekday emits every listed weekday`() {
+        // Regression: BYDAY=MO,WE,FR must yield one occurrence per listed weekday each month,
+        // not only the first. Master 2026-01-05 (Monday). Window Jan..Mar 2026 (no Feb 30 etc).
+        val start = epochMs(2026, 1, 5, 9, 0, "UTC") // Monday
+        val rule = RecurrenceRule(
+            freq = RecurrenceFrequency.MONTHLY,
+            byDay = listOf(
+                RecurrenceDay(DayOfWeek.MO),
+                RecurrenceDay(DayOfWeek.WE),
+                RecurrenceDay(DayOfWeek.FR)
+            )
+        )
+        val m = master("multi", start, 3_600_000, rule, "UTC")
+        // Jan: MO 5, WE 7, FR 9 ; WE 14, FR 16 ; WE 21, FR 23 ; WE 28, FR 30
+        // (4 Mondays: 5,12,19,26 ; 4 Wednesdays: 7,14,21,28 ; 4 Fridays: 9,16,23,30) = 12 in Jan
+        val out = RecurrenceExpander.expand(m, start, epochMs(2026, 2, 1, 0, 0, "UTC"))
+        assertEquals(12, out.size)
+        // every occurrence is a Monday, Wednesday, or Friday
+        out.forEach {
+            val dow = java.time.Instant.ofEpochMilli(it.startAt.toInstant().toEpochMilliseconds()).atZone(ZoneId.of("UTC")).dayOfWeek
+            assertTrue(dow == java.time.DayOfWeek.MONDAY || dow == java.time.DayOfWeek.WEDNESDAY || dow == java.time.DayOfWeek.FRIDAY)
+        }
     }
 }

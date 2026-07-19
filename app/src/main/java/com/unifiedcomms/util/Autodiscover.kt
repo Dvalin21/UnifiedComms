@@ -106,7 +106,37 @@ object Autodiscover {
         // exactly how a real provider (e.g. houseofmanns.com) advertises
         // imap.houseofmanns.com / smtp.houseofmanns.com.
         srvEmailLookup(domain)?.let { return it }
+        // ponytail: self-hosted providers (mailcow, postfix/dovecot, etc.) publish neither
+        // Thunderbird autoconfig XML nor IMAP/SMTP SRV records. They DO use the near-universal
+        // convention imap.<domain>:993 (SSL) + smtp.<domain>:587/465. Probe both; if either
+        // host resolves we return it (the engine verifies with a real LOGIN/CAPABILITY later).
+        selfHostedEmailFallback(domain)?.let { return it }
         return null
+    }
+
+    /**
+     * Last-resort email discovery for self-hosted mail (mailcow, etc.) that publishes no
+     * autoconfig and no SRV. Tries imap.<domain>/smtp.<domain> with the standard secure ports.
+     * Only returns if at least the IMAP host resolves, so we never hand back a fabricated host.
+     */
+    private fun selfHostedEmailFallback(domain: String): Discovered? {
+        val imapHost = "imap.$domain"
+        val smtpHost = "smtp.$domain"
+        return try {
+            // Verify the IMAP host actually resolves; if not, this provider doesn't follow
+            // the convention and we must not invent a broken config.
+            InetAddress.getByName(imapHost)
+            Discovered(
+                imapHost = imapHost,
+                imapPort = 993,
+                imapSsl = true,
+                smtpHost = smtpHost,
+                smtpPort = 587,
+                smtpStartTls = true
+            )
+        } catch (_: Exception) {
+            null
+        }
     }
 
     /**
@@ -237,10 +267,14 @@ object Autodiscover {
             ?: wellKnownDav("https://$domain/.well-known/caldav")
         val cardBase = srvLookup("_carddavs._tcp.$domain") ?: srvLookup("_carddav._tcp.$domain")
             ?: wellKnownDav("https://$domain/.well-known/carddav")
+        // ponytail: mailcow (and others) answer /.well-known/caldav with a 307 redirect to the
+        // real DAV path. wellKnownDav returns that Location; resolveDavHomeSet must run against
+        // the REDIRECTED url, not the original base (which only returns the redirect body).
 
-        // 3) Resolve each base to its home-set so we return a URL that actually
-        //    hosts collections (NOT a guess like $domain/dav/). If resolution
-        //    fails, fall back to the base root rather than a wrong guess.
+        // 3) Resolve each base to its home-set. calBase/cardBase are already the
+        //    redirect-resolved URLs (wellKnownDav returns Location on a 307), so
+        //    resolveDavHomeSet PROPFINDs the real DAV endpoint, not the redirect stub.
+        //    If resolution fails, fall back to the base root rather than a wrong guess.
         val cal = calBase?.let { resolveDavHomeSet(it, "caldav") } ?: calBase
         val card = cardBase?.let { resolveDavHomeSet(it, "carddav") } ?: cardBase
         if (cal != null || card != null) {
