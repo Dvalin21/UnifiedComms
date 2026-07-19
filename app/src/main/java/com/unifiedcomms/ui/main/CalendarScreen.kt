@@ -145,7 +145,7 @@ enum class CalendarView { DAY, WEEK, MONTH }
 @Composable
 fun DayView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick: (String) -> Unit) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text(text = "Day View: ${date.dayOfWeek}, ${date.month} ${date.dayOfMonth}", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text(text = "Day View: ${date.dayOfWeek}, ${date.month} ${date.dayOfMonth}", fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
         Spacer(modifier = Modifier.height(16.dp))
 
         val dayEvents = events.filter { isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), date) }

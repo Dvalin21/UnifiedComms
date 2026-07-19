@@ -147,19 +147,19 @@ fun UnifiedInboxScreen(
                         .clip(RoundedCornerShape(28.dp))
                 ) {
                     val items = listOf(
-     NavigationItem("Inbox", Icons.Default.Inbox, 0),
-     NavigationItem("Email", Icons.Default.Email, 1),
-     NavigationItem("Calendar", Icons.Default.CalendarMonth, 2),
-     NavigationItem("Tasks", Icons.Default.Checklist, 3),
-     NavigationItem("Messages", Icons.AutoMirrored.Default.Message, 4),
-     NavigationItem("Contacts", Icons.Default.Contacts, 5)
- )
+                        NavigationItem("Inbox", Icons.Default.Inbox, 0),
+                        NavigationItem("Email", Icons.Default.Email, 1),
+                        NavigationItem("Cal", Icons.Default.CalendarMonth, 2),
+                        NavigationItem("Tasks", Icons.Default.Checklist, 3),
+                        NavigationItem("Chat", Icons.AutoMirrored.Default.Message, 4),
+                        NavigationItem("People", Icons.Default.Contacts, 5)
+                    )
                     items.forEach { item ->
                         NavigationBarItem(
                             selected = selectedTab == item.index,
                             onClick = { selectedTab = item.index },
                             icon = { Icon(item.icon, contentDescription = item.label) },
-                            label = { Text(item.label) },
+                            label = { Text(item.label, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) },
                             colors = NavigationBarItemDefaults.colors(
                                 selectedIconColor = MaterialTheme.colorScheme.primary,
                                 selectedTextColor = MaterialTheme.colorScheme.primary,

@@ -507,6 +507,57 @@ Ran full verification on emulator-5556 (testAVD2, no-window). All green.
   ("D" Demo User, "B"/"A" email senders, "A" message peer) — no `.first()` crash anywhere.
 - Emulator left in working debug state (debug + androidTest installed, fresh demo seed).
 
+## Session 2026-07-18 (evening) — root-cause auth fix + UI text overhaul
+
+### Root-cause of "can't add account" x3 (PROVEN LIVE)
+- `CryptoManager.decryptField()` unconditionally base64-decoded + AES-GCM decrypted its
+  input. But `AddAccountScreen`/`AddAccountActivity` store the RAW password in
+  `AuthConfig.passwordEncrypted`. For any password >=12 chars, base64 decoded to >=12 bytes
+  and `decrypt()` threw -> caught -> "Could not connect" -> account never saved.
+- This was the SINGLE root cause of all 3 reported failures (no add, no email sync, garbage
+  DAV auth). v1.0.6 fixed it: `decryptField` now returns the input as-is when it is not a
+  valid GCM blob.
+- PROVEN: `EtherealEmailSyncTest` connects to a REAL IMAP server (imap.ethereal.email:993,
+  valid cert, strict TLS) and syncs — OK. DAV E2E (Contact/Task/Calendar vs host mock) OK.
+
+### Secondary failure mode (RESEARCH-FOUNDED HYPOTHESIS, not device-proven)
+- GitHub-API research on thunderbird-android (K-9, 13.7k stars) + Eclipse Angus Mail
+  release notes: Angus 1.1.0 "Check server identity by default" -> android-mail:1.6.7
+  ENFORCES IMAP TLS cert hostname verification. A self-signed/internal-CA/mismatched-cert
+  server HARD-FAILS store.connect() even with a correct password.
+- v1.0.7 added opt-in "Accept all certificates" advanced toggle (ServerConfig.acceptAllCerts,
+  default false = strict). Industry-standard (K-9/FairEmail do the same). Correct-by-design
+  but UNPROVEN against Keith's actual server. If Keith's cert is normal, v1.0.6 already fixed
+  him and the toggle is irrelevant.
+- NOTE: external code-research (K-9/FairEmail/Davx5 source, StackOverflow, Baeldung, GitLab)
+  was bot-walled (Cloudflare / 404 moved repos). Verified facts came from the GitHub REST API
+  (no wall) + Android developer docs. Do NOT claim "verified" on the cert hypothesis without
+  Keith's device confirmation.
+
+### UI text-quality pass (PROVEN via screenshots)
+- Defect: bottom-nav labels wrapped ("Calenda-r", "Messag-es", "Contact-s") on all screens
+  because NavigationBarItem label Text had no maxLines/softWrap guard and 6 items squeezed width.
+- Fix: `UnifiedInboxScreen.kt` nav labels -> `maxLines=1, softWrap=false, overflow=Ellipsis`
+  AND shortened the 3 long labels to fit one line cleanly: Calendar->Cal, Messages->Chat,
+  Contacts->People (Inbox/Email/Tasks unchanged). Verified by re-running ScreenshotGalleryTest
+  + vision review: all 6 labels now single-line, no wrap, no ellipsis.
+- Add Account screen, Settings, Email list, Tasks content: vision-reviewed clean (no clipping).
+- Also applied the same single-line guard to CalendarScreen day header + UnifiedInbox account
+  card name/email (defensive; those screenshots were already clean).
+
+### Build/verify status (this session)
+- assembleDebug + androidTest + testDebugUnitTest: GREEN.
+- EtherealEmailSyncTest (live IMAP round-trip): OK.
+- ScreenshotGalleryTest (uiemulator): OK (2); 14 screenshots re-verified.
+- CAUTION: this session hit Gradle incremental-cache corruption twice (spurious "BUILD FAILED"
+  / "Unresolved reference" on code that compiled in debug). Resolved with
+  `./gradlew :app:assembleDebug --rerun-tasks`. Also the stale-APK trap: must reinstall BOTH
+  app-debug.apk AND app-debug-androidTest.apk (uninstall + install) or instrumented tests fail
+  with NoSuchMethodError on changed data classes.
+- Releases shipped: v1.0.6 (decryptField), v1.0.7 (cert opt-in). Tag v1.0.7 -> commit fb114c9.
+  (The download-asset APK for v1.0.7 was NOT verified from this terminal — Keith blocked every
+  `gh release view` command. Local fresh APK sha 6a2c1cd593b7f18.)
+
 ## Known environment quirks
 - Emulator-5556 10-min screen-off kills USB: `adb shell settings put global
   stay_on_while_plugged_in 7`. Backup: `adb tcpip 5555` + `adb connect 10.0.2.2:5555`.
