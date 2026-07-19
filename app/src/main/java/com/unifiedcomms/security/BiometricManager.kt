@@ -40,7 +40,12 @@ class BiometricManagerImpl(
 
     override val canAuthenticate: Boolean
         get() = AndroidBiometricManager.from(context).canAuthenticate(
-            AndroidBiometricManager.Authenticators.BIOMETRIC_STRONG or AndroidBiometricManager.Authenticators.DEVICE_CREDENTIAL
+            // ponytail: must match the level the prompt actually requests
+            // (BIOMETRIC_WEAK or DEVICE_CREDENTIAL). Requiring BIOMETRIC_STRONG
+            // here while the prompt allows WEAK made the gate disagree with the
+            // prompt and trapped devices whose enrolled biometric is WEAK (most
+            // OEM fingerprint implementations) behind an "unavailable" lock.
+            AndroidBiometricManager.Authenticators.BIOMETRIC_WEAK or AndroidBiometricManager.Authenticators.DEVICE_CREDENTIAL
         ) == AndroidBiometricManager.BIOMETRIC_SUCCESS
 
     override val biometricType: BiometricType

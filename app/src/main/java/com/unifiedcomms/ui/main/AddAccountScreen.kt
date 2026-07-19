@@ -196,8 +196,13 @@ fun AddAccountScreen(
                 smtpHost = d.smtpHost
                 smtpPort = d.smtpPort
                 smtpUseStartTls = d.smtpStartTls
-                caldavUrl = d.caldavUrl ?: "$addr/dav/"
-                carddavUrl = d.carddavUrl ?: "$addr/dav/"
+                // ponytail: NEVER guess a DAV URL. The Autodiscover engine returns the
+                // real principal/home-set URL (or null). Keep it as-is; a guessed
+                // "$server/dav/" is wrong for virtually every provider and is exactly
+                // the "autodiscover returns wrong info" symptom. If null, leave blank
+                // and let the user enter it manually (advanced fields reveal on failure).
+                caldavUrl = d.caldavUrl ?: ""
+                carddavUrl = d.carddavUrl ?: ""
                 showAdvanced = false
             } else {
                 // autodiscover failed -> reveal advanced for manual entry
@@ -409,45 +414,38 @@ fun AddAccountScreen(
                         saving = true
                         error = null
                         val type = provider.type
-                        val serverConfig = when (type) {
-                            AccountType.MAILCOW -> ServerConfig(
-                                imapHost = advancedImapHost ?: server,
-                                imapPort = imapPort,
-                                imapUseSsl = imapUseSsl,
-                                smtpHost = advancedSmtpHost ?: server,
-                                smtpPort = smtpPort,
-                                smtpUseStartTls = smtpUseStartTls,
-                                caldavUrl = caldavUrl.trim().ifBlank { "$server/dav/" },
-                                carddavUrl = carddavUrl.trim().ifBlank { "$server/dav/" }
-                            )
-                            AccountType.GENERIC_IMAP_SMTP -> ServerConfig(
-                                imapHost = advancedImapHost ?: server,
-                                imapPort = imapPort,
-                                imapUseSsl = imapUseSsl,
-                                smtpHost = advancedSmtpHost ?: server,
-                                smtpPort = smtpPort,
-                                smtpUseStartTls = smtpUseStartTls,
-                                caldavUrl = caldavUrl.trim().ifBlank { null },
-                                carddavUrl = carddavUrl.trim().ifBlank { null }
-                            )
-                            else -> ServerConfig(
-                                imapHost = advancedImapHost ?: server,
-                                imapPort = imapPort,
-                                imapUseSsl = imapUseSsl,
-                                smtpHost = advancedSmtpHost ?: server,
-                                smtpPort = smtpPort,
-                                smtpUseStartTls = smtpUseStartTls,
-                                caldavUrl = caldavUrl.trim().ifBlank { "$server/dav/" },
-                                carddavUrl = carddavUrl.trim().ifBlank { "$server/dav/" }
-                            )
-                        }
+                        // ponytail: never invent a DAV URL. Keep what the user typed (or
+                        // what autodiscover returned). Empty = "not configured"; the sync
+                        // leg is simply disabled if its URL is blank — no wrong guess.
+                        val calUrl = caldavUrl.trim().ifBlank { null }
+                        val cardUrl = carddavUrl.trim().ifBlank { null }
+                        val serverConfig = ServerConfig(
+                            imapHost = advancedImapHost ?: server,
+                            imapPort = imapPort,
+                            imapUseSsl = imapUseSsl,
+                            smtpHost = advancedSmtpHost ?: server,
+                            smtpPort = smtpPort,
+                            smtpUseStartTls = smtpUseStartTls,
+                            caldavUrl = calUrl,
+                            carddavUrl = cardUrl
+                        )
                         val account = Account(
                             name = name.ifBlank { trimmed },
                             email = trimmed,
                             accountType = type,
                             serverConfig = serverConfig,
                             authConfig = AuthConfig.AppPassword(trimmed, password),
-                            syncConfig = SyncConfig.Defaults(),
+                            // ponytail: only enable the sync legs the user actually
+                            // configured. A CalDAV/CardDAV account with no IMAP host must
+                            // NOT be blocked by the email gate; a blank DAV URL means that
+                            // leg is off (user enters it manually). This is what lets a
+                            // calendar/contacts-only account save when IMAP isn't set.
+                            syncConfig = SyncConfig.Defaults().copy(
+                                syncEmail = advancedImapHost != null || server.isNotBlank(),
+                                syncCalendar = calUrl != null,
+                                syncContacts = cardUrl != null,
+                                syncTasks = false
+                            ),
                             uiConfig = UIConfig.Defaults()
                         )
                         coroutineScope.launch {
@@ -459,9 +457,12 @@ fun AddAccountScreen(
                             // with those syncs disabled.
                             val draft = account
                             val provision = viewModel.provisionAccount(draft)
-                            if (!provision.emailOk) {
+                            // Block only if the user actually configured email AND it
+                            // failed. A CalDAV/CardDAV-only account (syncEmail=false) is
+                            // NOT blocked by the IMAP test — it saves on DAV success.
+                            if (draft.syncConfig.syncEmail && !provision.emailOk) {
                                 saving = false
-                                error = "Could not connect: ${provision.emailError ?: "IMAP login failed"}"
+                                error = "Could not connect (email): ${provision.emailError ?: "IMAP login failed"}"
                                 return@launch
                             }
                             // Disable any DAV sync legs that failed to connect (honest,
