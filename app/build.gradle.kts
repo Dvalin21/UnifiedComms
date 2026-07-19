@@ -209,11 +209,11 @@ dependencies {
     // implementation("at.bitfire.dav4jvm:dav4jvm:3.5.2")
 
     // Crypto/Security
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("androidx.security:security-crypto:1.1.0")
     implementation("androidx.biometric:biometric:1.2.0-alpha04")
 
     // WorkManager (Background sync)
-    implementation("androidx.work:work-runtime-ktx:2.9.0")
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
 
     // Notifications
     implementation("androidx.core:core-splashscreen:1.0.1")

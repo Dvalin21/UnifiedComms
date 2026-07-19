@@ -367,8 +367,6 @@ object Autodiscover {
         return null
     }
 
-    private fun findAll(text: String, re: Regex): List<String> = re.findAll(text).map { it.groupValues[1] }.toList()
-    private fun findFirst(text: String, re: Regex): String? = re.find(text)?.groupValues?.get(1)
 
     private fun knownDavOverrides(domain: String): Pair<String, String>? = when (domain) {
         "gmail.com" -> Pair(

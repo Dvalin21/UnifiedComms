@@ -33,9 +33,6 @@
 # Keep WorkManager
 -keep class androidx.work.** { *; }
 
-# Keep Biometric
--keep class androidx.biometric.** { *; }
-
 # Keep Security Crypto
 -keep class androidx.security.crypto.** { *; }
 

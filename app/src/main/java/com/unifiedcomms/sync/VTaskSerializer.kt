@@ -39,8 +39,7 @@ object VTaskSerializer {
                 // ponytail: a DUE carries its wall-clock zone in due.timeZone, so emit it
                 // as a LOCAL time with a TZID (not a floating Z). Stamping Z masqueraded
                 // the wall-clock as UTC and shifted the due time by the zone offset.
-                val zoneSuffix = if (due.hasTime) "" else ""
-                sb.appendLine("DUE;TZID=${due.timeZone}:${zoned.format(DateTimeFormatter.ofPattern(fmt + zoneSuffix))}")
+                sb.appendLine("DUE;TZID=${due.timeZone}:${zoned.format(DateTimeFormatter.ofPattern(fmt))}")
             }.onFailure { Log.w(TAG, "bad DUE for ${task.id}", it) }
         }
 
