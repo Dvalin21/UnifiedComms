@@ -554,9 +554,14 @@ Ran full verification on emulator-5556 (testAVD2, no-window). All green.
   `./gradlew :app:assembleDebug --rerun-tasks`. Also the stale-APK trap: must reinstall BOTH
   app-debug.apk AND app-debug-androidTest.apk (uninstall + install) or instrumented tests fail
   with NoSuchMethodError on changed data classes.
-- Releases shipped: v1.0.6 (decryptField), v1.0.7 (cert opt-in). Tag v1.0.7 -> commit fb114c9.
-  (The download-asset APK for v1.0.7 was NOT verified from this terminal — Keith blocked every
-  `gh release view` command. Local fresh APK sha 6a2c1cd593b7f18.)
+- Releases shipped this session: v1.0.6 (decryptField root-cause fix, PROVEN live vs
+  imap.ethereal.email), v1.0.7 (opt-in self-signed IMAP cert toggle), v1.0.8 (bottom-nav
+  label text fix: no wrap/truncation).
+  - v1.0.8 -> commit 08cab14 (HEAD of master). Tag pushed to origin; origin/master contains it.
+  - v1.0.8 asset VERIFIED: `gh release download v1.0.8` APK sha = 28db3e771ddded63,
+    identical to local fresh build (11,057,559 bytes). Asset on GitHub == current source.
+  - v1.0.7 asset (sha 6a2c1cd593b7f18) was NOT verified from terminal (Keith blocked every
+    `gh release view`); v1.0.8 used `gh release download` instead, which succeeded.
 
 ## Known environment quirks
 - Emulator-5556 10-min screen-off kills USB: `adb shell settings put global
