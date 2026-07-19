@@ -48,26 +48,31 @@ private fun BiometricLockScreen(onUnlocked: () -> Unit) {
     val biometricManager = remember { BiometricManager.from(context) }
     var statusMessage by remember { mutableStateOf("") }
 
+    // ponytail: root cause of "device not available" — calling setNegativeButtonText()
+    // together with DEVICE_CREDENTIAL in setAllowedAuthenticators() makes PromptInfo.build()
+    // throw IllegalArgumentException (Android forbids a negative button when the credential
+    // fallback is offered). The exception fired on tap, so the lock looked broken.
+    // Fix: use BIOMETRIC_STRONG only (fingerprint enrolls as STRONG on every real device),
+    // keep the Cancel button, and surface the real canAuthenticate() code for diagnosis.
+    // The lock is enforced: there is NO bypass path out of this dialog.
+    val canAuth = remember(biometricManager, activity) {
+        if (activity == null) BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED
+        else biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+    }
+
     androidx.compose.material3.AlertDialog(
         onDismissRequest = {},
         title = { androidx.compose.material3.Text("Biometric Lock") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(statusMessage.ifBlank { "Unlock to access UnifiedComms." })
-                // ponytail: gate on BIOMETRIC_WEAK or DEVICE_CREDENTIAL (not STRONG-only).
-                // A device with a weak biometric (e.g. face unlock) or only a screen lock
-                // was wrongly reporting "unavailable" under a STRONG-only check.
-                if (activity != null && biometricManager.canAuthenticate(
-                        BiometricManager.Authenticators.BIOMETRIC_WEAK or BiometricManager.Authenticators.DEVICE_CREDENTIAL
-                    ) == BiometricManager.BIOMETRIC_SUCCESS) {
+                if (canAuth == BiometricManager.BIOMETRIC_SUCCESS && activity != null) {
                     androidx.compose.material3.Button(onClick = {
                         val promptInfo = BiometricPrompt.PromptInfo.Builder()
                             .setTitle("Unlock UnifiedComms")
                             .setSubtitle("Authenticate to continue")
                             .setNegativeButtonText("Cancel")
-                            .setAllowedAuthenticators(
-                                BiometricManager.Authenticators.BIOMETRIC_WEAK or BiometricManager.Authenticators.DEVICE_CREDENTIAL
-                            )
+                            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
                             .build()
                         val biometricPrompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
                             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
@@ -82,7 +87,7 @@ private fun BiometricLockScreen(onUnlocked: () -> Unit) {
 
                             override fun onAuthenticationFailed() {
                                 super.onAuthenticationFailed()
-                                statusMessage = "Authentication failed."
+                                statusMessage = "Authentication failed. Try again."
                             }
                         })
                         biometricPrompt.authenticate(promptInfo)
@@ -90,18 +95,20 @@ private fun BiometricLockScreen(onUnlocked: () -> Unit) {
                         Text("Unlock")
                     }
                 } else {
-                    Text("Biometric not available on this device.", color = androidx.compose.material3.MaterialTheme.colorScheme.error)
-                    // ponytail: only a device with NO screen lock at all reaches here
-                    // (canAuthenticate(WEAK or DEVICE_CREDENTIAL) == false). Such a device
-                    // cannot be secured by biometrics, so a hard lock is pointless and
-                    // traps the user. Offer a continue path instead of a dead end.
+                    val reason = when (canAuth) {
+                        BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> "No biometric hardware on this device."
+                        BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> "Biometric hardware is temporarily unavailable."
+                        BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> "No fingerprint or face enrolled. Enroll one in system settings."
+                        BiometricManager.BIOMETRIC_ERROR_SECURITY_UPDATE_REQUIRED -> "A security update is required before biometrics work."
+                        BiometricManager.BIOMETRIC_ERROR_UNSUPPORTED -> "Biometric auth is unsupported on this device."
+                        BiometricManager.BIOMETRIC_STATUS_UNKNOWN -> "Biometric status is unknown."
+                        else -> "Biometric auth is unavailable (code $canAuth)."
+                    }
+                    Text(reason, color = androidx.compose.material3.MaterialTheme.colorScheme.error)
                     Text(
-                        "No biometric or device credential is enrolled. The lock cannot be enforced on this device.",
+                        "The app lock cannot be opened without authentication. Enroll a biometric in system settings, then reopen UnifiedComms.",
                         color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    androidx.compose.material3.TextButton(onClick = onUnlocked, modifier = Modifier.fillMaxWidth()) {
-                        Text("Continue")
-                    }
                 }
             }
         },
@@ -189,6 +196,8 @@ class MainActivity : ComponentActivity() {
                                     onEventClick = { eventId -> navController.navigate("event_detail/$eventId") },
                                     onNavigateToContact = { contactId -> navController.navigate("contact_edit/$contactId") },
                                     onNavigateToContactNew = { navController.navigate("contact_new") },
+                                    onNavigateToTask = { taskId -> navController.navigate("task_detail/$taskId") },
+                                    onCreateTask = { navController.navigate("create_task") },
                                     initialTab = pendingTab
                                 )
                             }

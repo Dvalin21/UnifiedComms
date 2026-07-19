@@ -33,9 +33,7 @@ object NotificationHelper {
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
             NotificationManagerCompat.from(this).notify(id, notification)
         } else {
-            // ponytail: never silently drop. Surface that notifications are blocked so the
-            // caller/UI can re-prompt via RuntimePermissionGate instead of losing the alert.
-            Log.w("NotificationHelper", "notifySafe($id): POST_NOTIFICATIONS denied — notification dropped (re-prompt user)")
+            notifyBlocked()
         }
     }
 
@@ -43,8 +41,31 @@ object NotificationHelper {
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
             NotificationManagerCompat.from(this).notify(tag, id, notification)
         } else {
-            Log.w("NotificationHelper", "notifySafe($tag,$id): POST_NOTIFICATIONS denied — notification dropped (re-prompt user)")
+            notifyBlocked()
         }
+    }
+
+    // ponytail: never silently drop alerts. When POST_NOTIFICATIONS is denied (Android 13+),
+    // every email/calendar/task/reminder notification would otherwise vanish with no signal.
+    // Instead post one persistent, tapping-routes-to-settings notice so the user can re-grant.
+    private fun Context.notifyBlocked() {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            putExtra("navigate_to", "settings")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this, 7777, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID_SECURITY)
+            .setSmallIcon(R.drawable.ic_notification_sync)
+            .setContentTitle("Notifications are blocked")
+            .setContentText("UnifiedComms can't alert you to new mail, events, or tasks. Tap to enable.")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_SYSTEM)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build()
+        NotificationManagerCompat.from(this).notify(7777, notification)
     }
 
     fun createNotificationChannels(context: Context) {
