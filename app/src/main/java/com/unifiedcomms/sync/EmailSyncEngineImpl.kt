@@ -235,6 +235,20 @@ class EmailSyncEngineImpl(
             put("mail.imap.connectiontimeout", 30000)
             put("mail.imap.timeout", 30000)
             put("mail.imap.writetimeout", 30000)
+            // ponytail: android-mail 1.6.7 enforces cert hostname verification by
+            // default (Angus 1.1.0: "check server identity by default"). For a
+            // self-signed / internal-CA IMAP server that hard-fails store.connect()
+            // even with a correct password, the user can opt in to skip it.
+            if (config.acceptAllCerts) {
+                put("mail.imap.ssl.checkserveridentity", false)
+                val ctx = javax.net.ssl.SSLContext.getInstance("TLS")
+                ctx.init(null, arrayOf(object : javax.net.ssl.X509TrustManager {
+                    override fun checkClientTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
+                    override fun checkServerTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
+                    override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = emptyArray()
+                }), java.security.SecureRandom())
+                put("mail.imap.ssl.socketFactory", ctx.socketFactory)
+            }
         }
         return Session.getInstance(props)
     }

@@ -115,6 +115,13 @@ data class ServerConfig(
     val oauthClientId: String? = null,
     val oauthScopes: List<String> = emptyList(),
     val supportsPush: Boolean = false,
+    // ponytail: opt-in escape for self-signed / internal-CA IMAP servers.
+    // android-mail 1.6.7 enforces cert hostname verification by default
+    // (Angus 1.1.0: "check server identity by default"), so a mismatched
+    // or self-signed cert hard-fails store.connect() even with a correct
+    // password. Default false = strict (secure). Only true when the user
+    // explicitly opts in for their own/internal server.
+    val acceptAllCerts: Boolean = false,
     val pushConfig: PushConfig? = null
 ) {
     companion object {
