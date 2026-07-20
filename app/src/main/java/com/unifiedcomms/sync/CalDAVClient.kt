@@ -51,6 +51,103 @@ class CalDAVClient(
 
     data class IcsResource(val href: String, val etag: String, val ical: String)
 
+    // --- Hearthboard XmlPullParser helpers (ported so the principal/home-set
+    // discovery above compiles and works on SOGo/mailcow). Adapted to use this
+    // client's `baseUrl` field instead of Hearthboard's `serverUrl`. ---
+    internal data class ParsedProp(
+        val localName: String,
+        val children: List<String>,
+        val text: String? = null
+    )
+
+    internal data class ParsedResponse(
+        val href: String?,
+        val props: List<ParsedProp>
+    )
+
+    internal fun safeParseMultistatus(xml: String): List<ParsedResponse> {
+        val p = runCatching { XmlPullParserFactory.newInstance().newPullParser() }.getOrNull()
+            ?: throw IllegalStateException("XmlPullParserFactory unavailable: cannot parse CalDAV response")
+        return parseMultistatus(xml, p)
+    }
+
+    internal fun parseMultistatus(xml: String, parser: XmlPullParser): List<ParsedResponse> {
+        parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
+        parser.setInput(StringReader(xml))
+
+        val responses = mutableListOf<ParsedResponse>()
+        val stack = mutableListOf<ParsedResponse>()
+        val current = mutableListOf<ParsedProp>()
+
+        fun localName(p: XmlPullParser): String = p.name.substringAfter(':')
+
+        while (parser.next() != XmlPullParser.END_DOCUMENT) {
+            when (parser.eventType) {
+                XmlPullParser.START_TAG -> {
+                    when {
+                        localName(parser).equals("response", ignoreCase = true) ->
+                            stack.add(ParsedResponse(href = null, props = emptyList()))
+                        localName(parser).equals("href", ignoreCase = true) ->
+                            current.add(ParsedProp(localName(parser), emptyList(), safeText(parser)))
+                        stack.isNotEmpty() ->
+                            current.add(ParsedProp(localName(parser), emptyList()))
+                    }
+                }
+                XmlPullParser.TEXT, XmlPullParser.CDSECT -> {
+                    val text = parser.text?.trim().orEmpty()
+                    if (text.isNotBlank() && current.isNotEmpty()) {
+                        val last = current.last()
+                        current[current.lastIndex] = last.copy(text = (last.text ?: "") + text)
+                    }
+                }
+                XmlPullParser.END_TAG -> {
+                    if (localName(parser).equals("response", ignoreCase = true) && stack.isNotEmpty()) {
+                        val hrefProp = current.firstOrNull { it.localName.equals("href", ignoreCase = true) }
+                        val built = stack.removeAt(stack.size - 1)
+                            .copy(href = hrefProp?.text, props = current.toList())
+                        responses.add(built)
+                        current.clear()
+                    }
+                }
+            }
+        }
+        return responses
+    }
+
+    private fun safeText(parser: XmlPullParser): String? =
+        if (parser.next() == XmlPullParser.TEXT) parser.text?.trim() else null
+
+    // Given a flat list of ParsedProp from a PROPFIND response, find the property
+    // named propName and return the text of the next <href> element after it
+    // (the common CalDAV pattern: <X:some-prop><D:href>/value/</D:href></X:some-prop>).
+    private fun findPropHref(propName: String, r: ParsedResponse?): String? {
+        if (r == null) return null
+        val idx = r.props.indexOfFirst { it.localName.equals(propName, ignoreCase = true) }
+        if (idx < 0) return null
+        for (i in (idx + 1) until r.props.size) {
+            if (r.props[i].localName.equals("href", ignoreCase = true)) {
+                return r.props[i].text?.takeIf { it.isNotBlank() }
+            }
+        }
+        return null
+    }
+
+    private fun buildUrl(path: String): String {
+        if (path.startsWith("http://") || path.startsWith("https://")) return path
+        if (path.isBlank()) return baseUrl
+        if (path.startsWith("/")) {
+            val origin = extractOrigin(baseUrl)
+            return "${origin.trimEnd('/')}$path"
+        }
+        val base = baseUrl.trimEnd('/')
+        return "$base/$path"
+    }
+
+    private fun extractOrigin(url: String): String {
+        val idx = url.indexOf('/', url.indexOf("//") + 2)
+        return if (idx < 0) url else url.substring(0, idx)
+    }
+
     suspend fun listCalendars(): List<CalendarInfo> = withContext(Dispatchers.IO) {
         val body = """
             <?xml version="1.0" encoding="UTF-8"?>
@@ -110,22 +207,9 @@ class CalDAVClient(
         calendars
     }
 
-    /**
-     * Discover the CalDAV principal path. Mirrors the proven mailcow/SOGo flow
-     * from the reference client: probe the user-supplied URL first, then fall
-     * back to common CalDAV base paths (incl. /SOGo/dav/) against the origin.
-     * A single bare probe against /SOGo/dav/ returns nothing for SOGo, which is
-     * why calendars/tasks came back empty before.
-     */
-    private suspend fun findPrincipalPath(): String? = withContext(Dispatchers.IO) {
-        tryFindPrincipalAt(baseUrl)?.let { return@withContext it }
-        val origin = runCatching { URI(baseUrl).let { u -> u.scheme + "://" + u.host + (if (u.port != -1) ":${u.port}" else "") } }.getOrNull() ?: baseUrl
-        for (suffix in COMMON_CALDAV_PATHS) {
-            tryFindPrincipalAt("$origin$suffix")?.let { return@withContext it }
-        }
-        null
-    }
-
+    // --- Calendar discovery ported from Hearthboard's proven CalDAVClient
+    // (XmlPullParser flat parser — robust against SOGo's response shapes; the
+    // previous DOM walker mis-handled Harmony's getElementsByTagNameNS). ---
     private val COMMON_CALDAV_PATHS = listOf(
         "/SOGo/dav/",
         "/.well-known/caldav",
@@ -134,8 +218,17 @@ class CalDAVClient(
         "/dav/"
     )
 
-    private suspend fun tryFindPrincipalAt(url: String): String? = withContext(Dispatchers.IO) {
-        return@withContext try {
+    private fun findPrincipalPath(): String? {
+        tryFindPrincipalAt(baseUrl)?.let { return it }
+        val origin = extractOrigin(baseUrl)
+        for (suffix in COMMON_CALDAV_PATHS) {
+            tryFindPrincipalAt("$origin$suffix")?.let { return it }
+        }
+        return null
+    }
+
+    private fun tryFindPrincipalAt(url: String): String? {
+        return try {
             val xml = """
                 <?xml version="1.0" encoding="utf-8"?>
                 <D:propfind xmlns:D="DAV:">
@@ -143,24 +236,27 @@ class CalDAVClient(
                 </D:propfind>
             """.trimIndent()
             val resp = propfind(url, xml, depth = "0")
-            parseHrefsFromPropfind(resp).firstOrNull()
+            val r = safeParseMultistatus(resp).firstOrNull()
+            findPropHref("current-user-principal", r) ?: r?.href
         } catch (e: Exception) {
             null
         }
     }
 
-    private suspend fun findCalendarHomeSet(principal: String): String? = withContext(Dispatchers.IO) {
-        return@withContext try {
+    private fun findCalendarHomeSet(principal: String): String? {
+        val base = buildUrl(principal)
+        return try {
             val xml = """
                 <?xml version="1.0" encoding="utf-8"?>
                 <D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
                   <D:prop><C:calendar-home-set/></D:prop>
                 </D:propfind>
             """.trimIndent()
-            val resp = propfind(principal, xml, depth = "0")
-            parseHrefsFromPropfind(resp).firstOrNull()
+            val resp = propfind(base, xml, depth = "0")
+            val r = safeParseMultistatus(resp).firstOrNull()
+            findPropHref("calendar-home-set", r) ?: principal
         } catch (e: Exception) {
-            null
+            principal
         }
     }
 
