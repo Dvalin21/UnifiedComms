@@ -1,6 +1,7 @@
 package com.unifiedcomms.sync
 
 import android.content.Context
+import android.util.Log
 import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.model.Email
 import com.unifiedcomms.data.model.EmailAddress
@@ -64,19 +65,23 @@ class EmailSyncEngineImpl(
             val updatedItems = mutableListOf<String>()
             val deletedItems = mutableListOf<String>()
 
-            try {
+             try {
                 updateProgress(account.id, folder = null, SyncStage.CONNECTING, 0, 0)
                 val session = openImapSession(config)
                 val store = session.store
 
                 updateProgress(account.id, folder = null, SyncStage.AUTHENTICATING, 0, 0)
                 connectStoreWithRetry(store, config, auth)
+                Log.d("EmailSyncEngineImpl", "connected imapHost=${config.imapHost} port=${config.imapPort} ssl=${config.imapUseSsl} foldersToSync=$folders")
 
                 for (folderName in folders) {
                     updateProgress(account.id, folderName, SyncStage.LISTING_FOLDERS, 0, 0)
 
                     val folder = store.getFolder(folderName)
-                    if (!folder.exists()) continue
+                    if (!folder.exists()) {
+                        Log.w("EmailSyncEngineImpl", "folder does not exist: $folderName")
+                        continue
+                    }
                     val folderResult = syncSingleFolder(account, folder)
                     totalSynced += folderResult.first
                     totalFailed += folderResult.second
@@ -132,6 +137,7 @@ class EmailSyncEngineImpl(
             fp.add("X-GM-LABELS")
             folder.fetch(messages, fp)
 
+            var parsedFail = 0
             for (msg in messages) {
                 if (!folder.isOpen) break // stop if folder was closed externally
                 try {
@@ -160,10 +166,18 @@ class EmailSyncEngineImpl(
                             updatedItems.add(existing.id)
                         }
                         totalSynced++
+                    } else {
+                        parsedFail++
+                        if (parsedFail <= 2) {
+                            android.util.Log.w("EmailSyncEngineImpl", "parseEmail returned null for uid=$uid folder=$folderName subject=${msg.getHeader("Subject")?.firstOrNull()?.take(40)}")
+                        }
                     }
                 } catch (e: Exception) {
                     totalFailed++
                 }
+            }
+            if (parsedFail > 0) {
+                android.util.Log.w("EmailSyncEngineImpl", "folder=$folderName fetched=${messages.size} parsedFail=$parsedFail (messages dropped by parseEmail)")
             }
 
             updateProgress(account.id, folderName, SyncStage.FETCHING_HEADERS, end, messageCount)
@@ -277,9 +291,12 @@ class EmailSyncEngineImpl(
             val sentAt = parseDateHeader(msg, "Date")
             val receivedAt = parseDateHeader(msg, "Received") ?: sentAt
 
-            val (bodyText, bodyHtml) = extractContent(msg)
+            // ponytail: body/attachment extraction can throw on unusual MIME
+            // structures. A failure there must NOT discard the message — K-9
+            // keeps the envelope and shows an empty body. Best-effort parse.
+            val (bodyText, bodyHtml) = runCatching { extractContent(msg) }.getOrDefault(null to null)
             val attachments = mutableListOf<com.unifiedcomms.data.model.Attachment>()
-            extractAttachments(msg, attachments)
+            runCatching { extractAttachments(msg, attachments) }
 
             val preview = bodyText?.take(200) ?: subject
             val flags = EmailFlags(
