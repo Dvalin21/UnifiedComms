@@ -155,10 +155,10 @@ data class ServerConfig(
             val caldavUrl = if (email.isNotBlank()) "${davBase}$email/Calendar/personal/" else davBase
             val carddavUrl = if (email.isNotBlank()) "${davBase}$email/Contacts/personal/" else davBase
             return ServerConfig(
-                imapHost = host,
+                imapHost = "imap.$host",
                 imapPort = 993,
                 imapUseSsl = true,
-                smtpHost = host,
+                smtpHost = "smtp.$host",
                 smtpPort = 587,
                 smtpUseStartTls = true,
                 caldavUrl = caldavUrl,
