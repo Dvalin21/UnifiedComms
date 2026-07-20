@@ -213,6 +213,41 @@ fun AddAccountScreen(
         }
     }
 
+    // Known providers have deterministic, correct server configs (mailcow/SOGo,
+    // Exchange/EWS). Prefill them directly so the user is NEVER forced into the
+    // manual Advanced fields just because a network autodiscover lookup missed.
+    // Network autodiscover remains the fallback for generic/unknown providers.
+    fun applyProviderDefaults(p: Provider) {
+        val addr = email.trim()
+        if (!addr.contains("@")) { runDiscovery(); return }
+        val known = when (p.type) {
+            AccountType.MAILCOW -> ServerConfig.MailcowDefaults(addr.substringAfter("@"), addr)
+            AccountType.EXCHANGE -> ServerConfig.ExchangeDefaults(addr.substringAfter("@"))
+            else -> null
+        }
+        if (known == null) { runDiscovery(); return }
+        imapHost = known.imapHost ?: ""
+        imapPort = known.imapPort
+        imapUseSsl = known.imapUseSsl
+        smtpHost = known.smtpHost ?: ""
+        smtpPort = known.smtpPort
+        smtpUseStartTls = known.smtpUseStartTls
+        caldavUrl = known.caldavUrl ?: ""
+        carddavUrl = known.carddavUrl ?: ""
+        autodiscovered = Autodiscover.Discovered(
+            imapHost = known.imapHost ?: "",
+            imapPort = known.imapPort,
+            imapSsl = known.imapUseSsl,
+            smtpHost = known.smtpHost ?: "",
+            smtpPort = known.smtpPort,
+            smtpStartTls = known.smtpUseStartTls,
+            caldavUrl = known.caldavUrl,
+            carddavUrl = known.carddavUrl
+        )
+        autodiscoverFailed = false
+        showAdvanced = false
+    }
+
     UnifiedCommsTheme {
         Scaffold(
             topBar = {
@@ -283,8 +318,9 @@ fun AddAccountScreen(
                                     )
                                     return@ProviderTile
                                 }
-                                // manual/IMAP: autodiscover from the email (or reveal advanced)
-                                runDiscovery()
+                                // manual/IMAP: known providers get deterministic defaults
+                                // directly (no network gate); others fall back to autodiscover.
+                                applyProviderDefaults(p)
                             }
                         )
                     }
