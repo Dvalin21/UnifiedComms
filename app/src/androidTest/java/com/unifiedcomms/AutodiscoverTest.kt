@@ -40,4 +40,20 @@ class AutodiscoverTest {
         val d = withContext(Dispatchers.IO) { Autodiscover.discover("someone@this-domain-does-not-exist-xyz123.com") }
         assertTrue("Bogus domain should return null so UI can expand Advanced", d == null)
     }
+
+    /**
+     * Regression test for the mailcow / SOGo (houseofmanns.com) account-add blocker:
+     *  - email host must be imap./smtp. (NOT the misconfigured autoconfig's mail.*)
+     *  - CalDAV must resolve to the SOGo DAV base so a calendar-only account can be added.
+     *  Requires live network on the device/emulator.
+     */
+    @Test
+    fun mailcowSogoResolves(): Unit = runBlocking {
+        val d = withContext(Dispatchers.IO) { Autodiscover.discover("someone@houseofmanns.com") }
+        assertNotNull("houseofmanns.com autodiscover returned null", d)
+        assertTrue("Expected imap. host, got ${d?.imapHost}", d?.imapHost?.startsWith("imap.") == true)
+        assertTrue("Expected smtp. host, got ${d?.smtpHost}", d?.smtpHost?.startsWith("smtp.") == true)
+        assertTrue("Expected SOGo CalDAV URL, got ${d?.caldavUrl}",
+            d?.caldavUrl?.contains("/SOGo/dav/") == true)
+    }
 }

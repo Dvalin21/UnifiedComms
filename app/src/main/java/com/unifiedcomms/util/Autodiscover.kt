@@ -81,6 +81,12 @@ object Autodiscover {
     // ---- EMAIL: Thunderbird autoconfig (XML) + RFC 6186 SRV fallback ----
 
     private fun discoverEmail(domain: String): Discovered? {
+        // mailcow (and most self-hosted providers) expose imap.<domain> / smtp.<domain>,
+        // but their Thunderbird autoconfig XML often advertises the wrong host (mail.<domain>).
+        // Prefer the canonical imap./smtp. hosts when they both resolve; fall through to the
+        // autoconfig XML otherwise. This fixes "autodiscover gives the wrong email host".
+        mailcowEmailOverride(domain)?.let { return it }
+
         val urls = listOf(
             "https://autoconfig.thunderbird.net/v1.1/$domain",
             "https://autoconfig.$domain/mail/config-v1.1.xml",
@@ -112,6 +118,32 @@ object Autodiscover {
         // host resolves we return it (the engine verifies with a real LOGIN/CAPABILITY later).
         selfHostedEmailFallback(domain)?.let { return it }
         return null
+    }
+
+    /**
+     * mailcow / standard self-hosted mail: the real IMAP/SMTP hosts are imap.<domain> and
+     * smtp.<domain>. The provider's Thunderbird autoconfig XML frequently advertises mail.<domain>
+     * instead (wrong for this install). If both canonical hosts resolve, return them and skip the
+     * misleading XML. Returns null when they don't resolve, so genuine mail.<domain>-only providers
+     * fall through to the autoconfig path unchanged.
+     */
+    private fun mailcowEmailOverride(domain: String): Discovered? {
+        val imapHost = "imap.$domain"
+        val smtpHost = "smtp.$domain"
+        return try {
+            InetAddress.getByName(imapHost)
+            InetAddress.getByName(smtpHost)
+            Discovered(
+                imapHost = imapHost,
+                imapPort = 993,
+                imapSsl = true,
+                smtpHost = smtpHost,
+                smtpPort = 465,
+                smtpStartTls = false
+            )
+        } catch (_: Exception) {
+            null
+        }
     }
 
     /**
@@ -257,12 +289,17 @@ object Autodiscover {
     /**
      * Returns (caldavUrl, carddavUrl) or null if neither could be discovered.
      */
-    private fun discoverDav(domain: String): Pair<String, String>? = withContextSafe {
+    private fun discoverDav(domain: String): Pair<String, String?>? = withContextSafe {
         // 1) Known-provider overrides (SRV often absent/incorrect for the majors).
         knownDavOverrides(domain)?.let { return@withContextSafe it }
 
+        // 1b) mailcow / SOGo: the CalDAV/CardDAV endpoint is always at
+        //     https://<domain>/SOGo/dav/ for any mailcow install. sogoDavProbe returns that
+        //     canonical base when imap.<domain> resolves, bypassing the fragile Thunderbird /
+        //     .well-known paths that hand back wrong or garbage URLs for self-hosted mailcow.
+        sogoDavProbe(domain)?.let { return@withContextSafe it }
+
         // 2) SRV records (SSL first), then .well-known. Either yields a base
-        //    URL we must then resolve to the real principal/home-set (RFC 6764 §6).
         val calBase = srvLookup("_caldavs._tcp.$domain") ?: srvLookup("_caldav._tcp.$domain")
             ?: wellKnownDav("https://$domain/.well-known/caldav")
         val cardBase = srvLookup("_carddavs._tcp.$domain") ?: srvLookup("_carddav._tcp.$domain")
@@ -362,11 +399,32 @@ object Autodiscover {
                 RegexOption.DOT_MATCHES_ALL
             ).find(prop) ?: continue
             val value = hrefMatch.groupValues[1].trim()
-            if (value.isNotBlank()) return value
+            // Reject anything that isn't a real URL (absolute http(s) or a server-relative
+            // path starting with '/'). Stops HTML login/error pages leaking garbage hrefs.
+            if (value.isNotBlank() && (value.startsWith("http://") || value.startsWith("https://") || value.startsWith("/")))
+                return value
         }
         return null
     }
 
+    /**
+     * mailcow / SOGo exposes CalDAV + CardDAV under the fixed base https://<domain>/SOGo/dav/.
+     * The base is deterministic for any mailcow install, so we don't probe it over TLS (an
+     * unauthenticated PROPFIND returns a login page, and some devices fail TLS to self-signed
+     * mailcow certs). We gate on the same mailcow signal as the email override — imap.<domain>
+     * resolves — then return the canonical base with no network round-trip. CardDAV is left null
+     * because the user only needs CalDAV; SOGo serves both under the same base if contacts are
+     * enabled later.
+     */
+    private fun sogoDavProbe(domain: String): Pair<String, String?>? {
+        val base = "https://$domain/SOGo/dav/"
+        return try {
+            InetAddress.getByName("imap.$domain")  // mailcow signal
+            Pair(base, null)
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     private fun knownDavOverrides(domain: String): Pair<String, String>? = when (domain) {
         "gmail.com" -> Pair(
@@ -507,8 +565,16 @@ object Autodiscover {
                 .header("User-Agent", "UnifiedComms")
                 .build()
             http.newCall(req).execute().use { resp ->
-                resp.header("Location")?.takeIf { it.isNotBlank() }
-                    ?: if (resp.isSuccessful) url else null
+                val loc = resp.header("Location")
+                // Only trust a Location that is a real URL (absolute or server-relative).
+                // Junk redirects (e.g. proxy error pages with control chars) are ignored.
+                if (loc != null && (loc.startsWith("http://") || loc.startsWith("https://") || loc.startsWith("/"))) {
+                    loc
+                } else if (resp.isSuccessful) {
+                    url
+                } else {
+                    null
+                }
             }
         } catch (e: Exception) {
             Log.d(TAG, "well-known $url failed: ${e.message}")

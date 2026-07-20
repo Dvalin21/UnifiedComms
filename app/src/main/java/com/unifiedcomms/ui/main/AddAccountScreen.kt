@@ -407,16 +407,23 @@ fun AddAccountScreen(
                         if (trimmed.isBlank() || password.isBlank()) {
                             error = "Email and password are required."; return@Button
                         }
-                        // If autodiscover succeeded use its host; else require advanced hosts.
+                        // ponytail: only treat email as configured when the user (or
+                        // autodiscover) actually supplied an IMAP host. The bare domain is
+                        // NOT an email host — using it forced syncEmail=true on every
+                        // CalDAV-only account and blocked saving. A calendar-only (SOGo)
+                        // account must save on CalDAV success alone.
                         val advancedImapHost = imapHost.trim().ifBlank { null }
                         val advancedSmtpHost = smtpHost.trim().ifBlank { null }
                         val server = advancedImapHost ?: trimmed.substringAfter("@")
-                        if (advancedImapHost == null && autodiscovered == null) {
+                        // Require an IMAP host ONLY when the user picked an email-capable
+                        // provider and hasn't entered one. CalDAV/CardDAV accounts skip this.
+                        val type = provider.type
+                        val wantsEmail = type != AccountType.GENERIC_CALDAV_CARDDAV
+                        if (wantsEmail && advancedImapHost == null && autodiscovered == null) {
                             error = "Enter server settings under Advanced."; return@Button
                         }
                         saving = true
                         error = null
-                        val type = provider.type
                         // ponytail: never invent a DAV URL. Keep what the user typed (or
                         // what autodiscover returned). Empty = "not configured"; the sync
                         // leg is simply disabled if its URL is blank — no wrong guess.
@@ -445,7 +452,7 @@ fun AddAccountScreen(
                             // leg is off (user enters it manually). This is what lets a
                             // calendar/contacts-only account save when IMAP isn't set.
                             syncConfig = SyncConfig.Defaults().copy(
-                                syncEmail = advancedImapHost != null || server.isNotBlank(),
+                                syncEmail = advancedImapHost != null,
                                 syncCalendar = calUrl != null,
                                 syncContacts = cardUrl != null,
                                 syncTasks = false
