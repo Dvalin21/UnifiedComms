@@ -87,7 +87,7 @@ class CalDAVClient(
     }
 
     suspend fun discoverCalendars(): List<CalendarInfo> = withContext(Dispatchers.IO) {
-        val principal = tryFindPrincipalAt(baseUrl) ?: return@withContext emptyList()
+        val principal = findPrincipalPath() ?: return@withContext emptyList()
         val homeSet = findCalendarHomeSet(principal)
         val target = homeSet ?: principal
         val calendars = mutableListOf<CalendarInfo>()
@@ -95,6 +95,30 @@ class CalDAVClient(
         if (calendars.isEmpty()) calendars += CalendarInfo(principal, "Calendar", "", true)
         calendars
     }
+
+    /**
+     * Discover the CalDAV principal path. Mirrors the proven mailcow/SOGo flow
+     * from the reference client: probe the user-supplied URL first, then fall
+     * back to common CalDAV base paths (incl. /SOGo/dav/) against the origin.
+     * A single bare probe against /SOGo/dav/ returns nothing for SOGo, which is
+     * why calendars/tasks came back empty before.
+     */
+    private suspend fun findPrincipalPath(): String? = withContext(Dispatchers.IO) {
+        tryFindPrincipalAt(baseUrl)?.let { return@withContext it }
+        val origin = runCatching { URI(baseUrl).let { u -> u.scheme + "://" + u.host + (if (u.port != -1) ":${u.port}" else "") } }.getOrNull() ?: baseUrl
+        for (suffix in COMMON_CALDAV_PATHS) {
+            tryFindPrincipalAt("$origin$suffix")?.let { return@withContext it }
+        }
+        null
+    }
+
+    private val COMMON_CALDAV_PATHS = listOf(
+        "/SOGo/dav/",
+        "/.well-known/caldav",
+        "/remote.php/dav/",
+        "/caldav/",
+        "/dav/"
+    )
 
     private suspend fun tryFindPrincipalAt(url: String): String? = withContext(Dispatchers.IO) {
         return@withContext try {
@@ -243,7 +267,7 @@ class CalDAVClient(
 
     // ponytail: task lists are CalDAV collections that advertise VTODO in their component set.
     suspend fun discoverTaskLists(): List<CalendarInfo> = withContext(Dispatchers.IO) {
-        val principal = tryFindPrincipalAt(baseUrl) ?: return@withContext emptyList()
+        val principal = findPrincipalPath() ?: return@withContext emptyList()
         val homeSet = findCalendarHomeSet(principal) ?: principal
         val out = mutableListOf<CalendarInfo>()
         scanForTaskLists(homeSet, out)
@@ -336,7 +360,7 @@ class CalDAVClient(
     data class AddressBookInfo(val path: String, val displayName: String)
 
     suspend fun discoverAddressBooks(): List<AddressBookInfo> = withContext(Dispatchers.IO) {
-        val principal = tryFindPrincipalAt(baseUrl) ?: return@withContext emptyList()
+        val principal = findPrincipalPath() ?: return@withContext emptyList()
         val homeSet = findAddressBookHomeSet(principal) ?: principal
         val out = mutableListOf<AddressBookInfo>()
         scanForAddressBooks(homeSet, out)
