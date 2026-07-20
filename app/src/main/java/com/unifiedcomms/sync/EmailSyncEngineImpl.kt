@@ -135,6 +135,11 @@ class EmailSyncEngineImpl(
             fp.add(FetchProfile.Item.ENVELOPE)
             fp.add(FetchProfile.Item.FLAGS)
             fp.add("X-GM-LABELS")
+            // ponytail: fetch the body too, not just the envelope. Previously the
+            // body was never requested, so msg.content threw / returned null and
+            // every message saved with an empty body -> tapping an email showed
+            // nothing. BODY.PEEK fetches without setting the SEEN flag.
+            fp.add("BODY.PEEK[]")
             folder.fetch(messages, fp)
 
             var parsedFail = 0
