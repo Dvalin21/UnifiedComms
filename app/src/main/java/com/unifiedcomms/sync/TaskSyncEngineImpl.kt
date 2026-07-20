@@ -36,7 +36,7 @@ class TaskSyncEngineImpl(
                 updateProgress(account.id, null, SyncStage.CONNECTING, 0, 0)
                 val url = account.serverConfig.caldavUrl ?: return@withContext SyncResult.failure("Missing CalDAV URL")
                 val auth = crypto.decryptAuthConfig(account.authConfig)
-                val client = OkHttpClient.Builder().connectTimeout(30, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
+                val client = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build()
                 val dav = newCalDav(url, auth, client)
 
                 val lists = dav.discoverTaskLists()
