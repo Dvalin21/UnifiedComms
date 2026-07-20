@@ -150,6 +150,15 @@ class MainViewModel(
         }
     }
 
+    // ponytail: launch on viewModelScope so the post-add sync survives the
+    // AddAccountScreen being dismissed. Calling the suspend syncAccount from the
+    // composable's scope cancelled mid-flight on navigation -> empty inbox.
+    fun syncAccountAsync(account: Account) {
+        viewModelScope.launch {
+            syncManager.performFullSync(account)
+        }
+    }
+
     /** Pre-persist gate: prove the connection over TLS before saving. See SyncManager.provision. */
     suspend fun provisionAccount(account: Account): com.unifiedcomms.sync.ProvisionResult =
         syncManager.provision(account)
