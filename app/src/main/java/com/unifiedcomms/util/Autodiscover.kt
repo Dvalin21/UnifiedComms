@@ -301,9 +301,12 @@ object Autodiscover {
         knownDavOverrides(domain)?.let { return@withContextSafe it }
 
         // 1b) mailcow / SOGo: the CalDAV/CardDAV endpoint is always at
-        //     https://<domain>/SOGo/dav/ for any mailcow install. sogoDavProbe returns that
-        //     canonical base when imap.<domain> resolves, bypassing the fragile Thunderbird /
-        //     .well-known paths that hand back wrong or garbage URLs for self-hosted mailcow.
+        //     https://mail.<domain>/SOGo/dav/ for any mailcow install (the mailcow WEB FQDN, not the
+        //     email-domain apex — the apex fails TLS because the wildcard cert excludes it).
+        //     sogoDavProbe returns that canonical base when imap.<domain> resolves, bypassing the
+        //     fragile Thunderbird / .well-known paths that hand back wrong or garbage URLs for
+        //     self-hosted mailcow. Server-specific ADDITIONAL_SERVER_NAMEs (e.g. email.<domain>) are
+        //     edited by the user in Advanced.
         sogoDavProbe(domain)?.let { return@withContextSafe it }
 
         // 2) SRV records (SSL first), then .well-known. Either yields a base
@@ -415,16 +418,18 @@ object Autodiscover {
     }
 
     /**
-     * mailcow / SOGo exposes CalDAV + CardDAV under the fixed base https://<domain>/SOGo/dav/.
-     * The base is deterministic for any mailcow install, so we don't probe it over TLS (an
-     * unauthenticated PROPFIND returns a login page, and some devices fail TLS to self-signed
-     * mailcow certs). We gate on the same mailcow signal as the email override — imap.<domain>
-     * resolves — then return the canonical base with no network round-trip. CardDAV is left null
-     * because the user only needs CalDAV; SOGo serves both under the same base if contacts are
-     * enabled later.
+     * mailcow / SOGo exposes CalDAV + CardDAV under the fixed base https://mail.<domain>/SOGo/dav/
+     * (the mailcow WEB FQDN — NOT the email-domain apex, which fails TLS because the wildcard cert
+     * excludes the apex). The base is deterministic for any mailcow install, so we don't probe it
+     * over TLS (an unauthenticated PROPFIND returns a login page, and some devices fail TLS to
+     * self-signed mailcow certs). We gate on the same mailcow signal as the email override —
+     * imap.<domain> resolves — then return the canonical base with no network round-trip. CardDAV
+     * is left null because the user only needs CalDAV; SOGo serves both under the same base if
+     * contacts are enabled later. If a server's SOGo sits on a different ADDITIONAL_SERVER_NAME
+     * (e.g. email.<domain>), the user overrides the host in Advanced.
      */
     private fun sogoDavProbe(domain: String): Pair<String, String?>? {
-        val base = "https://$domain/SOGo/dav/"
+        val base = "https://mail.$domain/SOGo/dav/"
         return try {
             InetAddress.getByName("imap.$domain")  // mailcow signal
             Pair(base, null)

@@ -148,10 +148,14 @@ data class ServerConfig(
 
         fun MailcowDefaults(serverUrl: String, email: String = ""): ServerConfig {
             val host = serverUrl.removeSuffix("/").removeSuffix("https://").removeSuffix("http://")
-            // Evidence: user mandate + mailcow manual + stalwart#1796 — SOGo CalDAV/CardDAV
-            // REQUIRE the exact principal path `https://<host>/SOGo/dav/<user>/Calendar/personal/`
-            // (and /Contacts/personal/). A bare `/SOGo/dav/` base makes discovery return nothing.
-            val davBase = "https://$host/SOGo/dav/"
+            // Evidence (openssl/curl, 2026-07-20): mailcow serves SOGo over the mailcow WEB FQDN
+            // (default `mail.<domain>`; this server uses `email.<domain>` via ADDITIONAL_SERVER_NAME).
+            // The email-domain APEX is invalid — `*.houseofmanns.com` wildcard cert excludes the apex
+            // and nginx rejects it (TLSV1_ALERT_UNRECOGNIZED_NAME). The DAV host MUST be a subdomain SAN,
+            // not the bare domain. `mail.` is the mailcow default and is editable in Advanced if the
+            // server uses a different ADDITIONAL_SERVER_NAME. Path is the exact SOGo principal:
+            // `https://<webFqdn>/SOGo/dav/<user>/Calendar/personal/`.
+            val davBase = "https://mail.$host/SOGo/dav/"
             val caldavUrl = if (email.isNotBlank()) "${davBase}$email/Calendar/personal/" else davBase
             val carddavUrl = if (email.isNotBlank()) "${davBase}$email/Contacts/personal/" else davBase
             return ServerConfig(
