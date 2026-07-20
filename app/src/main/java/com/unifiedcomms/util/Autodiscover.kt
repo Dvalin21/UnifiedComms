@@ -429,7 +429,8 @@ object Autodiscover {
      * (e.g. email.<domain>), the user overrides the host in Advanced.
      */
     private fun sogoDavProbe(domain: String): Pair<String, String?>? {
-        val base = "https://mail.$domain/SOGo/dav/"
+        val host = com.unifiedcomms.data.model.ServerConfig.resolveSogoHost(domain)
+        val base = "https://$host/SOGo/dav/"
         return try {
             InetAddress.getByName("imap.$domain")  // mailcow signal
             Pair(base, null)
