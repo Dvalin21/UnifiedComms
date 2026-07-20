@@ -506,7 +506,10 @@ fun AddAccountScreen(
                             }
                             // Background sync kicks in via SyncManager observers; trigger an
                             // immediate sync so the inbox populates without another tap.
-                            viewModel.syncAccount(withSync)
+                            // ponytail: run on ViewModel scope — the composable scope is
+                            // cancelled when the user leaves this screen, which would
+                            // abort the in-flight sync and leave every folder empty.
+                            viewModel.syncAccountAsync(withSync)
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),

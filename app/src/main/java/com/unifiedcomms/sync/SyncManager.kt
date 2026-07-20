@@ -1,6 +1,7 @@
 package com.unifiedcomms.sync
 
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import com.unifiedcomms.data.model.Account
@@ -85,6 +86,7 @@ class SyncManager(
         // receive ciphertext they can decrypt. Skipping this made every UI-added
         // account fail to auth.
         val stored = accountRepo.getById(account.id) ?: account
+        Log.d("SyncManager", "performFullSync start: id=${stored.id} email=${stored.email} syncEmail=${account.syncConfig.syncEmail} syncCal=${account.syncConfig.syncCalendar} syncTasks=${account.syncConfig.syncTasks} caldavUrl=${stored.serverConfig.caldavUrl} imapHost=${stored.serverConfig.imapHost}")
         updateState(stored.id) { it.copy(isSyncing = true, lastError = null) }
         NotificationHelper.showSyncNotification(context, "Syncing ${stored.name}...", -1)
         // ponytail: refresh OAuth token before talking to servers so accounts don't die at expiry.
@@ -102,6 +104,7 @@ class SyncManager(
                 attempts++
                 emailResult = emailSync.syncAccount(fresh)
             }
+            Log.d("SyncManager", "email leg: success=${emailResult.success} items=${emailResult.itemsSynced} err=${emailResult.errorMessage}")
             if (!emailResult.success) {
                 failed = true
                 errorMessage = emailResult.errorMessage ?: "Email sync failed"
@@ -110,6 +113,7 @@ class SyncManager(
 
         if (account.syncConfig.syncCalendar) {
             val result = calendarSync.syncAccount(fresh)
+            Log.d("SyncManager", "calendar leg: success=${result.success} items=${result.itemsSynced} err=${result.errorMessage}")
             if (!result.success) {
                 failed = true
                 errorMessage = (errorMessage ?: "") + if (errorMessage.isNullOrBlank().not()) "; Calendar sync failed: ${result.errorMessage}" else "Calendar sync failed: ${result.errorMessage}"
@@ -118,6 +122,7 @@ class SyncManager(
 
         if (account.syncConfig.syncTasks) {
             val result = taskSync.syncAccount(fresh)
+            Log.d("SyncManager", "tasks leg: success=${result.success} items=${result.itemsSynced} err=${result.errorMessage}")
             if (!result.success) {
                 failed = true
                 errorMessage = (errorMessage ?: "") + if (errorMessage.isNullOrBlank().not()) "; Task sync failed: ${result.errorMessage}" else "Task sync failed: ${result.errorMessage}"
@@ -126,6 +131,7 @@ class SyncManager(
 
         if (account.syncConfig.syncContacts) {
             val result = contactSync.syncAccount(fresh)
+            Log.d("SyncManager", "contacts leg: success=${result.success} items=${result.itemsSynced} err=${result.errorMessage}")
             if (!result.success) {
                 failed = true
                 errorMessage = (errorMessage ?: "") + if (errorMessage.isNullOrBlank().not()) "; Contact sync failed: ${result.errorMessage}" else "Contact sync failed: ${result.errorMessage}"
