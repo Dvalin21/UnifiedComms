@@ -119,15 +119,26 @@ class EmailSyncEngineImpl(
             return Tuple4(0, 0, emptyList(), emptyList())
         }
 
-        updateProgress(account.id, folderName, SyncStage.FETCHING_HEADERS, 0, messageCount)
+        // ponytail: cap the initial fetch window to the most recent N messages.
+        // Fetching full bodies for an entire mailbox (thousands of mails) makes
+        // the first sync take minutes and, because legs ran serially, blocked
+        // calendar/tasks. Bounding the range keeps first sync fast; the UI shows
+        // recent mail first anyway. Raise MAX_INITIAL_MESSAGES to pull more history.
+        val MAX_INITIAL_MESSAGES = 300
+        val startIdx = maxOf(1, messageCount - MAX_INITIAL_MESSAGES + 1)
+        val effectiveCount = messageCount - startIdx + 1
+        Log.d("EmailSyncEngineImpl", "folder=$folderName total=$messageCount syncing most-recent $effectiveCount (from #$startIdx)")
+
+        updateProgress(account.id, folderName, SyncStage.FETCHING_HEADERS, 0, effectiveCount)
 
         var totalSynced = 0
         var totalFailed = 0
+        var parsedFail = 0
         val newItems = mutableListOf<String>()
         val updatedItems = mutableListOf<String>()
 
         val batchSize = 50
-        for (start in 1..messageCount step batchSize) {
+        for (start in startIdx..messageCount step batchSize) {
             val end = minOf(start + batchSize - 1, messageCount)
             val messages = folder.getMessages(start, end)
 
@@ -142,7 +153,6 @@ class EmailSyncEngineImpl(
             fp.add("BODY.PEEK[]")
             folder.fetch(messages, fp)
 
-            var parsedFail = 0
             for (msg in messages) {
                 if (!folder.isOpen) break // stop if folder was closed externally
                 try {
@@ -191,6 +201,7 @@ class EmailSyncEngineImpl(
         if (folder.isOpen) {
             folder.close(false)
         }
+        Log.d("EmailSyncEngineImpl", "folder=$folderName done synced=$totalSynced failed=$totalFailed parsedFail=$parsedFail")
         return Tuple4(totalSynced, totalFailed, newItems, updatedItems)
     }
 

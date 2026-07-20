@@ -11,6 +11,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.async
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.transform
@@ -91,50 +93,56 @@ class SyncManager(
         NotificationHelper.showSyncNotification(context, "Syncing ${stored.name}...", -1)
         // ponytail: refresh OAuth token before talking to servers so accounts don't die at expiry.
         val fresh = tokenRefresher.ensureFreshToken(stored)
-        val maxEmailRetries = 2
+        val maxEmailRetry = 2
         var totalSynced = 0
         val startTime = System.currentTimeMillis()
         var failed = false
         var errorMessage: String? = null
 
+        // ponytail: run every enabled leg CONCURRENTLY. Previously they ran
+        // serially, so a slow/hung email folder (full-body fetch of a large
+        // mailbox can take minutes) blocked calendar/tasks from ever starting
+        // -> "no calendar sync, no task sync". Each leg is wrapped in its own
+        // timeout so one stuck leg can't hang the whole sync.
+        val jobs = mutableListOf<kotlinx.coroutines.Deferred<Pair<String, SyncResult>>>()
+        val scope = kotlinx.coroutines.CoroutineScope(Dispatchers.IO + kotlinx.coroutines.Job())
+
         if (account.syncConfig.syncEmail) {
-            var emailResult = emailSync.syncAccount(fresh)
-            var attempts = 1
-            while (!emailResult.success && attempts < maxEmailRetries) {
-                attempts++
-                emailResult = emailSync.syncAccount(fresh)
-            }
-            Log.d("SyncManager", "email leg: success=${emailResult.success} items=${emailResult.itemsSynced} err=${emailResult.errorMessage}")
-            if (!emailResult.success) {
-                failed = true
-                errorMessage = emailResult.errorMessage ?: "Email sync failed"
-            } else totalSynced += emailResult.itemsSynced
+            jobs.add(scope.async {
+                var r = emailSync.syncAccount(fresh)
+                var attempts = 1
+                while (!r.success && attempts < maxEmailRetry) { attempts++; r = emailSync.syncAccount(fresh) }
+                "email" to r
+            })
         }
-
         if (account.syncConfig.syncCalendar) {
-            val result = calendarSync.syncAccount(fresh)
-            Log.d("SyncManager", "calendar leg: success=${result.success} items=${result.itemsSynced} err=${result.errorMessage}")
-            if (!result.success) {
-                failed = true
-                errorMessage = (errorMessage ?: "") + if (errorMessage.isNullOrBlank().not()) "; Calendar sync failed: ${result.errorMessage}" else "Calendar sync failed: ${result.errorMessage}"
-            } else totalSynced += result.itemsSynced
+            jobs.add(scope.async {
+                val r = withTimeoutOrNull(120_000) { calendarSync.syncAccount(fresh) }
+                    ?: SyncResult.failure("Calendar sync timed out")
+                "calendar" to r
+            })
         }
-
         if (account.syncConfig.syncTasks) {
-            val result = taskSync.syncAccount(fresh)
-            Log.d("SyncManager", "tasks leg: success=${result.success} items=${result.itemsSynced} err=${result.errorMessage}")
-            if (!result.success) {
-                failed = true
-                errorMessage = (errorMessage ?: "") + if (errorMessage.isNullOrBlank().not()) "; Task sync failed: ${result.errorMessage}" else "Task sync failed: ${result.errorMessage}"
-            } else totalSynced += result.itemsSynced
+            jobs.add(scope.async {
+                val r = withTimeoutOrNull(120_000) { taskSync.syncAccount(fresh) }
+                    ?: SyncResult.failure("Task sync timed out")
+                "tasks" to r
+            })
+        }
+        if (account.syncConfig.syncContacts) {
+            jobs.add(scope.async {
+                val r = withTimeoutOrNull(120_000) { contactSync.syncAccount(fresh) }
+                    ?: SyncResult.failure("Contact sync timed out")
+                "contacts" to r
+            })
         }
 
-        if (account.syncConfig.syncContacts) {
-            val result = contactSync.syncAccount(fresh)
-            Log.d("SyncManager", "contacts leg: success=${result.success} items=${result.itemsSynced} err=${result.errorMessage}")
+        for (deferred in jobs) {
+            val (leg, result) = runCatching { deferred.await() }.getOrDefault("unknown" to SyncResult.failure("crashed"))
+            Log.d("SyncManager", "$leg leg: success=${result.success} items=${result.itemsSynced} err=${result.errorMessage}")
             if (!result.success) {
                 failed = true
-                errorMessage = (errorMessage ?: "") + if (errorMessage.isNullOrBlank().not()) "; Contact sync failed: ${result.errorMessage}" else "Contact sync failed: ${result.errorMessage}"
+                errorMessage = (errorMessage ?: "") + if (errorMessage.isNullOrBlank().not()) "; ${leg.replaceFirstChar { it.uppercase() }} sync failed: ${result.errorMessage}" else "${leg.replaceFirstChar { it.uppercase() }} sync failed: ${result.errorMessage}"
             } else totalSynced += result.itemsSynced
         }
 
