@@ -74,12 +74,18 @@ private fun BiometricLockScreen(onUnlocked: () -> Unit) {
                 Text(statusMessage.ifBlank { "Unlock to access UnifiedComms." })
                 if (canAuth == BiometricManager.BIOMETRIC_SUCCESS && activity != null) {
                     androidx.compose.material3.Button(onClick = {
-                        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+                        // Allowed authenticators include DEVICE_CREDENTIAL, and Android
+                        // forbids setNegativeButtonText() in that case (PromptInfo.build()
+                        // throws IllegalArgumentException -> fingerprint prompt never shows).
+                        // The credential fallback is provided by the OS, so no negative button.
+                        val promptInfoBuilder = BiometricPrompt.PromptInfo.Builder()
                             .setTitle("Unlock UnifiedComms")
                             .setSubtitle("Authenticate to continue")
-                            .setNegativeButtonText("Cancel")
                             .setAllowedAuthenticators(allowed)
-                            .build()
+                        if (allowed and BiometricManager.Authenticators.DEVICE_CREDENTIAL == 0) {
+                            promptInfoBuilder.setNegativeButtonText("Cancel")
+                        }
+                        val promptInfo = promptInfoBuilder.build()
                         val biometricPrompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
                             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                                 super.onAuthenticationSucceeded(result)
