@@ -9,6 +9,7 @@ import com.unifiedcomms.data.repository.AccountRepository
 import com.unifiedcomms.util.NotificationHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.async
@@ -225,24 +226,29 @@ class SyncManager(
      */
     suspend fun provision(account: Account): ProvisionResult {
         val fresh = tokenRefresher.ensureFreshToken(account)
-        val email = if (account.syncConfig.syncEmail) emailSync.testConnection(fresh)
-            else ConnectionTestResult(true, 0, listOf("IMAP"), null)
-        val cal = if (account.syncConfig.syncCalendar) calendarSync.testConnection(fresh)
-            else ConnectionTestResult(true, 0, listOf("CalDAV"), null)
-        val con = if (account.syncConfig.syncContacts) contactSync.testConnection(fresh)
-            else ConnectionTestResult(true, 0, listOf("CardDAV"), null)
-        val task = if (account.syncConfig.syncTasks) taskSync.testConnection(fresh)
-            else ConnectionTestResult(true, 0, listOf("CalDAV VTODO"), null)
-        return ProvisionResult(
-            emailOk = email.success,
-            emailError = email.errorMessage,
-            calendarOk = cal.success,
-            calendarError = cal.errorMessage,
-            contactsOk = con.success,
-            contactsError = con.errorMessage,
-            tasksOk = task.success,
-            tasksError = task.errorMessage
-        )
+        // ponytail: run the four connection tests concurrently so a single slow/hanging
+        // server can't stretch the pre-save gate to ~80s. Each test has its own 20s timeout,
+        // so the gate now settles in ~20s worst case.
+        return withContext(Dispatchers.IO) {
+            val emailDef = async { if (account.syncConfig.syncEmail) emailSync.testConnection(fresh) else ConnectionTestResult(true, 0, listOf("IMAP"), null) }
+            val calDef = async { if (account.syncConfig.syncCalendar) calendarSync.testConnection(fresh) else ConnectionTestResult(true, 0, listOf("CalDAV"), null) }
+            val conDef = async { if (account.syncConfig.syncContacts) contactSync.testConnection(fresh) else ConnectionTestResult(true, 0, listOf("CardDAV"), null) }
+            val taskDef = async { if (account.syncConfig.syncTasks) taskSync.testConnection(fresh) else ConnectionTestResult(true, 0, listOf("CalDAV VTODO"), null) }
+            val email = emailDef.await()
+            val cal = calDef.await()
+            val con = conDef.await()
+            val task = taskDef.await()
+            ProvisionResult(
+                emailOk = email.success,
+                emailError = email.errorMessage,
+                calendarOk = cal.success,
+                calendarError = cal.errorMessage,
+                contactsOk = con.success,
+                contactsError = con.errorMessage,
+                tasksOk = task.success,
+                tasksError = task.errorMessage
+            )
+        }
     }
 
     class SyncException(message: String) : Exception(message)
