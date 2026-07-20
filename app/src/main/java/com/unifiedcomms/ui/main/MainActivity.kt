@@ -55,9 +55,15 @@ private fun BiometricLockScreen(onUnlocked: () -> Unit) {
     // Fix: use BIOMETRIC_STRONG only (fingerprint enrolls as STRONG on every real device),
     // keep the Cancel button, and surface the real canAuthenticate() code for diagnosis.
     // The lock is enforced: there is NO bypass path out of this dialog.
+    // ponytail: some OEMs enroll the fingerprint as BIOMETRIC_WEAK, so a
+    // BIOMETRIC_STRONG-only check reports "none enrolled" and the lock is
+    // unreachable. Allow STRONG-or-DEVICE_CREDENTIAL so a PIN/pattern also
+    // unlocks, and the check passes for any enrolled strong biometric.
+    val allowed = BiometricManager.Authenticators.BIOMETRIC_STRONG or
+        BiometricManager.Authenticators.DEVICE_CREDENTIAL
     val canAuth = remember(biometricManager, activity) {
         if (activity == null) BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED
-        else biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+        else biometricManager.canAuthenticate(allowed)
     }
 
     androidx.compose.material3.AlertDialog(
@@ -72,7 +78,7 @@ private fun BiometricLockScreen(onUnlocked: () -> Unit) {
                             .setTitle("Unlock UnifiedComms")
                             .setSubtitle("Authenticate to continue")
                             .setNegativeButtonText("Cancel")
-                            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                            .setAllowedAuthenticators(allowed)
                             .build()
                         val biometricPrompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
                             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
