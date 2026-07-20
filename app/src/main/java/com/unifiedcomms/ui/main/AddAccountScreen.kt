@@ -472,11 +472,10 @@ fun AddAccountScreen(
                             try {
                                 // Mailcow/SOGo CalDAV/CardDAV URLs are deterministic from host+email
                                 // (exact principal path). Prefill them so calendar/contacts sync is
-                                // enabled by default. The SOGo web FQDN is probed over TLS because it
-                                // is server-specific — this install serves SOGo on email.<domain>,
-                                // not mail.<domain>. See ServerConfig.resolveSogoHost.
+                                // enabled by default. The SOGo web FQDN is per-install and comes from
+                                // ProviderProfiles (this install serves SOGo on email.<domain>, not mail.<domain>).
                                 val mailcowDav = if (type == AccountType.MAILCOW)
-                                    ServerConfig.MailcowDefaults(server, trimmed, withContext(Dispatchers.IO) { ServerConfig.resolveSogoHost(trimmed.substringAfter("@")) }) else null
+                                    ServerConfig.MailcowDefaults(server, trimmed) else null
                                 val calUrl = caldavUrl.trim().ifBlank { mailcowDav?.caldavUrl }
                                 val cardUrl = carddavUrl.trim().ifBlank { mailcowDav?.carddavUrl }
                                 val serverConfig = ServerConfig(
