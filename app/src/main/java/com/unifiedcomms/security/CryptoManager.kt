@@ -54,27 +54,15 @@ class CryptoManagerImpl(private val context: android.content.Context) : CryptoMa
 
     private fun decryptField(value: String?): String? {
         if (value == null) return null
-        // The stored (persisted) form is our IV+ciphertext base64. But in-memory
-        // drafts (UI-built via AuthConfig.AppPassword) and direct-to-engine test
-        // accounts carry the RAW password here, NOT our GCM blob. We must NOT
-        // assume base64/decrypt succeeds on a raw password — doing so throws and
-        // every connect() fails ("Could not connect"). Only decrypt when the blob
-        // is genuinely ours; otherwise return the value as plaintext.
-        return try {
-            val raw = android.util.Base64.decode(value, android.util.Base64.DEFAULT)
-            if (raw.size < 12) {
-                // Too short to be a GCM blob (12-byte IV + ciphertext): plaintext.
-                String(raw, Charsets.UTF_8)
-            } else {
-                // Looks like a real blob — attempt decrypt; if it throws (e.g. the
-                // value was actually a long raw password that base64'd by chance to
-                // >=12 bytes but isn't our ciphertext), fall back to the original.
-                runCatching { String(decrypt(raw), Charsets.UTF_8) }.getOrElse { value }
-            }
-        } catch (_: IllegalArgumentException) {
-            // Not valid base64 at all -> it's a raw password. Return as-is.
-            value
-        }
+        // Contract: every persisted account is encrypted at rest by
+        // AccountRepositoryImpl (encryptAuthConfig) before it reaches any engine,
+        // so passwordEncrypted is ALWAYS our IV+ciphertext GCM blob here. There is
+        // no legitimate raw-password path. Decrypt deterministically and surface
+        // failures instead of silently returning a corrupted value (which would
+        // cause IMAP/SMTP to auth with garbage and fail opaquely).
+        val raw = android.util.Base64.decode(value, android.util.Base64.DEFAULT)
+        require(raw.size >= 12) { "Stored secret is not a valid GCM blob (too short)" }
+        return String(decrypt(raw), Charsets.UTF_8)
     }
 
     private fun encryptField(value: String): String {
