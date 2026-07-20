@@ -246,9 +246,15 @@ class CalendarSyncEngineImpl(
                 val url = account.serverConfig.caldavUrl ?: return@withContext com.unifiedcomms.sync.ConnectionTestResult(false, 0, emptyList(), "Missing CalDAV URL")
                 val auth = crypto.decryptAuthConfig(account.authConfig)
                 val client = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
-                newCalDav(url, auth, client)
-                    .discoverCalendars()
-                com.unifiedcomms.sync.ConnectionTestResult(true, System.currentTimeMillis() - start, listOf("CalDAV"))
+                // Evidence: discoverCalendars() returns success(0) on empty, which previously made
+                // testConnection report calendarOk=true with nothing discoverable. Treat 0 real
+                // calendars as a failure so add-account honestly disables the broken CalDAV leg.
+                val calendars = newCalDav(url, auth, client).discoverCalendars()
+                if (calendars.isEmpty()) {
+                    com.unifiedcomms.sync.ConnectionTestResult(false, 0, emptyList(), "No calendars discovered (check CalDAV URL / app-password)")
+                } else {
+                    com.unifiedcomms.sync.ConnectionTestResult(true, System.currentTimeMillis() - start, listOf("CalDAV"))
+                }
             } catch (e: Exception) {
                 com.unifiedcomms.sync.ConnectionTestResult(false, 0, emptyList(), e.message)
             }

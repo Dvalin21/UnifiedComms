@@ -87,6 +87,20 @@ class CalDAVClient(
     }
 
     suspend fun discoverCalendars(): List<CalendarInfo> = withContext(Dispatchers.IO) {
+        // Evidence: user mandate + mailcow manual + stalwart#1796 — for mailcow/SOGo the CalDAV URL
+        // is already the exact calendar collection `.../SOGo/dav/<user>/Calendar/personal/`. Using it
+        // directly avoids the generic principal walk (which can mangle the path via resolve()/URI
+        // joining and return nothing). Only fall back to the walk for non-mailcow / bare-base URLs.
+        if (baseUrl.contains("/SOGo/dav/") && baseUrl.contains("/Calendar/")) {
+            val calendars = mutableListOf<CalendarInfo>()
+            scanForCalendars(baseUrl, calendars)
+            if (calendars.isEmpty()) {
+                // The URL itself is the calendar collection; expose it directly.
+                val name = baseUrl.trimEnd('/').substringAfterLast('/').ifBlank { "Calendar" }
+                calendars += CalendarInfo(path = baseUrl, displayName = name, ctag = "", supportsVTODO = false)
+            }
+            return@withContext calendars
+        }
         val principal = findPrincipalPath() ?: return@withContext emptyList()
         val homeSet = findCalendarHomeSet(principal)
         val target = homeSet ?: principal

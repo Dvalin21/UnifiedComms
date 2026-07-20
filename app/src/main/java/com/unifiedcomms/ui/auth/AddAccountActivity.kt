@@ -209,7 +209,7 @@ class AddAccountActivity : AppCompatActivity() {
         name: String
     ): Account {
         val serverConfig = when (type) {
-            AccountType.MAILCOW -> com.unifiedcomms.data.model.ServerConfig.MailcowDefaults(server)
+            AccountType.MAILCOW -> com.unifiedcomms.data.model.ServerConfig.MailcowDefaults(server, email)
             AccountType.GENERIC_IMAP_SMTP -> com.unifiedcomms.data.model.ServerConfig(
                 imapHost = server,
                 smtpHost = server,

@@ -415,7 +415,12 @@ class EmailSyncEngineImpl(
                         if (t != null) text = t
                         if (h != null) html = h
                     }
-                    text to html
+                    // Evidence: EmailScreen.kt:331 shows bodyText ?: "(no content)". When a message
+                    // has only text/html (no text/plain), text stays null and the detail is blank.
+                    // Fall back to the HTML with tags stripped so bodyText is never null for a
+                    // real message. HTML part is still kept in bodyHtml for rich rendering.
+                    val plain = text ?: html?.let { stripHtml(it) }
+                    plain to html
                 }
                 Part.ATTACHMENT == part.disposition || part.fileName != null -> {
                     null to null
@@ -425,6 +430,17 @@ class EmailSyncEngineImpl(
         } catch (e: Exception) {
             null to null
         }
+    }
+
+    // ponytail: minimal HTML->text for body fallback. Strips tags + unescapes common entities.
+    private fun stripHtml(html: String): String {
+        return html
+            .replace(Regex("<(?i)br\\s*/?>"), "\n")
+            .replace(Regex("<(?i)/p>"), "\n")
+            .replace(Regex("<[^>]+>"), "")
+            .replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+            .replace("&quot;", "\"").replace("&nbsp;", " ").replace("&#39;", "'")
+            .trim()
     }
 
     private fun extractAttachments(part: Part, attachments: MutableList<com.unifiedcomms.data.model.Attachment>) {
