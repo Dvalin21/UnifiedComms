@@ -9,6 +9,7 @@ import com.unifiedcomms.data.db.converters.ServerConfigConverter
 import com.unifiedcomms.data.db.converters.AuthConfigConverter
 import com.unifiedcomms.data.db.converters.SyncConfigConverter
 import com.unifiedcomms.data.db.converters.UIConfigConverter
+import com.unifiedcomms.util.ProviderProfiles
 import kotlinx.datetime.Instant
 import kotlinx.datetime.Clock
 import java.net.InetSocketAddress
@@ -147,40 +148,18 @@ data class ServerConfig(
             pushConfig = PushConfig.Google()
         )
 
-        /**
-         * Pick the mailcow SOGo web FQDN. Default `mail.<domain>` (mailcow's documented
-         * hostname), but many installs expose SOGo on a different ADDITIONAL_SERVER_NAME
-         * (e.g. `email.<domain>`). Probe both over a real TLS handshake and return the first
-         * that answers on :443, so we never hardcode a host the device can't reach.
-         * Blocking — call from an IO dispatcher (autodiscover already does; AddAccountScreen
-         * wraps it in withContext(Dispatchers.IO)).
-         */
-        fun resolveSogoHost(domain: String): String {
-            for (candidate in listOf("mail.$domain", "email.$domain")) {
-                if (sogoHostReachable(candidate)) return candidate
-            }
-            return "mail.$domain"
-        }
-
-        private fun sogoHostReachable(host: String): Boolean = runCatching {
-            val ssl = (javax.net.ssl.SSLSocketFactory.getDefault().createSocket() as javax.net.ssl.SSLSocket)
-            ssl.use { s ->
-                s.connect(InetSocketAddress(host, 443), 5_000)
-                s.startHandshake()
-                true
-            }
-        }.getOrDefault(false)
+        // resolveSogoHost + sogoHostReachable removed: SOGo web FQDN is now derived from
+        // ProviderProfiles inside MailcowDefaults (single source of truth, no TLS probe).
 
         fun MailcowDefaults(serverUrl: String, email: String = "", davHost: String? = null): ServerConfig {
             val host = serverUrl.removeSuffix("/").removeSuffix("https://").removeSuffix("http://")
-            // Evidence (openssl/curl, 2026-07-20): mailcow serves SOGo over the mailcow WEB FQDN
-            // (default `mail.<domain>`; this server uses `email.<domain>` via ADDITIONAL_SERVER_NAME).
-            // The email-domain APEX is invalid — `*.houseofmanns.com` wildcard cert excludes the apex
-            // and nginx rejects it (TLSV1_ALERT_UNRECOGNIZED_NAME). The DAV host MUST be a subdomain SAN,
-            // not the bare domain. `mail.` is the mailcow default; resolveSogoHost() picks the host the
-            // device can actually reach (e.g. email.<domain>) so CalDAV/CardDAV don't hang. Path is the
-            // exact SOGo principal: `https://<webFqdn>/SOGo/dav/<user>/Calendar/personal/`.
-            val davHostname = davHost ?: "mail.$host"
+            val domain = email.substringAfter("@").lowercase().trim().takeIf { it.isNotBlank() } ?: host
+            // SOGo web FQDN is per-install. Prefer explicit davHost, then the provider table
+            // (encodes e.g. houseofmanns.com -> email.<domain>), else mailcow default mail.<domain>.
+            // The bare apex is never valid (wildcard cert excludes it, nginx rejects it).
+            val davHostname = davHost
+                ?: ProviderProfiles.forDomain(domain)?.caldavUrl?.substringAfter("://")?.substringBefore("/")
+                ?: "mail.$domain"
             val davBase = "https://$davHostname/SOGo/dav/"
             val caldavUrl = if (email.isNotBlank()) "${davBase}$email/Calendar/personal/" else davBase
             val carddavUrl = if (email.isNotBlank()) "${davBase}$email/Contacts/personal/" else davBase

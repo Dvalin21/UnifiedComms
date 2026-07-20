@@ -2,6 +2,8 @@ package com.unifiedcomms.util
 
 import android.util.Log
 import com.unifiedcomms.data.model.ServerConfig
+import com.unifiedcomms.util.ProviderProfile
+import com.unifiedcomms.util.ProviderProfiles
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -22,20 +24,14 @@ import kotlin.experimental.and
 /**
  * Email + CalDAV/CardDAV autoconfig/autodiscover (RFC 6186 + RFC 6764).
  *
- * Email:
- *  1. Thunderbird central autoconfig (path-based v1.1 API)
- *  2. Per-domain autoconfig host (autoconfig.<domain>/mail/config-v1.1.xml)
- *     + RFC 6764 well-known autoconfig path
- *  3. RFC 6186 SRV records (_imaps / _submissions / _submission / _imap) —
- *     this is what actually resolves imap.<domain> / smtp.<domain> for
- *     providers that publish SRV (e.g. houseofmanns.com) instead of the
- *     Thunderbird XML. Never assume mail.<domain>.
- *
- * Calendar/Contacts (RFC 6764 + RFC 5397):
- *  1. Known-provider overrides for the majors that don't publish SRV correctly.
- *  2. SRV _caldavs/_carddavs (SSL) + _caldav/_carddav, then .well-known.
- *  3. Principal discovery: PROPFIND current-user-principal -> home-set, so we
- *     return a URL that actually hosts collections (NOT a guess like $domain/dav/).
+ * Known-provider endpoints live in [ProviderProfiles] (the single source of
+ * truth) — no per-domain probes. Resolution order:
+ *   - Email:   known config -> ProviderProfiles -> Thunderbird autoconfig XML
+ *              -> RFC 6186 SRV -> canonical imap.<domain>/smtp.<domain>.
+ *   - CalDAV:  known config -> ProviderProfiles -> RFC 6764 SRV
+ *              -> .well-known -> principal/home-set discovery.
+ * Principal discovery (PROPFIND current-user-principal -> home-set) returns
+ * a URL that actually hosts collections (NOT a guess like $domain/dav/).
  *
  * ponytail: no MS Exchange POX autodiscover POST, no NAPTR. Minimal + real.
  */
@@ -59,34 +55,44 @@ object Autodiscover {
         val carddavUrl: String? = null
     )
 
-    suspend fun discover(email: String): Discovered? = withContext(Dispatchers.IO) {
+    suspend fun discover(email: String, known: ServerConfig? = null): Discovered? = withContext(Dispatchers.IO) {
         val domain = email.substringAfter('@').lowercase().trim()
         if (domain.isBlank() || !domain.contains('.')) return@withContext null
-        val emailCfg = discoverEmail(domain)
-        val dav = discoverDav(domain)
+        val profile = ProviderProfiles.forDomain(domain)
+        val emailCfg = discoverEmail(domain, profile, known)
+        val dav = discoverDav(domain, profile, known)
         if (emailCfg == null && dav == null) return@withContext null
         val e = emailCfg
         Discovered(
-            imapHost = e?.imapHost ?: "",
-            imapPort = e?.imapPort ?: 993,
-            imapSsl = e?.imapSsl ?: true,
-            smtpHost = e?.smtpHost ?: "",
-            smtpPort = e?.smtpPort ?: 587,
-            smtpStartTls = e?.smtpStartTls ?: true,
-            caldavUrl = dav?.first,
-            carddavUrl = dav?.second
+            imapHost = e?.imapHost ?: known?.imapHost ?: "",
+            imapPort = e?.imapPort ?: known?.imapPort ?: 993,
+            imapSsl = e?.imapSsl ?: known?.imapUseSsl ?: true,
+            smtpHost = e?.smtpHost ?: known?.smtpHost ?: "",
+            smtpPort = e?.smtpPort ?: known?.smtpPort ?: 587,
+            smtpStartTls = e?.smtpStartTls ?: known?.smtpUseStartTls ?: true,
+            caldavUrl = dav?.first ?: known?.caldavUrl,
+            carddavUrl = dav?.second ?: known?.carddavUrl
         ).takeIf { it.imapHost.isNotBlank() || it.caldavUrl != null || it.carddavUrl != null }
     }
 
     // ---- EMAIL: Thunderbird autoconfig (XML) + RFC 6186 SRV fallback ----
 
-    private fun discoverEmail(domain: String): Discovered? {
-        // mailcow (and most self-hosted providers) expose imap.<domain> / smtp.<domain>,
-        // but their Thunderbird autoconfig XML often advertises the wrong host (mail.<domain>).
-        // Prefer the canonical imap./smtp. hosts when they both resolve; fall through to the
-        // autoconfig XML otherwise. This fixes "autodiscover gives the wrong email host".
-        mailcowEmailOverride(domain)?.let { return it }
-
+    private fun discoverEmail(domain: String, profile: ProviderProfile?, known: ServerConfig?): Discovered? {
+        // 1) Known config (UI provider path) already carries correct hosts.
+        if (known?.imapHost != null && known.smtpHost != null) {
+            return Discovered(
+                imapHost = known.imapHost, imapPort = known.imapPort, imapSsl = known.imapUseSsl,
+                smtpHost = known.smtpHost, smtpPort = known.smtpPort, smtpStartTls = known.smtpUseStartTls
+            )
+        }
+        // 2) Declarative provider table (replaces the old per-domain overrides).
+        if (profile?.imapHost != null && profile.smtpHost != null) {
+            return Discovered(
+                imapHost = profile.imapHost, imapPort = profile.imapPort, imapSsl = profile.imapSsl,
+                smtpHost = profile.smtpHost, smtpPort = profile.smtpPort, smtpStartTls = profile.smtpStartTls
+            )
+        }
+        // 3) Thunderbird autoconfig XML (RFC 6186).
         val urls = listOf(
             "https://autoconfig.thunderbird.net/v1.1/$domain",
             "https://autoconfig.$domain/mail/config-v1.1.xml",
@@ -107,17 +113,24 @@ object Autodiscover {
                 Log.d(TAG, "autoconfig miss at $url: ${e.message}")
             }
         }
-        // RFC 6186 fallback: SRV records. Never assume mail.<domain> — probe
-        // the published SRV targets (imaps/submissions/submission/imap) which is
-        // exactly how a real provider (e.g. houseofmanns.com) advertises
-        // imap.houseofmanns.com / smtp.houseofmanns.com.
+        // 4) RFC 6186 SRV fallback (generic, provider-agnostic).
         srvEmailLookup(domain)?.let { return it }
-        // ponytail: self-hosted providers (mailcow, postfix/dovecot, etc.) publish neither
-        // Thunderbird autoconfig XML nor IMAP/SMTP SRV records. They DO use the near-universal
-        // convention imap.<domain>:993 (SSL) + smtp.<domain>:587/465. Probe both; if either
-        // host resolves we return it (the engine verifies with a real LOGIN/CAPABILITY later).
-        selfHostedEmailFallback(domain)?.let { return it }
-        return null
+        // 5) Canonical self-hosted convention: imap.<domain>/smtp.<domain> on the
+        //    standard secure ports. Single fallback replaces the old duplicated
+        //    mailcowEmailOverride / selfHostedEmailFallback probes. Only when
+        //    the IMAP host resolves, so we never hand back a fabricated host.
+        return try {
+            val imapHost = "imap.$domain"
+            val smtpHost = "smtp.$domain"
+            InetAddress.getByName(imapHost)
+            InetAddress.getByName(smtpHost)
+            Discovered(
+                imapHost = imapHost, imapPort = 993, imapSsl = true,
+                smtpHost = smtpHost, smtpPort = 587, smtpStartTls = true
+            )
+        } catch (_: Exception) {
+            null
+        }
     }
 
     /**
@@ -127,49 +140,8 @@ object Autodiscover {
      * misleading XML. Returns null when they don't resolve, so genuine mail.<domain>-only providers
      * fall through to the autoconfig path unchanged.
      */
-    private fun mailcowEmailOverride(domain: String): Discovered? {
-        val imapHost = "imap.$domain"
-        val smtpHost = "smtp.$domain"
-        return try {
-            InetAddress.getByName(imapHost)
-            InetAddress.getByName(smtpHost)
-            Discovered(
-                imapHost = imapHost,
-                imapPort = 993,
-                imapSsl = true,
-                smtpHost = smtpHost,
-                smtpPort = 587,
-                smtpStartTls = true
-            )
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    /**
-     * Last-resort email discovery for self-hosted mail (mailcow, etc.) that publishes no
-     * autoconfig and no SRV. Tries imap.<domain>/smtp.<domain> with the standard secure ports.
-     * Only returns if at least the IMAP host resolves, so we never hand back a fabricated host.
-     */
-    private fun selfHostedEmailFallback(domain: String): Discovered? {
-        val imapHost = "imap.$domain"
-        val smtpHost = "smtp.$domain"
-        return try {
-            // Verify the IMAP host actually resolves; if not, this provider doesn't follow
-            // the convention and we must not invent a broken config.
-            InetAddress.getByName(imapHost)
-            Discovered(
-                imapHost = imapHost,
-                imapPort = 993,
-                imapSsl = true,
-                smtpHost = smtpHost,
-                smtpPort = 587,
-                smtpStartTls = true
-            )
-        } catch (_: Exception) {
-            null
-        }
-    }
+    // mailcowEmailOverride + selfHostedEmailFallback removed: consolidated into
+    // discoverEmail step 5 (canonical imap.<domain>/smtp.<domain> probe).
 
     /**
      * RFC 6186 SRV-based email discovery. Tries the secure SRV labels first,
@@ -296,32 +268,26 @@ object Autodiscover {
     /**
      * Returns (caldavUrl, carddavUrl) or null if neither could be discovered.
      */
-    private fun discoverDav(domain: String): Pair<String, String?>? = withContextSafe {
-        // 1) Known-provider overrides (SRV often absent/incorrect for the majors).
-        knownDavOverrides(domain)?.let { return@withContextSafe it }
-
-        // 1b) mailcow / SOGo: the CalDAV/CardDAV endpoint is always at
-        //     https://mail.<domain>/SOGo/dav/ for any mailcow install (the mailcow WEB FQDN, not the
-        //     email-domain apex — the apex fails TLS because the wildcard cert excludes it).
-        //     sogoDavProbe returns that canonical base when imap.<domain> resolves, bypassing the
-        //     fragile Thunderbird / .well-known paths that hand back wrong or garbage URLs for
-        //     self-hosted mailcow. Server-specific ADDITIONAL_SERVER_NAMEs (e.g. email.<domain>) are
-        //     edited by the user in Advanced.
-        sogoDavProbe(domain)?.let { return@withContextSafe it }
-
-        // 2) SRV records (SSL first), then .well-known. Either yields a base
+    private fun discoverDav(domain: String, profile: ProviderProfile?, known: ServerConfig?): Pair<String, String?>? = withContextSafe {
+        // 1) Known config (UI provider path) already carries correct CalDAV/CardDAV URLs.
+        if (known?.caldavUrl != null || known?.carddavUrl != null) {
+            return@withContextSafe Pair(known.caldavUrl ?: known.carddavUrl!!, known.carddavUrl ?: known.caldavUrl!!)
+        }
+        // 2) Declarative provider table (replaces knownDavOverrides / sogoDavProbe).
+        if (profile?.caldavUrl != null || profile?.carddavUrl != null) {
+            return@withContextSafe Pair(profile.caldavUrl ?: profile.carddavUrl!!, profile.carddavUrl ?: profile.caldavUrl!!)
+        }
+        // 3) SRV records (SSL first), then .well-known. Either yields a base.
         val calBase = srvLookup("_caldavs._tcp.$domain") ?: srvLookup("_caldav._tcp.$domain")
             ?: wellKnownDav("https://$domain/.well-known/caldav")
         val cardBase = srvLookup("_carddavs._tcp.$domain") ?: srvLookup("_carddav._tcp.$domain")
             ?: wellKnownDav("https://$domain/.well-known/carddav")
-        // ponytail: mailcow (and others) answer /.well-known/caldav with a 307 redirect to the
-        // real DAV path. wellKnownDav returns that Location; resolveDavHomeSet must run against
-        // the REDIRECTED url, not the original base (which only returns the redirect body).
+        // mailcow (and others) answer /.well-known/caldav with a 307 redirect to the
+        // real DAV path. wellKnownDav returns that Location, so resolveDavHomeSet
+        // PROPFINDs the real endpoint, not the redirect stub.
 
-        // 3) Resolve each base to its home-set. calBase/cardBase are already the
-        //    redirect-resolved URLs (wellKnownDav returns Location on a 307), so
-        //    resolveDavHomeSet PROPFINDs the real DAV endpoint, not the redirect stub.
-        //    If resolution fails, fall back to the base root rather than a wrong guess.
+        // 4) Resolve each base to its home-set. If resolution fails, fall back to
+        //    the base root rather than a wrong guess.
         val cal = calBase?.let { resolveDavHomeSet(it, "caldav") } ?: calBase
         val card = cardBase?.let { resolveDavHomeSet(it, "carddav") } ?: cardBase
         if (cal != null || card != null) {
@@ -417,59 +383,8 @@ object Autodiscover {
         return null
     }
 
-    /**
-     * mailcow / SOGo exposes CalDAV + CardDAV under the fixed base https://mail.<domain>/SOGo/dav/
-     * (the mailcow WEB FQDN — NOT the email-domain apex, which fails TLS because the wildcard cert
-     * excludes the apex). The base is deterministic for any mailcow install, so we don't probe it
-     * over TLS (an unauthenticated PROPFIND returns a login page, and some devices fail TLS to
-     * self-signed mailcow certs). We gate on the same mailcow signal as the email override —
-     * imap.<domain> resolves — then return the canonical base with no network round-trip. CardDAV
-     * is left null because the user only needs CalDAV; SOGo serves both under the same base if
-     * contacts are enabled later. If a server's SOGo sits on a different ADDITIONAL_SERVER_NAME
-     * (e.g. email.<domain>), the user overrides the host in Advanced.
-     */
-    private fun sogoDavProbe(domain: String): Pair<String, String?>? {
-        val host = com.unifiedcomms.data.model.ServerConfig.resolveSogoHost(domain)
-        val base = "https://$host/SOGo/dav/"
-        return try {
-            InetAddress.getByName("imap.$domain")  // mailcow signal
-            Pair(base, null)
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    private fun knownDavOverrides(domain: String): Pair<String, String>? = when (domain) {
-        "gmail.com" -> Pair(
-            "https://apidata.googleusercontent.com/caldav/v2/",
-            "https://www.googleapis.com/carddav/v1/"
-        )
-        "googlemail.com" -> Pair(
-            "https://apidata.googleusercontent.com/caldav/v2/",
-            "https://www.googleapis.com/carddav/v1/"
-        )
-        "outlook.com", "hotmail.com", "live.com", "office365.com" -> Pair(
-            "https://outlook.office.com/owa/calendar/",
-            "https://outlook.office.com/owa/contacts/"
-        )
-        "icloud.com" -> Pair(
-            "https://caldav.icloud.com/",
-            "https://contacts.icloud.com/"
-        )
-        "fastmail.com" -> Pair(
-            "https://www.fastmail.com/dav/calendars/",
-            "https://www.fastmail.com/dav/contacts/"
-        )
-        "zoho.com" -> Pair(
-            "https://calendar.zoho.com/caldav/",
-            "https://contacts.zoho.com/carddav/"
-        )
-        "yahoo.com" -> Pair(
-            "https://caldav.calendar.yahoo.com/dav/",
-            "https://carddav.address.yahoo.com/dav/"
-        )
-        else -> null
-    }
+    // knownDavOverrides + sogoDavProbe removed: consolidated into discoverDav step 2
+    // (ProviderProfiles table) — single source of truth for known CalDAV/CardDAV endpoints.
 
     /**
      * Minimal RFC 1035 DNS SRV query over UDP. Android has no public SRV API, so we
