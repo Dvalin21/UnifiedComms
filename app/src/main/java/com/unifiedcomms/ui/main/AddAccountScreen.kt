@@ -69,7 +69,9 @@ import com.unifiedcomms.ui.auth.AddAccountActivity
 import com.unifiedcomms.ui.theme.UnifiedCommsTheme
 import com.unifiedcomms.util.Autodiscover
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.TimeoutCancellationException
 
@@ -462,52 +464,51 @@ fun AddAccountScreen(
                         }
                         saving = true
                         error = null
-                        // Mailcow/SOGo CalDAV/CardDAV URLs are deterministic from host+email
-                        // (exact principal path). Prefill them so calendar/contacts sync is
-                        // enabled by default and discovery actually resolves — otherwise the
-                        // bare URL leaves calUrl blank and syncCalendar defaults off.
-                        val mailcowDav = if (type == AccountType.MAILCOW)
-                            com.unifiedcomms.data.model.ServerConfig.MailcowDefaults(server, trimmed) else null
-                        val calUrl = caldavUrl.trim().ifBlank { mailcowDav?.caldavUrl }
-                        val cardUrl = carddavUrl.trim().ifBlank { mailcowDav?.carddavUrl }
-                        val serverConfig = ServerConfig(
-                            imapHost = advancedImapHost ?: server,
-                            imapPort = imapPort,
-                            imapUseSsl = imapUseSsl,
-                            smtpHost = advancedSmtpHost ?: server,
-                            smtpPort = smtpPort,
-                            smtpUseStartTls = smtpUseStartTls,
-                            caldavUrl = calUrl,
-                            carddavUrl = cardUrl,
-                            acceptAllCerts = acceptAllCerts
-                        )
-                        val account = Account(
-                            name = name.ifBlank { trimmed },
-                            email = trimmed,
-                            accountType = type,
-                            serverConfig = serverConfig,
-                            authConfig = AuthConfig.AppPassword(trimmed, password),
-                            // ponytail: only enable the sync legs the user actually
-                            // configured. A CalDAV/CardDAV account with no IMAP host must
-                            // NOT be blocked by the email gate; a blank DAV URL means that
-                            // leg is off (user enters it manually). This is what lets a
-                            // calendar/contacts-only account save when IMAP isn't set.
-                            syncConfig = SyncConfig.Defaults().copy(
-                                syncEmail = advancedImapHost != null || server.isNotBlank(),
-                                syncCalendar = true,
-                                syncContacts = true,
-                                syncTasks = true
-                            ),
-                            uiConfig = UIConfig.Defaults()
-                        )
                         coroutineScope.launch {
                             // ponytail: never let the UI wedge on "Saving…". RFC 8314 §5.1 —
                             // prove the connection before persisting, but ALWAYS reset `saving`
                             // and surface the real error, whatever happens. A throw or a slow
                             // server test used to leave `saving=true` forever with no message.
-                            saving = true
-                            error = null
                             try {
+                                // Mailcow/SOGo CalDAV/CardDAV URLs are deterministic from host+email
+                                // (exact principal path). Prefill them so calendar/contacts sync is
+                                // enabled by default. The SOGo web FQDN is probed over TLS because it
+                                // is server-specific — this install serves SOGo on email.<domain>,
+                                // not mail.<domain>. See ServerConfig.resolveSogoHost.
+                                val mailcowDav = if (type == AccountType.MAILCOW)
+                                    ServerConfig.MailcowDefaults(server, trimmed, withContext(Dispatchers.IO) { ServerConfig.resolveSogoHost(trimmed.substringAfter("@")) }) else null
+                                val calUrl = caldavUrl.trim().ifBlank { mailcowDav?.caldavUrl }
+                                val cardUrl = carddavUrl.trim().ifBlank { mailcowDav?.carddavUrl }
+                                val serverConfig = ServerConfig(
+                                    imapHost = advancedImapHost ?: server,
+                                    imapPort = imapPort,
+                                    imapUseSsl = imapUseSsl,
+                                    smtpHost = advancedSmtpHost ?: server,
+                                    smtpPort = smtpPort,
+                                    smtpUseStartTls = smtpUseStartTls,
+                                    caldavUrl = calUrl,
+                                    carddavUrl = cardUrl,
+                                    acceptAllCerts = acceptAllCerts
+                                )
+                                val account = Account(
+                                    name = name.ifBlank { trimmed },
+                                    email = trimmed,
+                                    accountType = type,
+                                    serverConfig = serverConfig,
+                                    authConfig = AuthConfig.AppPassword(trimmed, password),
+                                    // ponytail: only enable the sync legs the user actually
+                                    // configured. A CalDAV/CardDAV account with no IMAP host must
+                                    // NOT be blocked by the email gate; a blank DAV URL means that
+                                    // leg is off (user enters it manually). This is what lets a
+                                    // calendar/contacts-only account save when IMAP isn't set.
+                                    syncConfig = SyncConfig.Defaults().copy(
+                                        syncEmail = advancedImapHost != null || server.isNotBlank(),
+                                        syncCalendar = true,
+                                        syncContacts = true,
+                                        syncTasks = true
+                                    ),
+                                    uiConfig = UIConfig.Defaults()
+                                )
                                 val draft = account
                                 // Hard overall bound (concurrent tests finish in ~20s; 45s is
                                 // headroom). WithTimeoutCancellationException is caught below.
