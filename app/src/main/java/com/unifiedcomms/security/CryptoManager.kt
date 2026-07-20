@@ -54,15 +54,20 @@ class CryptoManagerImpl(private val context: android.content.Context) : CryptoMa
 
     private fun decryptField(value: String?): String? {
         if (value == null) return null
-        // Contract: every persisted account is encrypted at rest by
-        // AccountRepositoryImpl (encryptAuthConfig) before it reaches any engine,
-        // so passwordEncrypted is ALWAYS our IV+ciphertext GCM blob here. There is
-        // no legitimate raw-password path. Decrypt deterministically and surface
-        // failures instead of silently returning a corrupted value (which would
-        // cause IMAP/SMTP to auth with garbage and fail opaquely).
-        val raw = android.util.Base64.decode(value, android.util.Base64.DEFAULT)
-        require(raw.size >= 12) { "Stored secret is not a valid GCM blob (too short)" }
-        return String(decrypt(raw), Charsets.UTF_8)
+        // Two legitimate inputs reach here:
+        //  (a) a persisted account: passwordEncrypted is our IV+ciphertext GCM blob
+        //      (encrypted at rest by AccountRepositoryImpl.encryptAuthConfig).
+        //  (b) an in-memory DRAFT built via AuthConfig.AppPassword during pre-persist
+        //      provisioning (AddAccountScreen/AddAccountActivity) — NOT yet encrypted.
+        // Distinguish by attempting GCM decrypt. A genuine blob decrypts; a raw
+        // password fails GCM auth-tag. On failure we return the ORIGINAL value
+        // (the raw password) — never the base64-decoded bytes, never the base64
+        // string. This avoids both silent corruption and the crash that a hard
+        // require() caused when a raw short password hit decryptField.
+        val raw = runCatching { android.util.Base64.decode(value, android.util.Base64.DEFAULT) }
+            .getOrElse { return value } // not valid base64 -> raw password
+        if (raw.size < 12) return value // too short to be a GCM blob -> raw password
+        return runCatching { String(decrypt(raw), Charsets.UTF_8) }.getOrElse { value }
     }
 
     private fun encryptField(value: String): String {
