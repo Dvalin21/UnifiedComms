@@ -70,6 +70,8 @@ import com.unifiedcomms.ui.theme.UnifiedCommsTheme
 import com.unifiedcomms.util.Autodiscover
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
 
 import androidx.compose.ui.res.painterResource
 
@@ -499,56 +501,63 @@ fun AddAccountScreen(
                             uiConfig = UIConfig.Defaults()
                         )
                         coroutineScope.launch {
-                            // ponytail: prove the connection BEFORE persisting. RFC 8314 §5.1 —
-                            // never save until an authenticated TLS session is verified. If
-                            // email (IMAP) fails to connect, nothing is saved and the
-                            // user sees the exact reason. CalDAV/CardDAV failures are
-                            // reported but the (still-useful) mail account may proceed
-                            // with those syncs disabled.
-                            val draft = account
-                            val provision = viewModel.provisionAccount(draft)
-                            // Block only if the user actually configured email AND it
-                            // failed. A CalDAV/CardDAV-only account (syncEmail=false) is
-                            // NOT blocked by the IMAP test — it saves on DAV success.
-                            if (draft.syncConfig.syncEmail && !provision.emailOk) {
-                                saving = false
-                                error = "Could not connect (email): ${provision.emailError ?: "IMAP login failed"}"
-                                return@launch
-                            }
-                            // Disable any DAV sync legs that failed to connect (honest,
-                            // not silent — the user is told which failed after save).
-                            val withSync = draft.copy(
-                                syncConfig = draft.syncConfig.copy(
-                                    syncCalendar = draft.syncConfig.syncCalendar && provision.calendarOk,
-                                    syncContacts = draft.syncConfig.syncContacts && provision.contactsOk,
-                                    syncTasks = draft.syncConfig.syncTasks && provision.tasksOk
-                                )
-                            )
-                            runCatching { viewModel.addAccount(withSync) }
-                                .onFailure { e ->
-                                    saving = false
-                                    error = "Could not save account: ${e.message ?: e::class.simpleName}"
+                            // ponytail: never let the UI wedge on "Saving…". RFC 8314 §5.1 —
+                            // prove the connection before persisting, but ALWAYS reset `saving`
+                            // and surface the real error, whatever happens. A throw or a slow
+                            // server test used to leave `saving=true` forever with no message.
+                            saving = true
+                            error = null
+                            try {
+                                val draft = account
+                                // Hard overall bound (concurrent tests finish in ~20s; 45s is
+                                // headroom). WithTimeoutCancellationException is caught below.
+                                val provision = withTimeout(45_000) { viewModel.provisionAccount(draft) }
+                                // Block only if the user actually configured email AND it
+                                // failed. A CalDAV/CardDAV-only account (syncEmail=false) is
+                                // NOT blocked by the IMAP test — it saves on DAV success.
+                                if (draft.syncConfig.syncEmail && !provision.emailOk) {
+                                    error = "Could not connect (email): ${provision.emailError ?: "IMAP login failed"}"
                                     return@launch
                                 }
-                            saving = false
-                            saved = true
-                            val davNotes = buildList<String> {
-                                if (draft.syncConfig.syncCalendar && !provision.calendarOk)
-                                    add("Calendar: ${provision.calendarError ?: "connection failed"}")
-                                if (draft.syncConfig.syncContacts && !provision.contactsOk)
-                                    add("Contacts: ${provision.contactsError ?: "connection failed"}")
-                                if (draft.syncConfig.syncTasks && !provision.tasksOk)
-                                    add("Tasks: ${provision.tasksError ?: "connection failed"}")
+                                // Disable any DAV sync legs that failed to connect (honest,
+                                // not silent — the user is told which failed after save).
+                                val withSync = draft.copy(
+                                    syncConfig = draft.syncConfig.copy(
+                                        syncCalendar = draft.syncConfig.syncCalendar && provision.calendarOk,
+                                        syncContacts = draft.syncConfig.syncContacts && provision.contactsOk,
+                                        syncTasks = draft.syncConfig.syncTasks && provision.tasksOk
+                                    )
+                                )
+                                runCatching { viewModel.addAccount(withSync) }
+                                    .onFailure { e ->
+                                        error = "Could not save account: ${e.message ?: e::class.simpleName}"
+                                        return@launch
+                                    }
+                                saved = true
+                                val davNotes = buildList<String> {
+                                    if (draft.syncConfig.syncCalendar && !provision.calendarOk)
+                                        add("Calendar: ${provision.calendarError ?: "connection failed"}")
+                                    if (draft.syncConfig.syncContacts && !provision.contactsOk)
+                                        add("Contacts: ${provision.contactsError ?: "connection failed"}")
+                                    if (draft.syncConfig.syncTasks && !provision.tasksOk)
+                                        add("Tasks: ${provision.tasksError ?: "connection failed"}")
+                                }
+                                if (davNotes.isNotEmpty()) {
+                                    error = "Saved (email only — DAV disabled):\n" + davNotes.joinToString("\n")
+                                }
+                                // Background sync kicks in via SyncManager observers; trigger an
+                                // immediate sync so the inbox populates without another tap.
+                                // ponytail: run on ViewModel scope — the composable scope is
+                                // cancelled when the user leaves this screen, which would
+                                // abort the in-flight sync and leave every folder empty.
+                                viewModel.syncAccountAsync(withSync)
+                            } catch (e: TimeoutCancellationException) {
+                                error = "Save timed out contacting the server (45s). Check the IMAP/CalDAV host and try again."
+                            } catch (e: Exception) {
+                                error = "Save failed: ${e.message ?: e::class.simpleName}"
+                            } finally {
+                                saving = false
                             }
-                            if (davNotes.isNotEmpty()) {
-                                error = "Saved (email only — DAV disabled):\n" + davNotes.joinToString("\n")
-                            }
-                            // Background sync kicks in via SyncManager observers; trigger an
-                            // immediate sync so the inbox populates without another tap.
-                            // ponytail: run on ViewModel scope — the composable scope is
-                            // cancelled when the user leaves this screen, which would
-                            // abort the in-flight sync and leave every folder empty.
-                            viewModel.syncAccountAsync(withSync)
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
