@@ -138,8 +138,8 @@ object Autodiscover {
                 imapPort = 993,
                 imapSsl = true,
                 smtpHost = smtpHost,
-                smtpPort = 465,
-                smtpStartTls = false
+                smtpPort = 587,
+                smtpStartTls = true
             )
         } catch (_: Exception) {
             null
@@ -181,9 +181,9 @@ object Autodiscover {
         data class Cand(val label: String, val ssl: Boolean, val port: Int, val startTls: Boolean)
         val candidates = listOf(
             Cand("_imaps._tcp.$domain", true, 993, false),
-            Cand("_submissions._tcp.$domain", true, 465, false),
+            Cand("_submissions._tcp.$domain", true, 587, true),
             Cand("_submission._tcp.$domain", false, 587, true),
-            Cand("_imap._tcp.$domain", false, 143, true)
+            Cand("_imap._tcp.$domain", false, 993, true)
         )
         var imap: Pair<String, Pair<Int, Boolean>>? = null   // host -> (port, ssl)
         var smtp: Pair<String, Pair<Int, Boolean>>? = null
@@ -193,13 +193,16 @@ object Autodiscover {
             if (c.label.startsWith("_submission") && smtp == null) smtp = target to (c.port to c.startTls)
         }
         if (imap == null && smtp == null) return null
+        // User mandate: IMAP is ALWAYS 993 SSL, SMTP is ALWAYS 587 STARTTLS.
+        // Never emit 465 (implicit TLS) or 143 (plain IMAP) from SRV regardless
+        // of what the provider's SRV record advertises.
         return Discovered(
             imapHost = imap?.first ?: "",
-            imapPort = imap?.second?.first ?: 993,
-            imapSsl = imap?.second?.second ?: true,
+            imapPort = 993,
+            imapSsl = true,
             smtpHost = smtp?.first ?: "",
-            smtpPort = smtp?.second?.first ?: if (smtp?.second?.second == true) 587 else 465,
-            smtpStartTls = smtp?.second?.second ?: true
+            smtpPort = 587,
+            smtpStartTls = true
         ).takeIf { it.imapHost.isNotBlank() || it.smtpHost.isNotBlank() }
     }
 
@@ -276,7 +279,11 @@ object Autodiscover {
                 event = parser.next()
             }
             if (imapHost != null && smtpHost != null) {
-                Discovered(imapHost, imapPort, imapSsl, smtpHost, smtpPort, smtpStartTls)
+                // User mandate: IMAP is ALWAYS 993 SSL, SMTP is ALWAYS 587 STARTTLS.
+                // Provider autoconfig XML is only trustworthy for host names — its
+                // advertised ports (465/143) are wrong for this install, so we
+                // override them rather than trusting the XML.
+                Discovered(imapHost, 993, true, smtpHost, 587, true)
             } else null
         } catch (e: Exception) {
             Log.d(TAG, "parseEmail failed: ${e.message}")
