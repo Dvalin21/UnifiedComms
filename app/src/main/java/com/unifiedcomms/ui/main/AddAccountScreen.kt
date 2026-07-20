@@ -424,11 +424,14 @@ fun AddAccountScreen(
                         }
                         saving = true
                         error = null
-                        // ponytail: never invent a DAV URL. Keep what the user typed (or
-                        // what autodiscover returned). Empty = "not configured"; the sync
-                        // leg is simply disabled if its URL is blank — no wrong guess.
-                        val calUrl = caldavUrl.trim().ifBlank { null }
-                        val cardUrl = carddavUrl.trim().ifBlank { null }
+                        // Mailcow/SOGo CalDAV/CardDAV URLs are deterministic from host+email
+                        // (exact principal path). Prefill them so calendar/contacts sync is
+                        // enabled by default and discovery actually resolves — otherwise the
+                        // bare URL leaves calUrl blank and syncCalendar defaults off.
+                        val mailcowDav = if (type == AccountType.MAILCOW)
+                            com.unifiedcomms.data.model.ServerConfig.MailcowDefaults(server, trimmed) else null
+                        val calUrl = caldavUrl.trim().ifBlank { mailcowDav?.caldavUrl }
+                        val cardUrl = carddavUrl.trim().ifBlank { mailcowDav?.carddavUrl }
                         val serverConfig = ServerConfig(
                             imapHost = advancedImapHost ?: server,
                             imapPort = imapPort,
@@ -452,10 +455,10 @@ fun AddAccountScreen(
                             // leg is off (user enters it manually). This is what lets a
                             // calendar/contacts-only account save when IMAP isn't set.
                             syncConfig = SyncConfig.Defaults().copy(
-                                syncEmail = advancedImapHost != null,
-                                syncCalendar = calUrl != null,
-                                syncContacts = cardUrl != null,
-                                syncTasks = false
+                                syncEmail = advancedImapHost != null || server.isNotBlank(),
+                                syncCalendar = true,
+                                syncContacts = true,
+                                syncTasks = true
                             ),
                             uiConfig = UIConfig.Defaults()
                         )
@@ -572,22 +575,24 @@ private fun AdvancedServerFields(
                     Text("IMAP SSL", fontSize = 14.sp)
                 }
             }
-            // ponytail: opt-in escape for self-signed / internal-CA IMAP servers.
-            // android-mail 1.6.7 enforces cert hostname verification by default; a
-            // mismatched/self-signed cert hard-fails connect() even with a valid
-            // password. Default off (strict). Turn on only for YOUR own server.
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerLow
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = acceptAllCerts, onCheckedChange = onAcceptAllCertsChange)
-                    Spacer(modifier = Modifier.padding(start = 8.dp))
-                    Text("Accept all certificates (self-signed IMAP)", fontSize = 14.sp)
-                }
+        }
+        // ponytail: opt-in escape for self-signed / internal-CA IMAP servers.
+        // android-mail 1.6.7 enforces cert hostname verification by default; a
+        // mismatched/self-signed cert hard-fails connect() even with a valid
+        // password. Default off (strict). Turn on only for YOUR own server.
+        // MUST be its own full-width Row — a fillMaxWidth Surface inside the
+        // weight(1f) port Row above mis-positions the IMAP port box.
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            shape = RoundedCornerShape(8.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = acceptAllCerts, onCheckedChange = onAcceptAllCertsChange)
+                Spacer(modifier = Modifier.padding(start = 8.dp))
+                Text("Accept all certificates (self-signed IMAP)", fontSize = 14.sp)
             }
         }
         OutlinedTextField(
