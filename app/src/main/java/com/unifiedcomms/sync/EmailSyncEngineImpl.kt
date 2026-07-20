@@ -101,6 +101,14 @@ class EmailSyncEngineImpl(
 
             } catch (e: Exception) {
                 updateProgress(account.id, folder = null, SyncStage.ERROR, 0, 0)
+                // Partial success: if at least one folder synced, report success so the
+                // UI shows the mail that landed instead of a hard failure that masks
+                // everything (a large Sent folder exceeding the socket timeout must not
+                // hide a synced INBOX).
+                if (totalSynced > 0) {
+                    Log.w("EmailSyncEngineImpl", "partial sync (some folders failed): ${e.message}")
+                    return@withContext SyncResult.success(totalSynced, newItems, updatedItems, deletedItems)
+                }
                 return@withContext SyncResult.failure(e.message ?: "Unknown error", totalFailed)
             }
         }
@@ -262,9 +270,9 @@ class EmailSyncEngineImpl(
             put("mail.imap.port", config.imapPort)
             put("mail.imap.ssl.enable", config.imapUseSsl)
             put("mail.imap.auth", true)
-            put("mail.imap.connectiontimeout", 30000)
-            put("mail.imap.timeout", 30000)
-            put("mail.imap.writetimeout", 30000)
+            put("mail.imap.connectiontimeout", 60000)
+            put("mail.imap.timeout", 300000)
+            put("mail.imap.writetimeout", 120000)
             // ponytail: android-mail 1.6.7 enforces cert hostname verification by
             // default (Angus 1.1.0: "check server identity by default"). For a
             // self-signed / internal-CA IMAP server that hard-fails store.connect()
