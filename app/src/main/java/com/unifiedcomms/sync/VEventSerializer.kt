@@ -2,6 +2,7 @@ package com.unifiedcomms.sync
 
 import android.util.Log
 import com.unifiedcomms.data.model.CalendarEvent
+import com.unifiedcomms.data.model.EventColor
 import com.unifiedcomms.data.model.EventDateTime
 import com.unifiedcomms.data.model.EventStatus
 import com.unifiedcomms.data.model.TimeZoneUtil
@@ -47,6 +48,13 @@ object VEventSerializer {
         }}")
 
         event.recurrenceRule?.let { sb.appendLine("RRULE:${it.toRfc5545()}") }
+
+        // Preserve the user-chosen event color so it survives a round-trip through
+        // the server. COLOR is RFC 7986; X-APPLE-COLOR is what SOGo/Apple clients read.
+        if (event.color != EventColor.Default() && event.color.background.isNotBlank()) {
+            sb.appendLine("COLOR:${event.color.background}")
+            sb.appendLine("X-APPLE-COLOR:${event.color.background}")
+        }
 
         sb.appendLine("END:VEVENT")
         return sb.toString()

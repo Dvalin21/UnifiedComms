@@ -75,7 +75,10 @@ import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import java.time.ZoneId
 import com.unifiedcomms.data.model.CalendarEvent
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.LaunchedEffect
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -166,6 +169,8 @@ fun DayView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick
                 }
             }
         }
+        Spacer(modifier = Modifier.weight(1f))
+        CurrentTimePanel(events = events)
     }
 }
 
@@ -202,6 +207,8 @@ fun WeekView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClic
                 }
             }
         }
+        Spacer(modifier = Modifier.weight(1f))
+        CurrentTimePanel(events = events)
     }
 }
 
@@ -278,6 +285,61 @@ fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onEvent
                     }
                 }
             }
+        }
+        Spacer(modifier = Modifier.weight(1f))
+        CurrentTimePanel(events = allEvents)
+    }
+}
+
+@Composable
+private fun rememberCurrentDateTime(): java.time.LocalDateTime {
+    var now by remember { mutableStateOf(java.time.LocalDateTime.now()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(30_000)
+            now = java.time.LocalDateTime.now()
+        }
+    }
+    return now
+}
+
+@Composable
+fun CurrentTimePanel(events: List<CalendarEvent>) {
+    val now = rememberCurrentDateTime()
+    val today = java.time.LocalDate.now()
+    val todayCount = events.count { isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), today) }
+    val dateFmt = DateTimeFormatter.ofPattern("EEE, MMM d yyyy")
+    val timeFmt = DateTimeFormatter.ofPattern("HH:mm")
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(16.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        tonalElevation = 2.dp
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column {
+                Text(
+                    text = now.toLocalDate().format(dateFmt),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = if (todayCount == 0) "No events today" else "$todayCount event${if (todayCount == 1) "" else "s"} today",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(
+                text = now.toLocalTime().format(timeFmt),
+                style = MaterialTheme.typography.displaySmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }
