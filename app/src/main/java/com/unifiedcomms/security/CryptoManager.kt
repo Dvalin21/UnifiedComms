@@ -52,22 +52,19 @@ class CryptoManagerImpl(private val context: android.content.Context) : CryptoMa
         )
     }
 
+    // Invariant (LINUS #9 "no broken windows" / 10-rules #1 "data structures first"):
+    // every value reaching decryptField is a GCM blob (Base64 IV[12] + ciphertext).
+    // Persisted accounts are encrypted at rest by AccountRepositoryImpl; pre-persist
+    // drafts are encrypted at the engine boundary in SyncManager.provision. A non-blob
+    // input is therefore a real bug — fail loudly instead of silently returning a
+    // (possibly corrupted) raw secret. This ends the repeated "decryptField tolerates
+    // raw" patches: the boundary is now unambiguous.
     private fun decryptField(value: String?): String? {
         if (value == null) return null
-        // Two legitimate inputs reach here:
-        //  (a) a persisted account: passwordEncrypted is our IV+ciphertext GCM blob
-        //      (encrypted at rest by AccountRepositoryImpl.encryptAuthConfig).
-        //  (b) an in-memory DRAFT built via AuthConfig.AppPassword during pre-persist
-        //      provisioning (AddAccountScreen/AddAccountActivity) — NOT yet encrypted.
-        // Distinguish by attempting GCM decrypt. A genuine blob decrypts; a raw
-        // password fails GCM auth-tag. On failure we return the ORIGINAL value
-        // (the raw password) — never the base64-decoded bytes, never the base64
-        // string. This avoids both silent corruption and the crash that a hard
-        // require() caused when a raw short password hit decryptField.
         val raw = runCatching { android.util.Base64.decode(value, android.util.Base64.DEFAULT) }
-            .getOrElse { return value } // not valid base64 -> raw password
-        if (raw.size < 12) return value // too short to be a GCM blob -> raw password
-        return runCatching { String(decrypt(raw), Charsets.UTF_8) }.getOrElse { value }
+            .getOrElse { throw IllegalArgumentException("decryptField: not a GCM blob (base64 decode failed)") }
+        if (raw.size < 12) throw IllegalArgumentException("decryptField: value too short for AES/GCM")
+        return String(decrypt(raw), Charsets.UTF_8)
     }
 
     private fun encryptField(value: String): String {

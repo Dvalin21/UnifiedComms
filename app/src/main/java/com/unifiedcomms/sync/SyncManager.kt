@@ -225,7 +225,13 @@ class SyncManager(
      * proven; never "save, but sync failed").
      */
     suspend fun provision(account: Account): ProvisionResult {
-        val fresh = tokenRefresher.ensureFreshToken(account)
+        // Invariant (LINUS #9 / 10-rules #1): engine-facing AuthConfig must be a
+        // GCM blob. The pre-persist draft carries RAW secrets (AuthConfig.AppPassword);
+        // encrypt once here for the engine boundary. The caller persists the ORIGINAL
+        // raw draft, so AccountRepositoryImpl.encryptAuthConfig runs exactly once at
+        // insert — no double-encryption. provision is only ever called pre-save.
+        val engineCfg = account.copy(authConfig = crypto.encryptAuthConfig(account.authConfig))
+        val fresh = tokenRefresher.ensureFreshToken(engineCfg)
         // ponytail: run the four connection tests concurrently so a single slow/hanging
         // server can't stretch the pre-save gate to ~80s. Each test has its own 20s timeout,
         // so the gate now settles in ~20s worst case.
