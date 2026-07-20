@@ -48,7 +48,7 @@ data class Account(
                 name = name.ifBlank { "Mailcow ($email)" },
                 email = email,
                 accountType = AccountType.MAILCOW,
-                serverConfig = ServerConfig.MailcowDefaults(serverUrl),
+                serverConfig = ServerConfig.MailcowDefaults(serverUrl, email),
                 authConfig = AuthConfig.Password(username = email, password = ""),
                 syncConfig = SyncConfig.Defaults(),
                 uiConfig = UIConfig.Defaults()
@@ -146,17 +146,26 @@ data class ServerConfig(
             pushConfig = PushConfig.Google()
         )
 
-        fun MailcowDefaults(serverUrl: String): ServerConfig = ServerConfig(
-            imapHost = serverUrl.removeSuffix("/").removeSuffix("https://").removeSuffix("http://"),
-            imapPort = 993,
-            imapUseSsl = true,
-            smtpHost = serverUrl.removeSuffix("/").removeSuffix("https://").removeSuffix("http://"),
-            smtpPort = 587,
-            smtpUseStartTls = true,
-            caldavUrl = "$serverUrl/SOGo/dav/",
-            carddavUrl = "$serverUrl/SOGo/dav/",
-            supportsPush = false
-        )
+        fun MailcowDefaults(serverUrl: String, email: String = ""): ServerConfig {
+            val host = serverUrl.removeSuffix("/").removeSuffix("https://").removeSuffix("http://")
+            // Evidence: user mandate + mailcow manual + stalwart#1796 — SOGo CalDAV/CardDAV
+            // REQUIRE the exact principal path `https://<host>/SOGo/dav/<user>/Calendar/personal/`
+            // (and /Contacts/personal/). A bare `/SOGo/dav/` base makes discovery return nothing.
+            val davBase = "https://$host/SOGo/dav/"
+            val caldavUrl = if (email.isNotBlank()) "${davBase}$email/Calendar/personal/" else davBase
+            val carddavUrl = if (email.isNotBlank()) "${davBase}$email/Contacts/personal/" else davBase
+            return ServerConfig(
+                imapHost = host,
+                imapPort = 993,
+                imapUseSsl = true,
+                smtpHost = host,
+                smtpPort = 587,
+                smtpUseStartTls = true,
+                caldavUrl = caldavUrl,
+                carddavUrl = carddavUrl,
+                supportsPush = false
+            )
+        }
 
         fun ExchangeDefaults(serverUrl: String): ServerConfig = ServerConfig(
             imapHost = serverUrl.removeSuffix("/").removeSuffix("https://").removeSuffix("http://"),

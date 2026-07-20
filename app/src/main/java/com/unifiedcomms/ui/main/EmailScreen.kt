@@ -213,14 +213,26 @@ fun ComposeEmailScreen(
                 },
                 actions = {
                     IconButton(onClick = {
-                        if (to.isNotBlank() && subject.isNotBlank()) {
+                        if (to.isNotBlank()) {
                             coroutineScope.launch {
                                 val from = viewModel.getDefaultAccount()?.email.orEmpty()
                                 val sender = EmailAddress(name = from.substringBefore("@"), email = from)
+                                // Evidence: JavaMail InternetAddress ctor with a bare address as the
+                                // display NAME produces an invalid RCPT TO -> 501 5.1.3. Parse with
+                                // InternetAddress.parse() (RFC822) and use address as email, name only
+                                // when one is present. Mirrors K-9 recipient handling.
+                                fun parse(raw: String): List<EmailAddress> =
+                                    raw.split(",", ";").map { it.trim() }.filter { it.isNotBlank() }.flatMap { token ->
+                                        try {
+                                            javax.mail.internet.InternetAddress.parse(token).map { a ->
+                                                EmailAddress(name = a.personal ?: "", email = a.address ?: "")
+                                            }.filter { it.email.isNotBlank() }
+                                        } catch (_: Exception) { emptyList() }
+                                    }
                                 val recipients = EmailRecipients(
-                                    to = to.split(",").map { it.trim() }.filter { it.isNotBlank() }.map { EmailAddress(it, it) },
-                                    cc = cc.split(",").map { it.trim() }.filter { it.isNotBlank() }.map { EmailAddress(it, it) },
-                                    bcc = bcc.split(",").map { it.trim() }.filter { it.isNotBlank() }.map { EmailAddress(it, it) }
+                                    to = parse(to),
+                                    cc = parse(cc),
+                                    bcc = parse(bcc)
                                 )
                                 val email = Email(
                                     accountId = accountId,
