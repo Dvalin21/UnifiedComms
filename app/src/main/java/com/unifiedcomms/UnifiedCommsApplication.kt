@@ -34,7 +34,9 @@ class UnifiedCommsApplication : Application() {
         initializeNotificationChannels()
         DemoDataSeeder.seedIfNeeded(this, mainCoroutineScope)
         // Phase 15: schedule background periodic sync (survives process death).
-        com.unifiedcomms.sync.BackgroundSyncScheduler.schedule(this)
+        // Pass the user's chosen interval from prefs (#22) instead of the hardcoded default.
+        val intervalMin = com.unifiedcomms.util.PreferencesManager.getInstance().getSyncIntervalMinutes(15).toLong()
+        com.unifiedcomms.sync.BackgroundSyncScheduler.schedule(this, intervalMin)
     }
 
     private fun initializeNotificationChannels() {

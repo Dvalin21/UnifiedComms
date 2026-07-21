@@ -271,6 +271,9 @@ data class TaskShareMessage(
 const val CURRENT_USER = "current_user"
 
 fun getCurrentUserId(): String {
-    // TODO: wire to actual authenticated user id
-    return CURRENT_USER
+    // ponytail: no auth/session layer yet. Read a stored id if present (the integration
+    // point for real auth); otherwise fall back to the stable placeholder so messaging
+    // rows stay consistent across the app (#8).
+    return runCatching { com.unifiedcomms.util.PreferencesManager.getInstance().getString("current_user_id", "") }
+        .getOrNull()?.ifBlank { CURRENT_USER } ?: CURRENT_USER
 }

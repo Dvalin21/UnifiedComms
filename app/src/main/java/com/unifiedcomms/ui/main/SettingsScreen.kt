@@ -208,7 +208,7 @@ fun SettingsScreen(
                 HorizontalDivider()
                 SettingItem(title = "Debug logging", subtitle = "Enable for troubleshooting", icon = Icons.Default.BugReport, trailing = { Switch(checked = debugLog, onCheckedChange = { debugLog = it; PreferencesManager.getInstance().putBoolean("debug_logging", it) }) }, onClick = { })
                 HorizontalDivider()
-                SettingItem(title = "About", subtitle = "Version 1.0.0", icon = Icons.Default.Info, onClick = { showAbout = true })
+                SettingItem(title = "About", subtitle = "Version ${com.unifiedcomms.BuildConfig.VERSION_NAME}", icon = Icons.Default.Info, onClick = { showAbout = true })
                 HorizontalDivider()
                 SettingItem(title = "Clear All Data", icon = Icons.Default.Delete, textColor = Color.Red, onClick = { showClearDataConfirm = true })
             }
@@ -219,7 +219,7 @@ fun SettingsScreen(
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showAbout = false },
             title = { Text("About UnifiedComms") },
-            text = { Text("Version 1.0.0 (v0.1.2)\nBuilt by Dvalin21\nF-Droid / Frisky distribution") },
+            text = { Text("Version ${com.unifiedcomms.BuildConfig.VERSION_NAME}\nBuilt by Dvalin21\nF-Droid / Frisky distribution") },
             confirmButton = { TextButton(onClick = { showAbout = false }) { Text("OK") } }
         )
     }

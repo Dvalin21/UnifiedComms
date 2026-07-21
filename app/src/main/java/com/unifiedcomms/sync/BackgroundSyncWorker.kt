@@ -66,7 +66,11 @@ class BackgroundSyncWorker(
             // the server; the next periodic pass will retry naturally.
             return Result.success()
         } catch (e: Exception) {
-            return Result.failure()
+            // ponytail: periodic work reschedules itself regardless of result, so a
+            // failure here only adds backoff-retry on an already-transient error.
+            // Return success and let the next periodic pass retry (matches the try path).
+            android.util.Log.e("BackgroundSyncWorker", "Background sync error", e)
+            return Result.success()
         } finally {
             scope.cancel()
         }

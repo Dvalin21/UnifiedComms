@@ -109,29 +109,37 @@ class Handler(BaseHTTPRequestHandler):
         path = urllib.parse.urlparse(self.path).path
         body = self._read_body()
 
+        # DAV property responses: CalDAV client's findPropHref() scans the flat
+        # ParsedProp list for <prop> then the NEXT <href> element after it, so
+        # property values MUST be wrapped in <D:href> — plain text won't match.
+        def _href(url):
+            el = ET.Element(ET.QName("{" + NS["D"] + "}", "href"))
+            el.text = url
+            return el
+
         # current-user-principal probe (answer from ANY path — real servers do)
         if self._wants_prop(body, "current-user-principal"):
-            self._send(207, multistatus([(path, {qname("D", "current-user-principal"): "/Principal/"})]))
+            self._send(207, multistatus([(path, {qname("D", "current-user-principal"): [_href("/Principal/")]})]))
             return
         # home-set probe (answer from ANY path). Response href must equal the
         # requested home-set value, because the engine's parseHrefsFromPropfind()
         # takes .firstOrNull() (the first <href> in document order).
         if self._wants_prop(body, "addressbook-home-set"):
             self._send(207, multistatus([
-                ("/addressbooks/", {qname("A", "addressbook-home-set"): "/addressbooks/"})
+                ("/addressbooks/", {qname("A", "addressbook-home-set"): [_href("/addressbooks/")]})
             ]))
             return
         if self._wants_prop(body, "calendar-home-set"):
             self._send(207, multistatus([
-                ("/calendars/", {qname("C", "calendar-home-set"): "/calendars/"})
+                ("/calendars/", {qname("C", "calendar-home-set"): [_href("/calendars/")]})
             ]))
             return
         if path.rstrip("/") in ("", "/Principal"):
-            # home sets
+            # home sets (also wraps values in <D:href> for findPropHref compat)
             self._send(207, multistatus([
                 ("/Principal/", {
-                    qname("A", "addressbook-home-set"): "/addressbooks/",
-                    qname("C", "calendar-home-set"): "/calendars/",
+                    qname("A", "addressbook-home-set"): [_href("/addressbooks/")],
+                    qname("C", "calendar-home-set"): [_href("/calendars/")],
                 })
             ]))
             return
@@ -220,10 +228,9 @@ class Handler(BaseHTTPRequestHandler):
         return local.encode() in body
 
     def _comp(self, name):
-        # supported-calendar-component-set child element (real XML, not escaped string)
-        el = ET.Element(qname("C", "supported-calendar-component-set"))
-        ET.SubElement(el, qname("C", "comp")).set("name", name)
-        return el
+        # Return just <C:comp name="..."/> — multistatus() wraps it in
+        # <C:supported-calendar-component-set>. Doing both double-nests.
+        return [ET.Element(qname("C", "comp"), {"name": name})]
 
     def _rt(self, types):
         # resourcetype CHILD elements (addressbook/calendar/collection). These get

@@ -72,7 +72,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.abs
 import kotlinx.coroutines.launch
+import kotlinx.datetime.Clock
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.plus
+import kotlinx.datetime.toLocalDateTime
 import java.time.ZoneId
 import com.unifiedcomms.data.model.CalendarEvent
 import kotlinx.coroutines.delay
@@ -93,8 +99,20 @@ fun CalendarScreen(
     val activeAccountIds = accounts.filter { it.isActive }.map { it.id }
     // ponytail: Room's `accountId IN ()` with an empty list throws; guard it so the
     // Flow never errors on first composition (before accounts emit) and stays empty.
+    // Also expand recurring events into the visible window (getUnifiedEvents returned
+    // raw masters only, so repeats never appeared). Window recomputed on view/date change.
+    val eventWindow = remember(selectedView, currentDate.value) {
+        val d = currentDate.value
+        val z = java.time.ZoneId.systemDefault()
+        val startOfDay = { day: java.time.LocalDate -> day.atStartOfDay(z).toInstant().toEpochMilli() }
+        when (selectedView) {
+            CalendarView.DAY -> startOfDay(d) to startOfDay(d.plusDays(1))
+            CalendarView.WEEK -> startOfDay(d.minusDays(7)) to startOfDay(d.plusDays(7))
+            CalendarView.MONTH -> startOfDay(d.withDayOfMonth(1).minusWeeks(1)) to startOfDay(d.withDayOfMonth(d.lengthOfMonth()).plusWeeks(1))
+        }
+    }
     val allEvents by (if (activeAccountIds.isEmpty()) kotlinx.coroutines.flow.flowOf(emptyList())
-    else viewModel.calendarRepository.getUnifiedEvents(activeAccountIds))
+    else viewModel.calendarRepository.getEventsInRangeUnified(activeAccountIds, eventWindow.first, eventWindow.second))
         .collectAsStateWithLifecycle(initialValue = emptyList())
 
     Scaffold(
@@ -136,7 +154,7 @@ fun CalendarScreen(
                 when (selectedView) {
                 CalendarView.DAY -> DayView(date = currentDate.value, events = allEvents, onEventClick = onEventClick)
                 CalendarView.WEEK -> WeekView(date = currentDate.value, events = allEvents, onEventClick = onEventClick)
-                CalendarView.MONTH -> MonthView(date = currentDate.value, allEvents = allEvents, onEventClick = onEventClick)
+                CalendarView.MONTH -> MonthView(date = currentDate.value, allEvents = allEvents, onDayClick = { date -> currentDate.value = date; selectedView = CalendarView.DAY })
             }
         }
     }
@@ -214,7 +232,7 @@ fun WeekView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClic
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onEventClick: (String) -> Unit) {
+fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onDayClick: (java.time.LocalDate) -> Unit) {
     val firstOfMonth = date.withDayOfMonth(1)
     val dayOfWeekOffset = firstOfMonth.dayOfWeek.value - 1 // Monday = 0
     val daysInMonth = firstOfMonth.lengthOfMonth()
@@ -248,7 +266,10 @@ fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onEvent
                         }
 
                         val events = cellDate?.let { date ->
-                            allEvents.filter { ev -> isSameDay(ev.startAt.toInstant(TimeZone.of(ev.startAt.timeZone)), date) }
+                            allEvents.filter { ev ->
+                                val evZone = java.time.ZoneId.of(com.unifiedcomms.data.model.TimeZoneUtil.normalize(ev.startAt.timeZone) ?: "UTC")
+                                isSameDay(ev.startAt.toInstant(com.unifiedcomms.data.model.TimeZoneUtil.toKtxZone(ev.startAt.timeZone)), date, evZone)
+                            }
                         } ?: emptyList()
 
                         Surface(
@@ -261,7 +282,7 @@ fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onEvent
                                 )
                                 .padding(4.dp),
                             shape = RoundedCornerShape(8.dp),
-                            onClick = { val first = events.firstOrNull(); if (first != null) onEventClick(first.id) }
+                            onClick = { cellDate?.let { onDayClick(it) } }
                         ) {
                             Column(modifier = Modifier.fillMaxWidth().padding(4.dp), verticalArrangement = Arrangement.Top) {
                                 Text(text = cellDate?.dayOfMonth?.toString() ?: "", fontSize = 12.sp, fontWeight = if (cellDate == java.time.LocalDate.now()) FontWeight.Bold else FontWeight.Normal)
@@ -370,19 +391,28 @@ fun getMockEventsForDate(date: java.time.LocalDate): List<MockEvent> {
     }
 }
 
-private fun isSameDay(instant: kotlinx.datetime.Instant, date: java.time.LocalDate): Boolean {
+// ponytail: was zoning the instant to systemDefault, so an event in another tz could
+// land on the wrong day cell. Pass the event's own zone so the day match is correct.
+// ponytail: default zone keeps the 2-arg callers (most of them) simple; the 3-arg
+// caller at MonthView passes the event's own zone for correctness.
+private fun isSameDay(instant: kotlinx.datetime.Instant, date: java.time.LocalDate, zoneId: java.time.ZoneId = java.time.ZoneId.systemDefault()): Boolean {
     return java.time.Instant.ofEpochMilli(instant.toEpochMilliseconds())
-        .atZone(ZoneId.systemDefault())
+        .atZone(zoneId)
         .toLocalDate() == date
 }
+
+// ponytail: server TZIDs can be malformed (#2). Guard ZoneId.of with runCatching
+// so a bad timezone doesn't crash the events list or detail screen.
+private fun safeZoneId(tzId: String): java.time.ZoneId =
+    runCatching { java.time.ZoneId.of(tzId) }.getOrNull() ?: java.time.ZoneId.systemDefault()
 
 private fun com.unifiedcomms.data.model.CalendarEvent.toMockEvent(): MockEvent = MockEvent(
     id = id,
     title = title,
     startHour = java.time.Instant.ofEpochMilli(startAt.toInstant().toEpochMilliseconds())
-        .atZone(java.time.ZoneId.of(startAt.timeZone)).hour,
+        .atZone(safeZoneId(startAt.timeZone)).hour,
     endHour = java.time.Instant.ofEpochMilli(endAt.toInstant().toEpochMilliseconds())
-        .atZone(java.time.ZoneId.of(endAt.timeZone)).hour,
+        .atZone(safeZoneId(endAt.timeZone)).hour,
     color = color.toColorInt().toLong(),
     calendarName = title,
     isAllDay = startAt.isAllDay
@@ -430,6 +460,26 @@ fun CreateEventScreen(
     var selectedColor by remember { mutableStateOf(0xFFE57373) }
     var showDatePicker by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
+    // ponytail: edit_event/{eventId} passes an existing event; load it so we UPDATE
+    // instead of always INSERTing a new (duplicate) event (#17).
+    var existingEvent by remember { mutableStateOf<com.unifiedcomms.data.model.CalendarEvent?>(null) }
+
+    LaunchedEffect(eventId) {
+        if (eventId != null) {
+            val ev = viewModel.calendarRepository.getEventById(eventId)
+            existingEvent = ev
+            if (ev != null) {
+                title = ev.title
+                description = ev.description ?: ""
+                location = ev.location ?: ""
+                isAllDay = ev.startAt.isAllDay
+                selectedColor = runCatching { android.graphics.Color.parseColor(ev.color.background) }.getOrNull()?.toLong() ?: selectedColor
+                selectedDate = ev.startAt.date?.let { java.time.LocalDate.of(it.year, it.monthNumber, it.dayOfMonth) }
+                    ?: ev.startAt.dateTime?.date?.let { java.time.LocalDate.of(it.year, it.monthNumber, it.dayOfMonth) }
+                    ?: selectedDate
+            }
+        }
+    }
 
     val dateState = rememberDatePickerState(initialSelectedDateMillis = selectedDate.toEpochDay() * 86400000)
 
@@ -442,10 +492,13 @@ fun CreateEventScreen(
                     IconButton(onClick = {
                         if (title.isNotBlank()) {
                             coroutineScope.launch {
+                                val base = existingEvent
+                                val (sh, sm) = if (base?.startAt?.dateTime != null) base.startAt.dateTime!!.hour to base.startAt.dateTime!!.minute else 9 to 0
+                                val (eh, em) = if (base?.endAt?.dateTime != null) base.endAt.dateTime!!.hour to base.endAt.dateTime!!.minute else 10 to 0
                                 val event = com.unifiedcomms.data.model.CalendarEvent(
-                                    accountId = accountId,
-                                    calendarId = accountId,
-                                    uid = java.util.UUID.randomUUID().toString(),
+                                    accountId = base?.accountId ?: accountId,
+                                    calendarId = base?.calendarId ?: accountId,
+                                    uid = base?.uid ?: java.util.UUID.randomUUID().toString(),
                                     title = title,
                                     description = description.takeIf { it.isNotBlank() },
                                     location = location.takeIf { it.isNotBlank() },
@@ -454,8 +507,8 @@ fun CreateEventScreen(
                                             selectedDate.year,
                                             selectedDate.monthValue,
                                             selectedDate.dayOfMonth,
-                                            9,
-                                            0
+                                            if (isAllDay) 0 else sh,
+                                            if (isAllDay) 0 else sm
                                         ),
                                         date = kotlinx.datetime.LocalDate(selectedDate.year, selectedDate.monthValue, selectedDate.dayOfMonth),
                                         timeZone = kotlinx.datetime.TimeZone.currentSystemDefault().id,
@@ -466,17 +519,17 @@ fun CreateEventScreen(
                                             selectedDate.year,
                                             selectedDate.monthValue,
                                             selectedDate.dayOfMonth,
-                                            10,
-                                            0
+                                            if (isAllDay) 0 else eh,
+                                            if (isAllDay) 0 else em
                                         ),
                                         date = kotlinx.datetime.LocalDate(selectedDate.year, selectedDate.monthValue, selectedDate.dayOfMonth),
                                         timeZone = kotlinx.datetime.TimeZone.currentSystemDefault().id,
                                         isAllDay = isAllDay
                                     ),
                                     color = com.unifiedcomms.data.model.EventColor.fromInt(selectedColor.toInt()),
-                                    isLocalOnly = true
+                                    isLocalOnly = base?.isLocalOnly ?: true
                                 )
-                                viewModel.calendarRepository.insertEvent(event)
+                                if (base != null) viewModel.calendarRepository.updateEvent(event) else viewModel.calendarRepository.insertEvent(event)
                                 onSave()
                             }
                         }
@@ -552,9 +605,9 @@ fun EventDetailScreen(
     // ponytail: read the actual event timezone, not the forced system-default field.
     val eventTz = kotlinx.datetime.TimeZone.of(event.startAt.timeZone)
     val startZoned = java.time.Instant.ofEpochMilli(event.startAt.toInstant(eventTz).toEpochMilliseconds())
-        .atZone(java.time.ZoneId.of(event.startAt.timeZone))
+        .atZone(safeZoneId(event.startAt.timeZone))
     val endZoned = java.time.Instant.ofEpochMilli(event.endAt.toInstant(eventTz).toEpochMilliseconds())
-        .atZone(java.time.ZoneId.of(event.endAt.timeZone))
+        .atZone(safeZoneId(event.endAt.timeZone))
     val range = "${fmt.format(startZoned)} - ${fmt.format(endZoned)}"
 
     Scaffold(

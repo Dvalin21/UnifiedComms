@@ -109,7 +109,7 @@ data class EventDateTime(
 ) {
     @Suppress("UNUSED_PARAMETER")
     fun toInstant(_tz: TimeZone = TimeZone.currentSystemDefault()): Instant {
-        val zoneId = ZoneId.of(timeZone)
+        val zoneId = ZoneId.of(TimeZoneUtil.normalize(timeZone) ?: "UTC")
         return when {
             isAllDay && date != null -> Instant.fromEpochMilliseconds(JLocalDateTime.of(JLocalDate.of(date.year, date.monthNumber, date.dayOfMonth), JLocalTime.MIDNIGHT).atZone(zoneId).toInstant().toEpochMilli())
             dateTime != null -> Instant.fromEpochMilliseconds(JLocalDateTime.parse(dateTime.toString()).atZone(zoneId).toInstant().toEpochMilli())
@@ -137,8 +137,10 @@ data class EventColor(
     val foreground: String, // Hex color
     val calendarId: String? = null // Original calendar color reference
 ) {
-    fun toColorInt(): Int = android.graphics.Color.parseColor(background)
-    fun toForegroundInt(): Int = android.graphics.Color.parseColor(foreground)
+    // ponytail: parseColor throws on a malformed hex; fall back to a safe default
+    // rather than crashing the calendar/reminder UI on a bad server color.
+    fun toColorInt(): Int = runCatching { android.graphics.Color.parseColor(background) }.getOrElse { 0xFF2196F3.toInt() }
+    fun toForegroundInt(): Int = runCatching { android.graphics.Color.parseColor(foreground) }.getOrElse { 0xFFFFFFFF.toInt() }
 
     companion object {
         fun Default(): EventColor = EventColor("#2196F3", "#FFFFFF")
