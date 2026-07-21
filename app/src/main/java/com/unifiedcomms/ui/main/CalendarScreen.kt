@@ -598,18 +598,29 @@ fun CreateEventScreen(
 fun EventDetailScreen(
     event: CalendarEvent,
     onEdit: () -> Unit,
-    onBack: () -> Unit,
-    onShare: () -> Unit = {}
+    onBack: () -> Unit
 ) {
     val fmt = java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy h:mm a")
-    // ponytail: read the actual event timezone, not the forced system-default field.
     val eventTz = kotlinx.datetime.TimeZone.of(event.startAt.timeZone)
     val startZoned = java.time.Instant.ofEpochMilli(event.startAt.toInstant(eventTz).toEpochMilliseconds())
         .atZone(safeZoneId(event.startAt.timeZone))
     val endZoned = java.time.Instant.ofEpochMilli(event.endAt.toInstant(eventTz).toEpochMilliseconds())
         .atZone(safeZoneId(event.endAt.timeZone))
     val range = "${fmt.format(startZoned)} - ${fmt.format(endZoned)}"
-
+    val shareText = buildString {
+        appendLine(event.title)
+        appendLine(range)
+        if (!event.location.isNullOrBlank()) {
+            appendLine(event.location)
+        }
+        if (event.attendees.isNotEmpty()) {
+            appendLine("Attendees: ${event.attendees.mapNotNull { it.name ?: it.email }.joinToString(", ")}")
+        }
+        if (!event.description.isNullOrBlank()) {
+            appendLine(event.description)
+        }
+    }
+    val context = androidx.compose.ui.platform.LocalContext.current
     Scaffold(
         topBar = {
             TopAppBar(
@@ -617,7 +628,13 @@ fun EventDetailScreen(
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Back") } },
                 actions = {
                     IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, contentDescription = "Edit") }
-                    IconButton(onClick = onShare) { Icon(Icons.Default.Share, contentDescription = "Share") }
+                    IconButton(onClick = {
+                        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(android.content.Intent.EXTRA_TEXT, shareText)
+                        }
+                        context.startActivity(android.content.Intent.createChooser(intent, "Share event"))
+                    }) { Icon(Icons.Default.Share, contentDescription = "Share") }
                 }
             )
         }
