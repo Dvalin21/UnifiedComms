@@ -12,6 +12,7 @@ import com.unifiedcomms.data.repository.EmailRepositoryImpl
 import com.unifiedcomms.data.repository.MessagingRepositoryImpl
 import com.unifiedcomms.data.repository.TaskRepositoryImpl
 import com.unifiedcomms.security.CryptoManagerImpl
+import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -49,6 +50,7 @@ class BackgroundSyncWorker(
                 CalendarSyncEngineImpl(calendarRepo, accountRepo, crypto, scope),
                 TaskSyncEngineImpl(taskRepo, accountRepo, crypto, scope),
                 ContactSyncEngineImpl(contactRepo, accountRepo, crypto, scope),
+                ChatSyncEngineImpl(messagingRepo, accountRepo, crypto, scope, applicationContext),
                 accountRepo,
                 scope,
                 applicationContext,
@@ -58,19 +60,23 @@ class BackgroundSyncWorker(
             val accounts = accountRepo.getAllActive().first()
             if (accounts.isEmpty()) return Result.success()
 
+            var failedAccounts = 0
             for (account in accounts) {
-                syncManager.performFullSync(account)
+                val result = runCatching { syncManager.performFullSync(account) }
+                if (result.isFailure) {
+                    Log.e("BackgroundSyncWorker", "Account ${account.email} sync failed", result.exceptionOrNull())
+                    failedAccounts++
+                }
             }
-            // ponytail: transient per-account failures already surface via the sync
-            // notification. Return success so WorkManager doesn't retry-loop and hammer
-            // the server; the next periodic pass will retry naturally.
-            return Result.success()
+
+            return if (failedAccounts == 0) {
+                Result.success()
+            } else {
+                Result.retry()
+            }
         } catch (e: Exception) {
-            // ponytail: periodic work reschedules itself regardless of result, so a
-            // failure here only adds backoff-retry on an already-transient error.
-            // Return success and let the next periodic pass retry (matches the try path).
             android.util.Log.e("BackgroundSyncWorker", "Background sync error", e)
-            return Result.success()
+            return Result.retry()
         } finally {
             scope.cancel()
         }
