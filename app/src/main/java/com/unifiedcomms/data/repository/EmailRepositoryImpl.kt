@@ -24,6 +24,12 @@ class EmailRepositoryImpl(private val dao: EmailDao) : EmailRepository {
     override suspend fun getByUid(accountId: String, uid: String, folder: String): Email? =
         dao.getByUid(accountId, uid, folder)
 
+    override suspend fun getByImapUid(accountId: String, imapUid: String, folder: String): Email? =
+        dao.getByImapUid(accountId, imapUid, folder)
+
+    override suspend fun getByFolderAndUidValidity(accountId: String, folder: String, uidValidity: String): List<Email> =
+        dao.getByFolderAndUidValidity(accountId, folder, uidValidity)
+
     override suspend fun getByMessageId(messageId: String): Email? = dao.getByMessageId(messageId)
 
     override fun getByThreadId(threadId: String): Flow<List<Email>> = dao.getByThreadId(threadId)
@@ -77,4 +83,7 @@ class EmailRepositoryImpl(private val dao: EmailDao) : EmailRepository {
 
     override suspend fun cleanupOldTrashAndSpam(accountId: String, olderThan: Long): Int =
         dao.cleanupOldTrashAndSpam(accountId, olderThan)
+
+    override suspend fun deleteByAccountAndFolder(accountId: String, folder: String): Int =
+        dao.deleteByAccountAndFolder(accountId, folder)
 }

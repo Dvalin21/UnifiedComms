@@ -21,7 +21,7 @@ import com.unifiedcomms.data.model.*
         Conversation::class,
         UnifiedContact::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = true
 )
 @TypeConverters(
@@ -76,7 +76,7 @@ abstract class UnifiedCommsDatabase : RoomDatabase() {
                     "unifiedcomms.db"
                 )
                     .enableMultiInstanceInvalidation()
-                    .addMigrations(Migrations.MIGRATION_1_1)
+                    .addMigrations(Migrations.MIGRATION_1_1, Migrations.MIGRATION_1_2)
                     .also { builder ->
                         if (com.unifiedcomms.BuildConfig.DEBUG) {
                             builder.fallbackToDestructiveMigration()

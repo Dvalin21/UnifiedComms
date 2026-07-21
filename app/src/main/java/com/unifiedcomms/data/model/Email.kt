@@ -27,7 +27,8 @@ import kotlinx.serialization.Serializable
         Index(value = ["accountId", "receivedAt"]),
         Index(value = ["threadId"]),
         Index(value = ["isEncrypted"]),
-        Index(value = ["subject", "sender", "bodyText"])
+        Index(value = ["subject", "sender", "bodyText"]),
+        Index(value = ["accountId", "folder", "imapUid"], unique = true)
     ],
     foreignKeys = [
         ForeignKey(
@@ -70,7 +71,12 @@ data class Email(
     val mimeType: String = "text/plain",
     val etag: String? = null,
     @TypeConverters(DateTimeConverter::class) val updatedAt: Instant = Clock.System.now(),
-    val needsSync: Boolean = false
+    val needsSync: Boolean = false,
+    // ponytail: IMAP UID-based identity for reconnect-safe sync.
+    // uidValidity protects against sequence number drift; imapUid is the
+    // stable per-message server identifier independent of reconnect order.
+    val uidValidity: String? = null,
+    val imapUid: String? = null
 ) {
     fun isUnread(): Boolean = !flags.isRead
     fun isStarred(): Boolean = flags.isFlagged

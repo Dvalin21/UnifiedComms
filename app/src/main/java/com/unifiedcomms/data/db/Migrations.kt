@@ -1,24 +1,8 @@
 package com.unifiedcomms.data.db
 
-import androidx.room.migration.AutoMigrationSpec
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-/**
- * Room migrations for UnifiedCommsDatabase.
- *
- * Each entry handles transition from [startVersion] → [endVersion].
- * The current exported schema is version 1.
- *
- * Because earlier builds had exportSchema=false, the stored schema hash
- * may differ even at the same version number on an installed app.
- * If a pre-Migration-1 build is detected on device, Room will fall back
- * to destructive migration unless a specific fallback path is provided
- * in the builder.
- *
- * Future schema changes should add a new Migration(start, end) here and
- * bump the @Database version.
- */
 object Migrations {
     /**
      * No-op baseline: defines the 1 → 1 path so Room has a verified
@@ -31,9 +15,26 @@ object Migrations {
     }
 
     /**
+     * Adds IMAP UID-based sync state to emails so sequence number changes
+     * after reconnect can’t cause duplicates or missed mail (K-9 pattern).
+     */
+    val MIGRATION_1_2 = object : Migration(1, 2) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE emails ADD COLUMN uidValidity TEXT")
+            db.execSQL("ALTER TABLE emails ADD COLUMN imapUid TEXT")
+            // Backfill stable ID from existing uid where possible.
+            db.execSQL("UPDATE emails SET imapUid = uid WHERE imapUid IS NULL")
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_emails_account_folder_imapuid " +
+                    "ON emails(accountId, folder, imapUid)"
+            )
+        }
+    }
+
+    /**
      * Example shape for a real bump when schema changes:
      *
-     * val MIGRATION_1_2 = object : Migration(1, 2) {
+     * val MIGRATION_2_3 = object : Migration(2, 3) {
      *     override fun migrate(db: SupportSQLiteDatabase) {
      *         db.execSQL("ALTER TABLE emails ADD COLUMN newField TEXT")
      *     }
