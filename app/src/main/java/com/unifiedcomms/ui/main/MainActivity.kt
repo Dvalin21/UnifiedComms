@@ -33,6 +33,9 @@ import androidx.compose.material3.Button
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import android.os.Build
+import androidx.core.app.ActivityCompat
+import android.Manifest
 import androidx.fragment.app.FragmentActivity
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Arrangement
@@ -132,6 +135,16 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // ponytail: POST_NOTIFICATIONS was only ever checked, never requested (#21).
+        // Request once on API 33+; skip if already granted or previously denied (no nag).
+        if (Build.VERSION.SDK_INT >= 33) {
+            val perm = android.Manifest.permission.POST_NOTIFICATIONS
+            val granted = androidx.core.content.ContextCompat.checkSelfPermission(this, perm) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            val shouldShow = androidx.core.app.ActivityCompat.shouldShowRequestPermissionRationale(this, perm)
+            if (!granted && !shouldShow) {
+                androidx.core.app.ActivityCompat.requestPermissions(this, arrayOf(perm), 1001)
+            }
+        }
         setContent {
             val mainPrefs = remember { PreferencesManager.getInstance() }
             val themeMode by mainPrefs.themeModeFlow.collectAsStateWithLifecycle(mainPrefs.getString("theme_mode", "system"))

@@ -110,9 +110,9 @@ data class TaskDateTime(
 ) {
     @Suppress("UNUSED_PARAMETER")
     fun toInstant(_tz: TimeZone = TimeZone.currentSystemDefault()): Instant {
-        val zoneId = ZoneId.of(timeZone)
+        val zoneId = ZoneId.of(TimeZoneUtil.normalize(timeZone) ?: "UTC")
         return when {
-            dateTime != null -> Instant.fromEpochMilliseconds(JLocalDateTime.parse(dateTime.toString()).atZone(ZoneId.of(timeZone)).toInstant().toEpochMilli())
+            dateTime != null -> Instant.fromEpochMilliseconds(JLocalDateTime.parse(dateTime.toString()).atZone(zoneId).toInstant().toEpochMilli())
             date != null -> Instant.fromEpochMilliseconds(JLocalDateTime.of(JLocalDate.parse(date.toString()), JLocalTime.MIDNIGHT).atZone(zoneId).toInstant().toEpochMilli())
             else -> Clock.System.now()
         }

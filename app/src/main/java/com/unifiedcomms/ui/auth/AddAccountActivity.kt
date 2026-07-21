@@ -35,7 +35,9 @@ class AddAccountActivity : AppCompatActivity() {
     private lateinit var accountRepo: AccountRepository
     private lateinit var crypto: CryptoManager
 
-    private val scope = CoroutineScope(Dispatchers.Main)
+    // ponytail: network calls (http.execute) run inside this scope; IO keeps them off
+    // the main thread. Was Dispatchers.Main -> blocking call on UI thread -> ANR.
+    private val scope = CoroutineScope(Dispatchers.IO)
     private val http = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)

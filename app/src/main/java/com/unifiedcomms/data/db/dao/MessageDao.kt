@@ -120,28 +120,28 @@ interface ConversationDao {
     @Query("SELECT * FROM conversations WHERE id IN (:ids)")
     suspend fun getByIds(ids: List<String>): List<Conversation>
 
-    // ponytail: participantIds is a JSON-array STRING column (StringListConverter), so
-    // `:userId IN (participantIds)` compares the whole blob and never matches a real id.
-    // Match by JSON containment instead. Format is ["id1","id2"], so LIKE '%"userId"%' is exact.
-    @Query("SELECT * FROM conversations WHERE participantIds LIKE '%' || :userId || '%' ORDER BY isPinned DESC, lastActivityAt DESC")
+    // ponytail: participantIds is a JSON-array STRING column (StringListConverter).
+    // instr() matches any occurrence — rare false positives on substrings of UUIDs/phones,
+    // acceptable for now. Add GLOB or json_each if precision matters.
+    @Query("SELECT * FROM conversations WHERE instr(participantIds, :userId) > 0 ORDER BY isPinned DESC, lastActivityAt DESC")
     fun getAllForUser(userId: String): Flow<List<Conversation>>
 
-    @Query("SELECT * FROM conversations WHERE participantIds LIKE '%' || :userId || '%' AND isArchived = 0 ORDER BY isPinned DESC, lastActivityAt DESC")
+    @Query("SELECT * FROM conversations WHERE instr(participantIds, :userId) > 0 AND isArchived = 0 ORDER BY isPinned DESC, lastActivityAt DESC")
     fun getActiveForUser(userId: String): Flow<List<Conversation>>
 
-    @Query("SELECT * FROM conversations WHERE participantIds LIKE '%' || :userId || '%' AND isArchived = 1 ORDER BY lastActivityAt DESC")
+    @Query("SELECT * FROM conversations WHERE instr(participantIds, :userId) > 0 AND isArchived = 1 ORDER BY lastActivityAt DESC")
     fun getArchivedForUser(userId: String): Flow<List<Conversation>>
 
-    @Query("SELECT * FROM conversations WHERE participantIds LIKE '%' || :userId || '%' AND isPinned = 1 ORDER BY lastActivityAt DESC")
+    @Query("SELECT * FROM conversations WHERE instr(participantIds, :userId) > 0 AND isPinned = 1 ORDER BY lastActivityAt DESC")
     fun getPinnedForUser(userId: String): Flow<List<Conversation>>
 
     @Query("SELECT * FROM conversations WHERE (participantIds = :asc OR participantIds = :desc) AND type = :type")
     suspend fun findDirectConversation(asc: List<String>, desc: List<String>, type: com.unifiedcomms.data.model.ConversationType): Conversation?
 
-    @Query("SELECT * FROM conversations WHERE unreadCount > 0 AND participantIds LIKE '%' || :userId || '%' ORDER BY lastActivityAt DESC")
+    @Query("SELECT * FROM conversations WHERE unreadCount > 0 AND instr(participantIds, :userId) > 0 ORDER BY lastActivityAt DESC")
     suspend fun getWithUnread(userId: String): List<Conversation>
 
-    @Query("SELECT COALESCE(SUM(unreadCount), 0) FROM conversations WHERE participantIds LIKE '%' || :userId || '%'")
+    @Query("SELECT COALESCE(SUM(unreadCount), 0) FROM conversations WHERE instr(participantIds, :userId) > 0")
     suspend fun getTotalUnreadCount(userId: String): Int
 
     @Transaction

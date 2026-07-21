@@ -105,8 +105,15 @@ object ICalParser {
             val startTzId = tzIdFromKey(dtstartEntry?.key)
             val allDay = dtstartEntry?.key?.contains(";VALUE=DATE", true) == true && dtstartEntry.key.contains("DATE", true) && !dtstartEntry.key.contains("DATE-TIME", true)
             val startMs = runCatching { parseDateTime(dtstartEntry!!.key, dtstartEntry.value, startTzId) }.getOrNull() ?: 0L
-            val endMs = if (dtendEntry != null && dtendEntry.key.startsWith("DTEND")) parseDateTime(dtendEntry.key, dtendEntry.value, tzIdFromKey(dtendEntry.key))
-            else if (allDay) startMs + 86_400_000L else startMs + 3_600_000L
+            val endMs = when {
+                dtendEntry != null && dtendEntry.key.startsWith("DTEND") ->
+                    parseDateTime(dtendEntry.key, dtendEntry.value, tzIdFromKey(dtendEntry.key))
+                dtendEntry != null && dtendEntry.key.startsWith("DURATION") ->
+                    parseDurationMs(dtendEntry.value)?.let { startMs + it }
+                        ?: if (allDay) startMs + 86_400_000L else startMs + 3_600_000L
+                allDay -> startMs + 86_400_000L
+                else -> startMs + 3_600_000L
+            }
             val status = when ((map["STATUS"] ?: "").uppercase()) {
                 "CANCELLED" -> com.unifiedcomms.data.model.EventStatus.CANCELLED
                 "TENTATIVE" -> com.unifiedcomms.data.model.EventStatus.TENTATIVE
@@ -310,5 +317,31 @@ object ICalParser {
         }
         if (cur.isNotEmpty()) result.add(cur.toString())
         return result
+    }
+
+    // ponytail: RFC 5545 DURATION (e.g. "PT1H", "P1D", "P1W", "P2DT3H30M") -> milliseconds.
+    // parseVEvent previously hard-coded +1h when no DTEND was present, silently dropping
+    // the real DURATION. Resolve it so event end times are correct.
+    private fun parseDurationMs(value: String): Long? {
+        val v = value.trim().uppercase()
+        if (!v.startsWith("P")) return null
+        var totalMs = 0L
+        var num = StringBuilder()
+        var inTime = false
+        for (c in v) {
+            when {
+                c == 'P' -> {}
+                c == 'T' -> inTime = true
+                c.isDigit() -> num.append(c)
+                c == 'W' -> totalMs += (num.toString().toLongOrNull() ?: 0) * 7 * 86_400_000L
+                c == 'D' -> totalMs += (num.toString().toLongOrNull() ?: 0) * 86_400_000L
+                c == 'H' -> totalMs += (num.toString().toLongOrNull() ?: 0) * 3_600_000L
+                c == 'M' -> totalMs += (num.toString().toLongOrNull() ?: 0) * 60_000L
+                c == 'S' -> totalMs += (num.toString().toLongOrNull() ?: 0) * 1_000L
+                else -> return null
+            }
+            if (c in "WDHMS") num = StringBuilder()
+        }
+        return totalMs.takeIf { it > 0 }
     }
 }

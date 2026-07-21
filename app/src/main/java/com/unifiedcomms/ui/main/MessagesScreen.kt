@@ -512,7 +512,14 @@ fun ComposeMessageScreen(
                             viewModel.messagingRepository.findDirectConversation(
                                 participants,
                                 ConversationType.DIRECT
-                            )?.id ?: trimmed
+                            )?.id ?: run {
+                                // ponytail: no existing conversation — create one (#18).
+                                val newId = java.util.UUID.randomUUID().toString()
+                                viewModel.messagingRepository.insertConversation(
+                                    Conversation(id = newId, participantIds = participants, participantNames = emptyMap())
+                                )
+                                newId
+                            }
                         }
                         viewModel.sendMessage(targetConversationId, body)
                     }

@@ -165,16 +165,28 @@ class MainViewModel(
 
     suspend fun sendMessage(conversationId: String, content: String) {
         val currentUserId = com.unifiedcomms.data.model.getCurrentUserId()
-        val existing = messagingRepo.getConversationById(conversationId)
+        // ponytail: ComposeMessageScreen passes the raw recipient as conversationId when no
+        // thread exists yet. Materialise a local DIRECT conversation so the message isn't
+        // orphaned (no Conversation row -> queries/listing break). (#18)
+        var conversation = messagingRepo.getConversationById(conversationId)
+        if (conversation == null) {
+            val peer = conversationId
+            conversation = com.unifiedcomms.data.model.Conversation(
+                id = conversationId,
+                participantIds = listOf(currentUserId, peer),
+                participantNames = mapOf(currentUserId to currentUserId, peer to peer)
+            )
+            messagingRepo.insertConversation(conversation)
+        }
         val message = Message(
-            conversationId = conversationId,
+            conversationId = conversation.id,
             senderId = currentUserId,
-            recipientId = existing?.participantIds?.firstOrNull { it != currentUserId }.orEmpty(),
+            recipientId = conversation.participantIds.firstOrNull { it != currentUserId }.orEmpty(),
             content = content,
             sentAt = kotlinx.datetime.Clock.System.now()
         )
         messagingRepo.insertMessage(message)
-        messagingRepo.updateLastMessage(conversationId, message, currentUserId)
+        messagingRepo.updateLastMessage(conversation.id, message, currentUserId)
     }
 
     suspend fun sendEmail(email: com.unifiedcomms.data.model.Email): SendResult {

@@ -33,14 +33,15 @@ object VTaskSerializer {
         }}")
 
         task.dueAt?.let { due ->
-            runCatching {
-                val zoned = java.time.Instant.ofEpochMilli(due.toInstant().toEpochMilliseconds()).atZone(ZoneId.of(due.timeZone))
-                val fmt = if (due.hasTime) "yyyyMMdd'T'HHmmss" else "yyyyMMdd"
-                // ponytail: a DUE carries its wall-clock zone in due.timeZone, so emit it
-                // as a LOCAL time with a TZID (not a floating Z). Stamping Z masqueraded
-                // the wall-clock as UTC and shifted the due time by the zone offset.
-                sb.appendLine("DUE;TZID=${due.timeZone}:${zoned.format(DateTimeFormatter.ofPattern(fmt))}")
-            }.onFailure { Log.w(TAG, "bad DUE for ${task.id}", it) }
+            // ponytail: if due.timeZone is malformed, fall back to system default
+            // instead of dropping DUE entirely (#11).
+            val zone = runCatching { ZoneId.of(due.timeZone) }.getOrNull() ?: ZoneId.systemDefault()
+            val zoned = java.time.Instant.ofEpochMilli(due.toInstant().toEpochMilliseconds()).atZone(zone)
+            val fmt = if (due.hasTime) "yyyyMMdd'T'HHmmss" else "yyyyMMdd"
+            // ponytail: a DUE carries its wall-clock zone in due.timeZone, so emit it
+            // as a LOCAL time with a TZID (not a floating Z). Stamping Z masqueraded
+            // the wall-clock as UTC and shifted the due time by the zone offset.
+            sb.appendLine("DUE;TZID=${due.timeZone}:${zoned.format(DateTimeFormatter.ofPattern(fmt))}")
         }
 
         val prio = when (task.priority) {

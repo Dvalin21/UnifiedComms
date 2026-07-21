@@ -131,7 +131,7 @@ object DemoDataSeeder {
         db.messageDao().insert(Message(conversationId = conversationId, senderId = localUserId, recipientId = a1, content = "Demo account active. Calendar and tasks are visible on their tabs."))
     }
 
-    private fun makeEvent(accountId: String, uid: String, title: String, start: String, end: String) = CalendarEvent(accountId = accountId, calendarId = "local", uid = uid, title = title, startAt = EventDateTime(LocalDateTime.parse(start)), endAt = EventDateTime(LocalDateTime.parse(end)), organizer = EventAttendee(email = "Demo User"))
+    private fun makeEvent(accountId: String, uid: String, title: String, start: String, end: String) = CalendarEvent(accountId = accountId, calendarId = "local", uid = uid, title = title, startAt = EventDateTime(LocalDateTime.parse(start), timeZone = java.time.ZoneId.systemDefault().id), endAt = EventDateTime(LocalDateTime.parse(end), timeZone = java.time.ZoneId.systemDefault().id), organizer = EventAttendee(email = "Demo User"))
 
     private fun taskDateTime(date: java.time.LocalDate, hour: Int, minute: Int): com.unifiedcomms.data.model.TaskDateTime {
         val dt = LocalDateTime.parse(String.format("%sT%02d:%02d:00", date, hour, minute))
