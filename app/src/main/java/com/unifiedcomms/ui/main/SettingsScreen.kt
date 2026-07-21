@@ -128,7 +128,6 @@ fun SettingsScreen(
                     }
                 }
                 HorizontalDivider()
-                SettingItem(title = "App Language", subtitle = "English (US)", icon = Icons.Default.Language, onClick = { /* TODO: locale picker */ })
             }
 
             SettingsGroup(title = "Sync", icon = Icons.Default.Sync) {
