@@ -279,8 +279,7 @@ class MainActivity : ComponentActivity() {
                                     EventDetailScreen(
                                         event = event!!,
                                         onEdit = { navController.navigate("edit_event/$eventId") },
-                                        onBack = { navController.popBackStack() },
-                                        onShare = { /* TODO: share event */ }
+                                        onBack = { navController.popBackStack() }
                                     )
                                 }
                             }
