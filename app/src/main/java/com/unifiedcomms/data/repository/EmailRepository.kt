@@ -14,6 +14,8 @@ interface EmailRepository {
     suspend fun deleteById(id: String): Int
     suspend fun getById(id: String): Email?
     suspend fun getByUid(accountId: String, uid: String, folder: String): Email?
+    suspend fun getByImapUid(accountId: String, imapUid: String, folder: String): Email?
+    suspend fun getByFolderAndUidValidity(accountId: String, folder: String, uidValidity: String): List<Email>
     suspend fun getByMessageId(messageId: String): Email?
     fun getByThreadId(threadId: String): Flow<List<Email>>
     fun getByAccountAndFolder(accountId: String, folder: String, limit: Int, offset: Int): Flow<List<Email>>
@@ -29,6 +31,7 @@ interface EmailRepository {
     fun getSince(accountId: String, since: Long): Flow<List<Email>>
     suspend fun getCount(accountId: String, folder: String): Int
     suspend fun getTotalCount(accountId: String): Long
+    suspend fun deleteByAccountAndFolder(accountId: String, folder: String): Int
     suspend fun markAsRead(emailIds: List<String>)
     suspend fun markAsUnread(emailIds: List<String>)
     suspend fun flag(emailIds: List<String>, flagged: Boolean)

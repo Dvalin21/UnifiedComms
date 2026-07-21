@@ -127,11 +127,28 @@ class EmailSyncEngineImpl(
             return Tuple4(0, 0, emptyList(), emptyList())
         }
 
-        // ponytail: cap the initial fetch window to the most recent N messages.
-        // Fetching full bodies for an entire mailbox (thousands of mails) makes
-        // the first sync take minutes and, because legs ran serially, blocked
-        // calendar/tasks. Bounding the range keeps first sync fast; the UI shows
-        // recent mail first anyway. Raise MAX_INITIAL_MESSAGES to pull more history.
+        // ponytail: UID-based folder reference so reconnects don’t alias by
+        // shifting sequence numbers. Sequence-based fetching is fine for the
+        // capped initial window, but stable identity for idempotency must be
+        // obtained with UIDVALIDITY + UID.
+        val uidFolder = folder as? javax.mail.UIDFolder
+        val serverUidValidity = uidFolder?.uidValidity?.toString()
+        Log.d("EmailSyncEngineImpl", "folder=$folderName total=$messageCount uidValidity=$serverUidValidity")
+
+        // Root-cause guard (K-9 proven): when UIDVALIDITY changes we must drop
+        // local indexing for this folder; otherwise old imapUid rows collide
+        // with new server UIDs and silently skip real mail.
+        if (!serverUidValidity.isNullOrBlank()) {
+            val localWithSameValidity = emailRepo.getByFolderAndUidValidity(account.id, folderName, serverUidValidity)
+            if (localWithSameValidity.isEmpty()) {
+                val anyLocalCount = emailRepo.getCount(account.id, folderName)
+                if (anyLocalCount > 0) {
+                    Log.w("EmailSyncEngineImpl", "folder=$folderName uidValidity changed, invalidating")
+                    emailRepo.deleteByAccountAndFolder(account.id, folderName)
+                }
+            }
+        }
+
         val MAX_INITIAL_MESSAGES = 300
         val startIdx = maxOf(1, messageCount - MAX_INITIAL_MESSAGES + 1)
         val effectiveCount = messageCount - startIdx + 1
@@ -154,53 +171,58 @@ class EmailSyncEngineImpl(
             fp.add(FetchProfile.Item.ENVELOPE)
             fp.add(FetchProfile.Item.FLAGS)
             fp.add("X-GM-LABELS")
-            // ponytail: fetch the body too, not just the envelope. Previously the
-            // body was never requested, so msg.content threw / returned null and
-            // every message saved with an empty body -> tapping an email showed
-            // nothing. BODY.PEEK fetches without setting the SEEN flag.
+            // PEEK fetches without setting SEEN, preserving unread state.
             fp.add("BODY.PEEK[]")
             folder.fetch(messages, fp)
 
             for (msg in messages) {
-                if (!folder.isOpen) break // stop if folder was closed externally
+                if (!folder.isOpen) break
                 try {
                     val messageId = msg.getHeader("Message-ID")?.firstOrNull()
-                    // ponytail: not every message carries a Message-ID (local/POP
-                    // derived mail, some internal messages). Dropping them silently
-                    // made real mail vanish. Derive a stable UID from the folder +
-                    // sequence number when Message-ID is absent so the message still
-                    // syncs and is idempotent across syncs.
-                    val uid = messageId ?: "$folderName#$start+${msg.messageNumber}"
-                    val email = parseEmail(msg, account.id, folderName, messageId, uid)
+                    // Legacy local key only: once UID is available, imapUid becomes
+                    // the stable identity across reconnects.
+                    val sequenceUid = "$folderName#$start+${msg.messageNumber}"
+
+                    // Derive stable server UID from UIDFolder when available;
+                    // otherwise fall back to sequence-based key.
+                    val imapUid = uidFolder?.getUID(msg)?.toString() ?: sequenceUid
+                    val email = parseEmail(msg, account.id, folderName, messageId, imapUid)
                     if (email != null) {
-                        val existing = emailRepo.getByUid(account.id, email.uid, folderName)
-                        if (existing == null) {
-                            emailRepo.insert(email)
+                        val stableUid = serverUidValidity ?: email.uidValidity
+                        var local = emailRepo.getByImapUid(account.id, imapUid, folderName)
+                        if (local == null) {
+                            local = emailRepo.getByUid(account.id, email.uid, folderName)
+                        }
+                        if (local == null) {
+                            emailRepo.insert(email.copy(uidValidity = stableUid, imapUid = imapUid))
                             newItems.add(email.id)
-                        } else if (existing.etag != email.etag || existing.flags != email.flags) {
-                            emailRepo.update(existing.copy(
-                                flags = email.flags,
-                                labels = email.labels,
-                                systemLabels = email.systemLabels,
-                                etag = email.etag,
-                                updatedAt = Clock.System.now(),
-                                needsSync = false
-                            ))
-                            updatedItems.add(existing.id)
+                        } else if (local.etag != email.etag || local.flags != email.flags) {
+                            emailRepo.update(
+                                local.copy(
+                                    flags = email.flags,
+                                    labels = email.labels,
+                                    systemLabels = email.systemLabels,
+                                    etag = email.etag,
+                                    updatedAt = Clock.System.now(),
+                                    needsSync = false,
+                                    messageId = email.messageId,
+                                    subject = email.subject,
+                                    bodyText = email.bodyText,
+                                    bodyHtml = email.bodyHtml,
+                                    preview = email.preview,
+                                    uidValidity = stableUid ?: local.uidValidity,
+                                    imapUid = imapUid
+                                )
+                            )
+                            updatedItems.add(local.id)
                         }
                         totalSynced++
                     } else {
                         parsedFail++
-                        if (parsedFail <= 2) {
-                            android.util.Log.w("EmailSyncEngineImpl", "parseEmail returned null for uid=$uid folder=$folderName subject=${msg.getHeader("Subject")?.firstOrNull()?.take(40)}")
-                        }
                     }
                 } catch (e: Exception) {
                     totalFailed++
                 }
-            }
-            if (parsedFail > 0) {
-                android.util.Log.w("EmailSyncEngineImpl", "folder=$folderName fetched=${messages.size} parsedFail=$parsedFail (messages dropped by parseEmail)")
             }
 
             updateProgress(account.id, folderName, SyncStage.FETCHING_HEADERS, end, messageCount)

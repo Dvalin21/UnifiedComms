@@ -43,6 +43,12 @@ interface EmailDao {
     @Query("SELECT * FROM emails WHERE accountId = :accountId AND uid = :uid AND folder = :folder")
     suspend fun getByUid(accountId: String, uid: String, folder: String): Email?
 
+    @Query("SELECT * FROM emails WHERE accountId = :accountId AND imapUid = :imapUid AND folder = :folder LIMIT 1")
+    suspend fun getByImapUid(accountId: String, imapUid: String, folder: String): Email?
+
+    @Query("SELECT * FROM emails WHERE accountId = :accountId AND folder = :folder AND uidValidity = :uidValidity ORDER BY receivedAt DESC")
+    suspend fun getByFolderAndUidValidity(accountId: String, folder: String, uidValidity: String): List<Email>
+
     @Query("SELECT * FROM emails WHERE messageId = :messageId")
     suspend fun getByMessageId(messageId: String): Email?
 
