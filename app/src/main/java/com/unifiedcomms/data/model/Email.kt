@@ -84,8 +84,13 @@ data class EmailAddress(
     val email: String
 ) {
     override fun toString(): String = name?.let { "\"$it\" <$email>" } ?: email
-    fun getInitials(): String = name?.split(' ')?.joinToString("") { it.first().uppercase() }?.takeIf { it.isNotEmpty() }
-        ?: email.take(2).uppercase()
+    fun getInitials(): String {
+        // ponytail: name may contain empty segments (e.g. double spaces) -> it.first()
+        // would throw. Filter empties before taking the first letter of each segment.
+        val fromName = name?.split(' ')?.filter { it.isNotEmpty() }
+            ?.joinToString("") { it.first().uppercase() }?.takeIf { it.isNotEmpty() }
+        return fromName ?: email.take(2).uppercase()
+    }
 }
 
 @Serializable

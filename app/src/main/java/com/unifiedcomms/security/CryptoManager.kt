@@ -31,7 +31,16 @@ class CryptoManagerImpl(private val context: android.content.Context) : CryptoMa
         return cipher.doFinal(ciphertext)
     }
 
+    // ponytail: the EncryptionScreen toggle writes "encryption_enabled" but nothing
+    // honoured it (#19). Honor it: when disabled, leave auth values in plaintext (no GCM
+    // blob) so the toggle is a real control. Default is ON (secure); existing encrypted
+    // data stays readable while ON. Disabling mid-life leaves previously-encrypted values
+    // as blobs (edge case) — re-enable restores decryption.
+    private fun encryptionEnabled(): Boolean =
+        runCatching { com.unifiedcomms.util.PreferencesManager.getInstance().getBoolean("encryption_enabled", true) }.getOrElse { true }
+
     override fun encryptAuthConfig(config: com.unifiedcomms.data.model.AuthConfig): com.unifiedcomms.data.model.AuthConfig {
+        if (!encryptionEnabled()) return config
         return config.copy(
             passwordEncrypted = config.passwordEncrypted?.let { encryptField(it) },
             clientKey = config.clientKey?.let { encryptField(it) },
@@ -43,6 +52,7 @@ class CryptoManagerImpl(private val context: android.content.Context) : CryptoMa
 
     @Suppress("PARAMETER_NAME_CHANGED_ON_OVERRIDE")
     override fun decryptAuthConfig(config: com.unifiedcomms.data.model.AuthConfig): com.unifiedcomms.data.model.AuthConfig {
+        if (!encryptionEnabled()) return config
         return config.copy(
             passwordEncrypted = decryptField(config.passwordEncrypted),
             clientKey = decryptField(config.clientKey),
