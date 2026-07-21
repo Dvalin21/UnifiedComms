@@ -1,9 +1,9 @@
 # UnifiedComms — HANDOFF (session restart)
 
-Last updated: 2026-07-18 (EXHAUSTIVE line-by-line bug review — full project, all 105 Kotlin src files + manifest + 45 build/resource files + 29 test files)
-Authoritative branch: `master`  (single branch; `fix/add-account-email-sync` was DELETED — never restore it)
-Current HEAD: `1ae34aeb`  (post exhaustive-review snapshot; assembleDebug GREEN, EXIT=0)
-Latest release: **v1.0.2** (versionCode 2) — https://github.com/Dvalin21/UnifiedComms/releases/tag/v1.0.2
+Last updated: 2026-07-21 (session: release cleanup, UI stubs removed, v1.0.23 published)
+Authoritative branch: `master`
+Current HEAD: `3333b99`
+Latest release: **v1.0.23** — https://github.com/Dvalin21/UnifiedComms/releases/tag/v1.0.23
 
 > WARNING: This file rots. Before trusting any claim here, run `git log -5` and
 > `git status`. Git is the source of truth, not this doc.
@@ -22,16 +22,26 @@ export ANDROID_HOME=/home/keith/Android/Sdk
 - Release signing: reads `local.properties` (KEYSTORE_PATH / KEYSTORE_PASSWORD /
   KEY_ALIAS / KEY_PASSWORD) or env vars. Keystore: `/home/keith/host/UnifiedComms/release.jks`.
   **Never commit the keystore or local.properties** (both gitignored).
-- Verify a release APK: `$ANDROID_HOME/build-tools/34.0.0/apksigner verify --verbose app/build/outputs/apk/release/app-release.apk`
-  Expect: `Verified using v2 scheme: true`, `Number of signers: 1`. Do NOT ship if it
-  reports `app-release-unsigned.apk`.
-- Emulator test target: **emulator-5556** (AVD `testAVD2`). Clean install ALWAYS
-  (`adb -s emulator-5556 uninstall com.unifiedcomms.debug` then `install -t`), never
-  `adb install -r` — stale Compose renders lie.
-- UI proof: `ScreenshotGalleryTest` (com.unifiedcomms) writes uc_01..uc_13 to /sdcard,
-  pulls into docs/screenshots/, vision-reviewed. Gallery PASS (2 tests) = minimum gate.
+- Verify a release APK: `/home/keith/Android/Sdk/build-tools/34.0.0/apksigner verify \
+  app/build/outputs/apk/release/app-release.apk` Expect v2 scheme verified. Do NOT ship
+  if it reports `app-release-unsigned.apk`.
+- Emulator test target: **emulator-5556** (AVD `testAVD2`).
+- Clean install ONLY on emulator-5556 for verification.
+- UI proof: `ScreenshotGalleryTest` writes `/sdcard/uc_01..uc_13`; pull into `docs/screenshots/`,
+  then run vision-review. Gallery PASS (2 tests) = minimum gate.
 
-## Status: shipped & verified (git HEAD c33722f)
+## Session 2026-07-21 — test launch fix + UI stub cleanup + release v1.0.23
+- `MainActivity.onCreate POST_NOTIFICATIONS` runtime request path removed.
+  It was breaking `ActivityScenario` launch / `ScreenshotGalleryTest` on API 33+;
+  notification permission is optional and can be requested later from the actual
+  notification path, not from `onCreate`.
+- `EventDetailScreen` dead `onShare` stub replaced with a real `ACTION_SEND` share
+  of event title/time/location/attendees/description.
+- `SettingsScreen` dead `App Language` TODO row removed; no locale picker exists.
+- `ScreenshotGalleryTest` is green on `emulator-5556` (2/2).
+- Task/Task Sync functionality was NOT removed; all task routes and sync paths
+  remain present.
+- Release build published: **v1.0.23** (source HEAD `3333b99`).
 - **Release v1.0.2** published (signed, v2) — see "Full-project bug hunt (2026-07-17)" block below.
 - **Release v1.0.1** published (signed, v2) — prior baseline.
 - **Add Account overhaul + autodiscover wire-through** (verified on emulator-5556):
