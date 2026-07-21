@@ -161,6 +161,7 @@ class EmailSyncEngineImpl(
         var parsedFail = 0
         val newItems = mutableListOf<String>()
         val updatedItems = mutableListOf<String>()
+        val pendingFlagUpdates = mutableListOf<Pair<Email, com.unifiedcomms.data.model.EmailFlags>>()
 
         val batchSize = 50
         for (start in startIdx..messageCount step batchSize) {
@@ -214,6 +215,15 @@ class EmailSyncEngineImpl(
                                     imapUid = imapUid
                                 )
                             )
+
+                            // Bidirectional flag sync: push local-only changes back to IMAP.
+                            // Established clients apply local flag changes with STORE so the
+                            // server agrees with the DB; without this, mark-as-read/unread only
+                            // works on-device and diverges on next reconnect.
+                            // Deferred to post-batch pass to avoid mutating READ_ONLY folder state
+                            // mid-iteration.
+                            pendingFlagUpdates.add(local to email.flags)
+
                             updatedItems.add(local.id)
                         }
                         totalSynced++
@@ -226,6 +236,17 @@ class EmailSyncEngineImpl(
             }
 
             updateProgress(account.id, folderName, SyncStage.FETCHING_HEADERS, end, messageCount)
+        }
+
+        if (pendingFlagUpdates.isNotEmpty() && folder.isOpen) {
+            try {
+                folder.open(Folder.READ_WRITE)
+            } catch (e: Exception) {
+                Log.w("EmailSyncEngineImpl", "flag sync open failed: ${e.message}")
+            }
+        }
+        for ((local, serverFlags) in pendingFlagUpdates) {
+            applyLocalFlagsToServer(folder, local, serverFlags)
         }
 
         if (folder.isOpen) {
@@ -258,6 +279,32 @@ class EmailSyncEngineImpl(
             } catch (e: javax.mail.MessagingException) {
                 if (attempt == 2) throw e
             }
+        }
+    }
+
+    private suspend fun applyLocalFlagsToServer(
+        folder: Folder,
+        local: Email,
+        serverFlags: com.unifiedcomms.data.model.EmailFlags
+    ) {
+        // Caller must open `folder` in READ_WRITE before invoking this.
+        val diff = local.flags != serverFlags
+        if (!diff) return
+        try {
+            val uidFolder = folder as? javax.mail.UIDFolder ?: return
+            val uidVal = local.imapUid?.toLongOrNull() ?: return
+            val msg = uidFolder.getMessageByUID(uidVal) ?: return
+            if (local.flags.isRead != serverFlags.isRead) {
+                msg.setFlag(Flags.Flag.SEEN, local.flags.isRead)
+            }
+            if (local.flags.isFlagged != serverFlags.isFlagged) {
+                msg.setFlag(Flags.Flag.FLAGGED, local.flags.isFlagged)
+            }
+            if (local.flags.isAnswered != serverFlags.isAnswered) {
+                msg.setFlag(Flags.Flag.ANSWERED, local.flags.isAnswered)
+            }
+        } catch (e: Exception) {
+            Log.w("EmailSyncEngineImpl", "flag sync failed uid=${local.imapUid} folder=${local.folder}: ${e.message}")
         }
     }
 
