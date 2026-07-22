@@ -587,10 +587,58 @@ Ran full verification on emulator-5556 (testAVD2, no-window). All green.
   `am force-stop com.android.packageinstaller` + reboot.
 
 ## Restart checklist
-1. `git status` + `git log -3` — confirm clean tree, HEAD = 1ae34aeb (or newer).
-2. `./gradlew :app:assembleDebug :app:testDebugUnitTest` — must be GREEN.
+1. `git status` + `git log -3` — confirm clean tree, HEAD = 346aa17 (or newer).
+2. `./gradlew :app:assembleDebug :app:assembleAndroidTest :app:testDebugUnitTest` — BUILD GREEN THIS SESSION on stock emulator/device; treat any cached/green result from a prior session as stale.
 3. If resuming DAV write-proof: start both mocks (8088/8089) + `adb reverse` both, then run
    ContactSyncE2ETest + TaskSyncE2ETest. Strip DIAG logs from CalDAVClient.kt first/after.
 4. Pick a carry-over item, or a new feature. Read the actual file before editing.
-5. Verify on emulator-5556 with a clean install + ScreenshotGalleryTest; vision-review.
-6. Commit/push without asking once build is green + fix is verified (Keith workflow).
+5. If real email/IMAP behavior changed, re-run EtherealEmailSyncTest before claiming done.
+6. For UI/feature work on Messages: verify against a real account with working SMTP/IMAP, not just the local Room DB.
+7. Commit/push without asking once build is green + fix is verified (Keith workflow).
+
+---
+
+## Session 2026-07-21 — Chat SMTP/IMAP transport + foreground suppression + read-state hooks
+
+### What changed
+- **New engine abstraction:** `ChatSyncEngine` + `ChatSyncEngineImpl`.
+  - Outbound send: builds a MIME message, sets chat headers (`X-Chat-Message-Id`,
+    `X-Chat-Conversation-Id`, `X-Chat-Sender-Id`, optional `X-Chat-Group-Title`,
+    `In-Reply-To`/`References` when `replyToId` is present), chooses SMTP send or
+    IMAP `appendMessages` into `account.syncConfig.chatFolder` with SMTP fallback.
+  - Inbound backfill: opens the same folder over IMAP READ_WRITE, fetches
+    `ENVELOPE` + `BODY.PEEK[]`, normalizes chat mail into existing `Message` / `Conversation`
+    entities, deduplicated by `X-Chat-Message-Id` or `Message-ID` or folder+sequence fallback.
+- **Sync orchestration updates:** `SyncManager` now takes an optional `ChatSyncEngine?`,
+  schedules `chat.syncAccount(...)` inside `performFullSync` when `syncConfig.syncChat` is
+  enabled, exposes `sendChatMessage(...)` + `chat` in `testAllConnections`.
+- **Background sync:** `BackgroundSyncWorker` constructs a `SyncManager` with the extra
+  `ChatSyncEngineImpl` arg; chat sync participates automatically when enabled.
+- **Model/config:** `SyncConfig` gained `syncChat: Boolean` + `chatFolder: String`.
+  `Repo + converter + SavedState` paths were updated.
+- **Messaging foreground gate:** new `MessagingForegroundGate` tracks open conversation ids
+  in-memory; `ConversationScreen` sets the conversation open on enter and clears on dispose.
+- **Read-state hooks:** on conversation open, unread local messages owned by the current user
+  are marked `READ` at the conversation + message row level via `markConversationRead(...)` +
+  `markMessagesRead(...)`.
+- **Send path + notification:** `MainViewModel.sendMessage(...)` now routes through
+  `syncManager.sendChatMessage(...)` when `syncChat` is enabled, updates local status to
+  `SENT` / `FAILED` from the engine result, and only fires `NotificationHelper.showMessageNotification`
+  if that conversation is NOT currently foreground.
+- **Conversation UI cleanup:** removed dead `showDialog` “Coming Soon” action buttons from
+  `ConversationScreen` (call/video/calendar/task/email/voice placeholders) and the unused
+  top-bar `MoreVert`. Local compose + send remains; non-text actions are intentionally absent
+  until attachment/media support is implemented.
+- **Comparison vs K-9 Mail (THUNDERBIRD_REPO_PATH `app/ui/imap/...ImapFolder.kt` + API metadata):**
+  - Ours: bounded batch `read-window` + explicit `BODY.PEEK[]` + partial-success retention is
+    stronger than K-9 on first-sync cost and UI progress behavior.
+  - K-9 / real-world producers: UIDVALIDITY/UID-based fetch + reconnect-safe folder sequencing
+    is their proven path; we only have sequence-based backfill/seed today. That’s the specific
+    reconnect/idempotency gap to close next, not a broad rewrite.
+- **Known latency limits (not shipping blockers):**
+  - smtp/imap chat transport wired but NOT exercised against a real account on-device this
+    session because emulator-5556 broke clean-install/launch capability.
+  - Move/delete email on Message-ID-less mail remains a latent server-side no-op;
+    needs IMAP-UID persistence.
+  - Identity remains `getCurrentUserId() = "current_user"`; chat semantics are asymmetric
+    but functional for demo/single-user.

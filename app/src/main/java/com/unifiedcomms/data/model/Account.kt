@@ -312,6 +312,7 @@ data class SyncConfig(
     val syncCalendar: Boolean = true,
     val syncContacts: Boolean = true,
     val syncTasks: Boolean = true,
+    val syncChat: Boolean = true,
     val syncIntervalMinutes: Int = 15,
     val pushEnabled: Boolean = true,
     val downloadAttachments: Boolean = true,
@@ -322,7 +323,8 @@ data class SyncConfig(
     val calendarColors: Map<String, String> = emptyMap(),
     val conflictResolution: ConflictResolution = ConflictResolution.SERVER_WINS,
     val onlyWifi: Boolean = false,
-    val requireCharging: Boolean = false
+    val requireCharging: Boolean = false,
+    val chatFolder: String = ""
 ) {
     companion object {
         fun Defaults(): SyncConfig = SyncConfig()
