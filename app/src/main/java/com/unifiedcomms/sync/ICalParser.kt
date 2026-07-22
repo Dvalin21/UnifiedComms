@@ -104,6 +104,7 @@ object ICalParser {
             val dtendEntry = map.entries.firstOrNull { it.key.startsWith("DTEND") } ?: map.entries.firstOrNull { it.key.startsWith("DURATION") }
             val startTzId = tzIdFromKey(dtstartEntry?.key)
             val allDay = dtstartEntry?.key?.contains(";VALUE=DATE", true) == true && dtstartEntry.key.contains("DATE", true) && !dtstartEntry.key.contains("DATE-TIME", true)
+                || (dtstartEntry?.key?.substringBefore(';') == "DTSTART" && dtstartEntry.value.length == 8 && dtstartEntry.value.all { it.isDigit() })
             val startMs = runCatching { parseDateTime(dtstartEntry!!.key, dtstartEntry.value, startTzId) }.getOrNull() ?: 0L
             val endMs = when {
                 dtendEntry != null && dtendEntry.key.startsWith("DTEND") ->

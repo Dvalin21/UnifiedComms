@@ -57,6 +57,10 @@ data class Task(
     val priority: TaskPriority = TaskPriority.NONE,
     @TypeConverters(TaskDateTimeConverter::class) val dueAt: TaskDateTime? = null,
     @TypeConverters(TaskDateTimeConverter::class) val startAt: TaskDateTime? = null,
+    // ponytail: Long epoch mirror of dueAt for SQL range/date queries. TaskDateTime is
+    // stored as JSON TEXT (TaskDateTimeConverter), so comparing it with Long params in SQL
+    // is lexicographic garbage. This column is the queryable index.
+    val dueAtMs: Long = dueAt?.toInstant()?.toEpochMilliseconds() ?: 0L,
     @TypeConverters(TaskDateTimeConverter::class) val completedAt: TaskDateTime? = null,
     @TypeConverters(RecurrenceRuleConverter::class) val recurrenceRule: RecurrenceRule? = null,
     @TypeConverters(RecurrenceExceptionListConverter::class) val recurrenceExceptions: List<RecurrenceException> = emptyList(),

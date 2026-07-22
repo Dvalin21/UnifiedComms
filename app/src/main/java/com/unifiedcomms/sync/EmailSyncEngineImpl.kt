@@ -65,19 +65,20 @@ class EmailSyncEngineImpl(
             val updatedItems = mutableListOf<String>()
             val deletedItems = mutableListOf<String>()
 
-             try {
+            var store: Store? = null
+            try {
                 updateProgress(account.id, folder = null, SyncStage.CONNECTING, 0, 0)
                 val session = openImapSession(config)
-                val store = session.store
+                store = session.store
 
                 updateProgress(account.id, folder = null, SyncStage.AUTHENTICATING, 0, 0)
-                connectStoreWithRetry(store, config, auth)
+                connectStoreWithRetry(store!!, config, auth)
                 Log.d("EmailSyncEngineImpl", "connected imapHost=${config.imapHost} port=${config.imapPort} ssl=${config.imapUseSsl} foldersToSync=$folders")
 
                 for (folderName in folders) {
                     updateProgress(account.id, folderName, SyncStage.LISTING_FOLDERS, 0, 0)
 
-                    val folder = store.getFolder(folderName)
+                    val folder = store!!.getFolder(folderName)
                     if (!folder.exists()) {
                         Log.w("EmailSyncEngineImpl", "folder does not exist: $folderName")
                         continue
@@ -89,7 +90,7 @@ class EmailSyncEngineImpl(
                     updatedItems.addAll(folderResult.fourth)
                 }
 
-                store.close()
+                store?.close()
 
                 updateProgress(account.id, folder = null, SyncStage.COMPLETED, totalSynced, totalSynced)
                 return@withContext SyncResult.success(
@@ -101,14 +102,11 @@ class EmailSyncEngineImpl(
 
             } catch (e: Exception) {
                 updateProgress(account.id, folder = null, SyncStage.ERROR, 0, 0)
-                // Partial success: if at least one folder synced, report success so the
-                // UI shows the mail that landed instead of a hard failure that masks
-                // everything (a large Sent folder exceeding the socket timeout must not
-                // hide a synced INBOX).
-                if (totalSynced > 0) {
-                    Log.w("EmailSyncEngineImpl", "partial sync (some folders failed): ${e.message}")
-                    return@withContext SyncResult.success(totalSynced, newItems, updatedItems, deletedItems)
-                }
+                // ponytail: close the store on failure to prevent connection leak.
+                try { store?.close() } catch (_: Exception) {}
+                // Report honest failure: a failed folder is a real error, not partial success.
+                // The caller (SyncManager) decides whether to surface it; masking it as
+                // success hides real problems (dead Sent folder, auth expiry mid-sync).
                 return@withContext SyncResult.failure(e.message ?: "Unknown error", totalFailed)
             }
         }
@@ -212,13 +210,12 @@ class EmailSyncEngineImpl(
                             )
                         )
 
-                        // Bidirectional flag sync: push local-only changes back to IMAP.
-                        // Established clients apply local flag changes with STORE so the
-                        // server agrees with the DB; without this, mark-as-read/unread only
-                        // works on-device and diverges on next reconnect.
-                        // Deferred to post-batch pass to avoid mutating READ_ONLY folder state
-                        // mid-iteration.
-                        pendingFlagUpdates.add(local to email.flags)
+                        // Bidirectional flag sync: push LOCAL flag changes back to IMAP so the
+                        // server agrees with the DB. The DB row was just updated with server
+                        // flags above; here we push the LOCAL flags (user's mark-read/unread)
+                        // to the server. Deferred to post-batch pass to avoid mutating
+                        // READ_ONLY folder state mid-iteration.
+                        pendingFlagUpdates.add(local to local.flags)
 
                         updatedItems.add(local.id)
                     }
@@ -235,6 +232,7 @@ class EmailSyncEngineImpl(
 
         if (pendingFlagUpdates.isNotEmpty() && folder.isOpen) {
             try {
+                folder.close(false)
                 folder.open(Folder.READ_WRITE)
             } catch (e: Exception) {
                 Log.w("EmailSyncEngineImpl", "flag sync open failed: ${e.message}")
@@ -424,7 +422,8 @@ class EmailSyncEngineImpl(
                 attachments = attachments,
                 sizeBytes = msg.getHeader("Content-Length")?.firstOrNull()?.toLongOrNull()
                     ?: runCatching { msg.size.toLong() }.getOrDefault(0L),
-                mimeType = msg.getHeader("Content-Type")?.firstOrNull() ?: "text/plain"
+                mimeType = msg.getHeader("Content-Type")?.firstOrNull() ?: "text/plain",
+                etag = msg.getHeader("Content-MD5")?.firstOrNull() ?: messageId
             )
         } catch (e: Exception) {
             null
@@ -611,7 +610,8 @@ class EmailSyncEngineImpl(
                     return@withContext SyncResult.failure("Folder not found: $fromFolder -> $toFolder")
                 }
                 src.open(Folder.READ_WRITE)
-                val msgs = uids.mapNotNull { mid -> src.messages.firstOrNull { m -> m.getHeader("Message-ID")?.firstOrNull() == mid } }
+                val uidFolder = src as? javax.mail.UIDFolder
+                val msgs = uids.mapNotNull { uid -> uidFolder?.getMessageByUID(uid.toLongOrNull() ?: -1L) }
                 if (msgs.isNotEmpty()) {
                     dst.appendMessages(msgs.toTypedArray())
                     msgs.forEach { it.setFlag(Flags.Flag.DELETED, true) }
@@ -640,7 +640,8 @@ class EmailSyncEngineImpl(
                     return@withContext SyncResult.failure("Folder not found: $folder")
                 }
                 f.open(Folder.READ_WRITE)
-                val msgs = uids.mapNotNull { mid -> f.messages.firstOrNull { m -> m.getHeader("Message-ID")?.firstOrNull() == mid } }
+                val uidFolder = f as? javax.mail.UIDFolder
+                val msgs = uids.mapNotNull { uid -> uidFolder?.getMessageByUID(uid.toLongOrNull() ?: -1L) }
                 msgs.forEach { it.setFlag(Flags.Flag.DELETED, true) }
                 f.expunge()
                 f.close(false)

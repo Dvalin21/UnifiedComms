@@ -225,7 +225,7 @@ class MainViewModel(
     suspend fun moveEmails(emailIds: List<String>, fromFolder: String, toFolder: String) {
         val first = emailRepo.getById(emailIds.first()) ?: return
         val account = accountRepo.getById(first.accountId) ?: return
-        val uids = emailIds.mapNotNull { emailRepo.getById(it)?.messageId }
+        val uids = emailIds.mapNotNull { emailRepo.getById(it)?.imapUid }
         val result = syncManager.moveEmail(account, uids, fromFolder, toFolder)
         if (result.success) {
             emailRepo.moveToFolder(emailIds, toFolder)
@@ -235,7 +235,7 @@ class MainViewModel(
     suspend fun deleteEmails(emailIds: List<String>, folder: String) {
         val first = emailRepo.getById(emailIds.first()) ?: return
         val account = accountRepo.getById(first.accountId) ?: return
-        val uids = emailIds.mapNotNull { emailRepo.getById(it)?.messageId }
+        val uids = emailIds.mapNotNull { emailRepo.getById(it)?.imapUid }
         val result = syncManager.deleteEmail(account, folder, uids)
         if (result.success) {
             emailRepo.deletePermanently(emailIds)
