@@ -41,9 +41,15 @@ class ChatSyncEngineImpl(
     val syncProgress: StateFlow<Map<String, SyncProgress>> = _syncProgress
 
     override suspend fun syncAccount(account: Account): SyncResult {
-        val folder = account.syncConfig.chatFolder
-        if (folder.isBlank()) return SyncResult.success(0)
-        return syncFolder(account, folder)
+        val stored = accountRepo.getById(account.id) ?: account
+        var effectiveFolder = stored.syncConfig.chatFolder
+        if (effectiveFolder.isBlank()) {
+            effectiveFolder = resolveChatFolder(stored)
+            if (effectiveFolder.isNotBlank() && effectiveFolder != stored.syncConfig.chatFolder) {
+                accountRepo.update(stored.copy(syncConfig = stored.syncConfig.copy(chatFolder = effectiveFolder)))
+            }
+        }
+        return syncFolder(stored, effectiveFolder)
     }
 
     override suspend fun syncFolder(account: Account, folder: String): SyncResult {
@@ -294,6 +300,42 @@ class ChatSyncEngineImpl(
 
     private fun updateProgress(accountId: String, folder: String?, stage: SyncStage, current: Int, total: Int) {
         _syncProgress.value = _syncProgress.value + (accountId to SyncProgress(accountId, folder, stage, current, total))
+    }
+
+    private suspend fun resolveChatFolder(account: Account): String {
+        val config = account.serverConfig
+        val auth = crypto.decryptAuthConfig(account.authConfig)
+        return runCatching {
+            val session = Session.getInstance(
+                Properties().apply {
+                    put("mail.store.protocol", "imap")
+                    put("mail.imap.host", config.imapHost)
+                    put("mail.imap.port", config.imapPort)
+                    put("mail.imap.ssl.enable", config.imapUseSsl)
+                    put("mail.imap.auth", true)
+                    put("mail.imap.connectiontimeout", 10000)
+                    put("mail.imap.timeout", 10000)
+                    if (config.acceptAllCerts) {
+                        put("mail.imap.ssl.checkserveridentity", false)
+                        val ctx = javax.net.ssl.SSLContext.getInstance("TLS")
+                        ctx.init(null, arrayOf(object : javax.net.ssl.X509TrustManager {
+                            override fun checkClientTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
+                            override fun checkServerTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
+                            override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = emptyArray()
+                        }), java.security.SecureRandom())
+                        put("mail.imap.ssl.socketFactory", ctx.socketFactory)
+                    }
+                }
+            )
+            val store = session.getStore("imap")
+            store.connect(config.imapHost, config.imapPort, auth.username!!, auth.passwordEncrypted!!)
+            val candidates = listOf(FALLBACK_CHAT_FOLDER, DEFAULT_CHAT_FOLDER)
+            val found = candidates.firstOrNull { name ->
+                store.getFolder(name).let { f -> f.exists() && f.type == Folder.HOLDS_MESSAGES }
+            }
+            store.close()
+            found.orEmpty()
+        }.getOrDefault("")
     }
 
     companion object {
