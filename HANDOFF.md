@@ -1,9 +1,9 @@
 # UnifiedComms — HANDOFF (session restart)
 
-Last updated: 2026-07-21 (session: release cleanup, UI stubs removed, v1.0.23 published)
+Last updated: 2026-07-22 (session: live IMAP E2E against houseofmanns.com — email sync PROVEN working)
 Authoritative branch: `master`
-Current HEAD: `a279a7c`
-Latest release: **v1.0.23** — https://github.com/Dvalin21/UnifiedComms/releases/tag/v1.0.23
+Current HEAD: `d5c4a68`
+Latest release: **v1.0.25** — https://github.com/Dvalin21/UnifiedComms/releases/tag/v1.0.25
 
 > WARNING: This file rots. Before trusting any claim here, run `git log -5` and
 > `git status`. Git is the source of truth, not this doc.
@@ -646,3 +646,81 @@ Ran full verification on emulator-5556 (testAVD2, no-window). All green.
     needs IMAP-UID persistence.
   - Identity remains `getCurrentUserId() = "current_user"`; chat semantics are asymmetric
     but functional for demo/single-user.
+
+## Session 2026-07-22 — LIVE IMAP E2E against houseofmanns.com (email sync PROVEN)
+
+Pivotal session: stopped reviewing-in-a-vacuum. Drove a REAL account
+(`testbox@houseofmanns.com`, pass supplied by Keith) against the LIVE server
+(`houseofmanns.com`) on emulator-5556 and watched logcat. This is the first time
+core email function was proven against a real server, not just "it launches."
+
+### Server facts (verified from host, not assumed)
+- IMAP 143 STARTTLS: LOGIN OK. IMAP 993 SSL strict cert: FAILS — cert is
+  `*.houseofmanns.com` (Let's Encrypt, valid Jul 11–Oct 9 2026); wildcard does
+  NOT cover bare `houseofmanns.com` → hostname mismatch. 993 + acceptAllCerts: OK.
+- SMTP 587 STARTTLS: LOGIN OK. (Keith chose 993 + 587 as the secure pair.)
+- INBOX had 2 pre-existing + sent test mail = 7 messages by end of session.
+
+### Bugs found + fixed (PROVEN against live server, not theory)
+1. **testConnection ignored `acceptAllCerts`** — built its own `Properties` and
+   skipped the cert flag, so IMAP 993 against this server FAILED cert validation
+   SILENTLY (account-add died with no error). Fixed: `testConnection` now reuses
+   `openImapSession(config)` which honors the flag. (EmailSyncEngineImpl.kt)
+2. **RFC2047 subject decode broken** — used raw `getHeader("Subject")`. Real
+   emails showed `=?utf-8?q?...` garbage. JavaMail's `msg.subject` getter only
+   PARTIALLY decodes and chokes on adjacent encoded words with no whitespace
+   (`?==?`), leaking raw encoding. Fixed with `decodeRfc2047Subject()` that decodes
+   each `=?..?=` token individually via `MimeUtility.decodeWord` + concatenates.
+   Proven: `=?utf-8?q?=22Personal?==?utf-8?q?_Calendar=22?= has been created`
+   → `"Personal Calendar" has been created`.
+3. **From header parsed via string surgery** — switched to `InternetAddress.personal/
+   address` (auto-decoded).
+
+### Verification (all real, on emulator-5556, clean install of both APKs)
+- `HouseOfMannsEmailSyncTest` (new androidTest): builds account
+  (imapHost=houseofmanns.com, 993, ssl, acceptAllCerts=true; smtp 587 starttls),
+  runs `testConnection → sendEmail → syncAccount → Room read-back`.
+  Result: **OK (1 test)**. Logcat: `connected imapHost=houseofmanns.com port=993
+  ssl=true`, `folder=INBOX total=2 uidValidity=1784748064`, `synced=2`.
+- DB inspect (DbInspectTest, temporary, since deleted): account `houseofmanns-test`
+  → total=2, inboxCount=2, `getByAccountAndFolder(...INBOX...)` returns 2 rows.
+- UI walk: app shows "HouseOfManns Test" / "testbox@houseofmanns.com" in account
+  switcher; Email tab → Inbox folder chip shows "2"; tap Inbox → 7 real messages
+  render with clean decoded subjects. Screenshot-verified.
+- sendEmail over SMTP 587 STARTTLS: asserted success in the test (passed).
+
+### Released
+- v1.0.24 (8151048): 22 Linus-review defect fixes (see prior session block).
+- v1.0.25 (d5c4a68): live IMAP E2E fixes above. APK attached to GitHub release.
+- HEAD of master = d5c4a68. Both tags pushed to origin.
+
+### Honest carry-over (NOT shipped, NOT faked)
+- **Calendar/CalDAV, Contacts/CardDAV, Tasks** sync legs NOT yet proven against a
+  real server. Only the local `dav_mock.py` round-trips (Contact/Task/Calendar E2E)
+  are proven. Next session: run the SAME live-E2E treatment on those legs. They need
+  either (a) a real DAV server account, or (b) the `dav_mock.py` extended + reachable
+  via `adb reverse` with `adb logcat` watching — same method that just worked for IMAP.
+- **Chat transport** (IMAP/SMTP folder-based) wired (2026-07-21) but NOT exercised
+  against a real account on-device. Same live-E2E gap.
+- **getCurrentUserId() = "current_user"** still a documented TODO (messaging identity
+  not account-bound). Out of scope; flagged.
+
+### Next-session plan (Keith: "Live E2E treatment on the other sync logs")
+For EACH remaining sync leg, replicate the houseofmanns method:
+1. Write/extend an androidTest that builds the real config + calls the engine's
+   testConnection/sync against a reachable server (DAV mock via `adb reverse`, or a
+   real DAV account if Keith supplies one).
+2. Run on emulator-5556, watch logcat for the actual failure (silent no-op, cert,
+   etag, href mismatch — same classes of bug we just found in IMAP).
+3. Fix root cause, re-run until OK, screenshot-verify the UI list renders real data.
+4. Commit + push master + tag release (Keith workflow: no PR, ff to master).
+
+### Environment notes (this session)
+- Stale-APK trap confirmed AGAIN: must `adb uninstall` + reinstall BOTH
+  app-debug.apk AND app-debug-androidTest.apk after changing a data class, or
+  instrumented tests fail with NoSuchMethodError. Did this every run.
+- `adb logcat -c` before each instrumented run, then capture the relevant tag, to
+  avoid reading stale buffer lines from prior runs.
+- Server LOCKOUT: >2 wrong passwords in 2 min blocks the account. Entered creds
+  exactly once per run; never hit the lockout.
+
