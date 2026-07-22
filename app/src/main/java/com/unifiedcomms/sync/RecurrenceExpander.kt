@@ -151,8 +151,11 @@ object RecurrenceExpander {
                         var m = 0L
                         while (true) {
                             val mb = base.plus(Period.ofMonths((m * interval).toInt()))
-                            val day = rule.byMonthDay.first().coerceIn(1, mb.toLocalDate().lengthOfMonth())
-                            yield(mb.withDayOfMonth(day))
+                            val daysInMonth = mb.toLocalDate().lengthOfMonth()
+                            for (dayVal in rule.byMonthDay) {
+                                val day = dayVal.coerceIn(1, daysInMonth)
+                                yield(mb.withDayOfMonth(day))
+                            }
                             m++
                         }
                     }

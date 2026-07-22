@@ -46,7 +46,12 @@ class ChatSyncEngineImpl(
         if (effectiveFolder.isBlank()) {
             effectiveFolder = resolveChatFolder(stored)
             if (effectiveFolder.isNotBlank() && effectiveFolder != stored.syncConfig.chatFolder) {
-                accountRepo.update(stored.copy(syncConfig = stored.syncConfig.copy(chatFolder = effectiveFolder)))
+                // ponytail: accountRepo.update re-encrypts authConfig; `stored` came from
+                // getById (already encrypted), so re-encrypting would double-encrypt.
+                // Re-encrypt the decrypted config to get a clean plaintext->GCM round-trip.
+                val auth = crypto.decryptAuthConfig(stored.authConfig)
+                val reEncrypted = stored.copy(authConfig = crypto.encryptAuthConfig(auth))
+                accountRepo.update(reEncrypted.copy(syncConfig = reEncrypted.syncConfig.copy(chatFolder = effectiveFolder)))
             }
         }
         return syncFolder(stored, effectiveFolder)
@@ -59,9 +64,7 @@ class ChatSyncEngineImpl(
         return withContext(Dispatchers.IO) {
             updateProgress(account.id, folder, SyncStage.CONNECTING, 0, 0)
             try {
-                val session = openImapSession(config)
-                val store = session.store
-                store.connect(config.imapHost, config.imapPort, auth.username, auth.passwordEncrypted)
+                val store = connectChatStore(config, auth)
                 updateProgress(account.id, folder, SyncStage.AUTHENTICATING, 0, 0)
 
                 val f = store.getFolder(folder)
@@ -131,7 +134,8 @@ class ChatSyncEngineImpl(
 
                 val session = Session.getInstance(props, object : javax.mail.Authenticator() {
                     override fun getPasswordAuthentication(): javax.mail.PasswordAuthentication {
-                        return javax.mail.PasswordAuthentication(auth.username!!, auth.passwordEncrypted!!)
+                        val (user, pass) = chatCredentials(auth)
+                        return javax.mail.PasswordAuthentication(user, pass)
                     }
                 })
 
@@ -162,8 +166,7 @@ class ChatSyncEngineImpl(
 
                 if (savedFolder.isNotBlank()) {
                     try {
-                        val store = session.store
-                        store.connect(config.imapHost, config.imapPort, auth.username, auth.passwordEncrypted)
+                        val store = connectChatStore(config, auth)
                         val f = store.getFolder(savedFolder)
                         if (!f.exists()) f.create(Folder.HOLDS_MESSAGES)
                         f.open(Folder.READ_WRITE)
@@ -193,7 +196,8 @@ class ChatSyncEngineImpl(
                 val auth = crypto.decryptAuthConfig(account.authConfig)
                 val session = Session.getInstance(openImapProps(config))
                 val store = session.getStore("imap")
-                store.connect(config.imapHost, auth.username!!, auth.passwordEncrypted!!)
+                val (user, pass) = chatCredentials(auth)
+                store.connect(config.imapHost, user, pass)
                 store.close()
                 ConnectionTestResult(true, System.currentTimeMillis() - System.currentTimeMillis(), listOf("IMAP Chat"), null)
             } catch (e: Exception) {
@@ -229,7 +233,7 @@ class ChatSyncEngineImpl(
                 type = ConversationType.DIRECT,
                 lastMessageId = chatUid,
                 lastMessagePreview = content.take(100),
-                lastActivityAt = kotlinx.datetime.Instant.fromEpochMilliseconds(msg.sentDate.time),
+                lastActivityAt = kotlinx.datetime.Instant.fromEpochMilliseconds(msg.sentDate?.time ?: System.currentTimeMillis()),
                 unreadCount = 0
             )
 
@@ -239,7 +243,7 @@ class ChatSyncEngineImpl(
                 senderId = senderId,
                 recipientId = if (senderId == account.email) recipientEmail else account.email,
                 content = content,
-                sentAt = kotlinx.datetime.Instant.fromEpochMilliseconds(msg.sentDate.time),
+                sentAt = kotlinx.datetime.Instant.fromEpochMilliseconds(msg.sentDate?.time ?: System.currentTimeMillis()),
                 status = if (msg.isSet(Flags.Flag.SEEN)) MessageStatus.READ else MessageStatus.SENT,
                 isLocalOnly = false,
                 needsSync = false
@@ -297,6 +301,23 @@ class ChatSyncEngineImpl(
         }
     }
 
+    // ponytail: OAuth2 accounts use XOAUTH2 (bearer token) as the IMAP/SMTP password,
+    // not the stored password field (which is empty for OAuth). Mirrors EmailSyncEngine.
+    private fun chatCredentials(auth: com.unifiedcomms.data.model.AuthConfig): Pair<String, String> =
+        if (auth.type == com.unifiedcomms.data.model.AuthType.OAUTH2) {
+            auth.username!! to EmailSyncEngineImpl.buildXoauth2Static(auth.username!!, auth.oauthAccessToken.orEmpty())
+        } else {
+            auth.username!! to (auth.passwordEncrypted ?: "")
+        }
+
+    private suspend fun connectChatStore(config: com.unifiedcomms.data.model.ServerConfig, auth: com.unifiedcomms.data.model.AuthConfig): Store {
+        val session = openImapSession(config)
+        val store = session.store
+        val (user, pass) = chatCredentials(auth)
+        store.connect(config.imapHost, config.imapPort, user, pass)
+        return store
+    }
+
     private fun updateProgress(accountId: String, folder: String?, stage: SyncStage, current: Int, total: Int) {
         _syncProgress.value = _syncProgress.value + (accountId to SyncProgress(accountId, folder, stage, current, total))
     }
@@ -327,7 +348,8 @@ class ChatSyncEngineImpl(
                 }
             )
             val store = session.getStore("imap")
-            store.connect(config.imapHost, config.imapPort, auth.username!!, auth.passwordEncrypted!!)
+            val (user, pass) = chatCredentials(auth)
+            store.connect(config.imapHost, config.imapPort, user, pass)
             val candidates = listOf(FALLBACK_CHAT_FOLDER, DEFAULT_CHAT_FOLDER)
             val found = candidates.firstOrNull { name ->
                 store.getFolder(name).let { f -> f.exists() && f.type == Folder.HOLDS_MESSAGES }

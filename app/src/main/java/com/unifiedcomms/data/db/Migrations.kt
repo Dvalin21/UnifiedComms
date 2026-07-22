@@ -32,9 +32,21 @@ object Migrations {
     }
 
     /**
+     * Adds startAtMs (Long epoch mirror of startAt) to calendar_events and dueAtMs to tasks
+     * so SQL range/date queries work (startAt/dueAt are JSON TEXT via type converters).
+     * Backfill from existing rows: startAtMs = 0, dueAtMs = 0 (re-populated on next sync).
+     */
+    val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE calendar_events ADD COLUMN startAtMs INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE tasks ADD COLUMN dueAtMs INTEGER NOT NULL DEFAULT 0")
+        }
+    }
+
+    /**
      * Example shape for a real bump when schema changes:
      *
-     * val MIGRATION_2_3 = object : Migration(2, 3) {
+     * val MIGRATION_3_4 = object : Migration(3, 4) {
      *     override fun migrate(db: SupportSQLiteDatabase) {
      *         db.execSQL("ALTER TABLE emails ADD COLUMN newField TEXT")
      *     }

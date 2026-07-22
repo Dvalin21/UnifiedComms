@@ -49,6 +49,20 @@ object VEventSerializer {
 
         event.recurrenceRule?.let { sb.appendLine("RRULE:${it.toRfc5545()}") }
 
+        // ponytail: emit RECURRENCE-ID for exception instances so the server can store
+        // them as overrides of the master. Without this, editing one occurrence of a
+        // recurring event is silently lost on round-trip (ICalParser reads RECURRENCE-ID
+        // back but the serializer never wrote it).
+        event.recurrenceId?.let { rid ->
+            sb.appendLine("RECURRENCE-ID:${rid}")
+        }
+
+        // ponytail: emit EXDATE entries so server-side cancellations of specific occurrences
+        // survive a round-trip. ICalParser reads EXDATE back into recurrenceExceptions.
+        event.recurrenceExceptions.filter { it.isDeleted }.forEach { ex ->
+            sb.appendLine("EXDATE:${ex.originalDate.toEpochMilliseconds()}")
+        }
+
         // Preserve the user-chosen event color so it survives a round-trip through
         // the server. COLOR is RFC 7986; X-APPLE-COLOR is what SOGo/Apple clients read.
         if (event.color != EventColor.Default() && event.color.background.isNotBlank()) {

@@ -44,45 +44,45 @@ interface TaskDao {
     @Query("SELECT * FROM tasks WHERE uid = :uid AND accountId = :accountId")
     suspend fun getByUid(uid: String, accountId: String): Task?
 
-    @Query("SELECT * FROM tasks WHERE accountId = :accountId AND listId = :listId ORDER BY position ASC, dueAt ASC")
-    fun getByList(accountId: String, listId: String): Flow<List<Task>>
-
-    @Query("SELECT * FROM tasks WHERE accountId = :accountId AND status != :completedStatus ORDER BY dueAt ASC, position ASC")
-    fun getActiveByAccount(accountId: String, completedStatus: TaskStatus): Flow<List<Task>>
-
-    @Query("SELECT * FROM tasks WHERE accountId IN (:accountIds) AND status != :completedStatus ORDER BY dueAt ASC, position ASC")
-    fun getActiveUnified(accountIds: List<String>, completedStatus: TaskStatus): Flow<List<Task>>
-
-    // ponytail: returns every task (open + completed) so the UI filter chips (Completed/
-    // Starred/Overdue/Today) can be applied in Kotlin instead of being limited to NEEDS_ACTION.
-    @Query("SELECT * FROM tasks WHERE accountId IN (:accountIds) ORDER BY dueAt ASC, position ASC")
-    fun getAllUnified(accountIds: List<String>): Flow<List<Task>>
-
-    @Query("SELECT * FROM tasks WHERE accountId = :accountId AND status = :status ORDER BY dueAt ASC")
+    @Query("SELECT * FROM tasks WHERE accountId = :accountId AND status = :status ORDER BY dueAtMs ASC")
     fun getByStatus(accountId: String, status: TaskStatus): Flow<List<Task>>
 
-    @Query("SELECT * FROM tasks WHERE accountId = :accountId AND dueAt != null AND date(dueAt) = :date ORDER BY dueAt ASC")
+    @Query("SELECT * FROM tasks WHERE accountId = :accountId AND dueAtMs != 0 AND date(datetime(dueAtMs / 1000, 'unixepoch')) = date(datetime(:date / 1000, 'unixepoch')) ORDER BY dueAtMs ASC")
     fun getDueOnDate(accountId: String, date: Long): Flow<List<Task>>
 
-    @Query("SELECT * FROM tasks WHERE accountId IN (:accountIds) AND dueAt != null AND date(dueAt) = :date ORDER BY dueAt ASC")
+    @Query("SELECT * FROM tasks WHERE accountId IN (:accountIds) AND dueAtMs != 0 AND date(datetime(dueAtMs / 1000, 'unixepoch')) = date(datetime(:date / 1000, 'unixepoch')) ORDER BY dueAtMs ASC")
     fun getDueOnDateUnified(accountIds: List<String>, date: Long): Flow<List<Task>>
 
-    @Query("SELECT * FROM tasks WHERE accountId = :accountId AND dueAt != null AND dueAt < :now AND status != :completedStatus ORDER BY dueAt ASC")
+    @Query("SELECT * FROM tasks WHERE accountId = :accountId AND dueAtMs != 0 AND dueAtMs < :now AND status != :completedStatus ORDER BY dueAtMs ASC")
     fun getOverdue(accountId: String, now: Long, completedStatus: TaskStatus): Flow<List<Task>>
 
-    @Query("SELECT * FROM tasks WHERE accountId IN (:accountIds) AND dueAt != null AND dueAt < :now AND status != :completedStatus ORDER BY dueAt ASC")
+    @Query("SELECT * FROM tasks WHERE accountId IN (:accountIds) AND dueAtMs != 0 AND dueAtMs < :now AND status != :completedStatus ORDER BY dueAtMs ASC")
     fun getOverdueUnified(accountIds: List<String>, now: Long, completedStatus: TaskStatus): Flow<List<Task>>
 
-    @Query("SELECT * FROM tasks WHERE accountId = :accountId AND dueAt != null AND dueAt >= :now AND dueAt <= :end AND status != :completedStatus ORDER BY dueAt ASC LIMIT :limit")
+    @Query("SELECT * FROM tasks WHERE accountId = :accountId AND dueAtMs != 0 AND dueAtMs >= :now AND dueAtMs <= :end AND status != :completedStatus ORDER BY dueAtMs ASC LIMIT :limit")
     fun getUpcoming(accountId: String, now: Long, end: Long, completedStatus: TaskStatus, limit: Int): Flow<List<Task>>
 
-    @Query("SELECT * FROM tasks WHERE accountId IN (:accountIds) AND dueAt != null AND dueAt >= :now AND dueAt <= :end AND status != :completedStatus ORDER BY dueAt ASC LIMIT :limit")
+    @Query("SELECT * FROM tasks WHERE accountId IN (:accountIds) AND dueAtMs != 0 AND dueAtMs >= :now AND dueAtMs <= :end AND status != :completedStatus ORDER BY dueAtMs ASC LIMIT :limit")
     fun getUpcomingUnified(accountIds: List<String>, now: Long, end: Long, completedStatus: TaskStatus, limit: Int): Flow<List<Task>>
 
     @Query("SELECT * FROM tasks WHERE parentTaskId = :parentId ORDER BY position ASC")
     fun getSubtasks(parentId: String): Flow<List<Task>>
 
-    @Query("SELECT * FROM tasks WHERE (title LIKE :query OR description LIKE :query) AND accountId IN (:accountIds) ORDER BY dueAt ASC LIMIT :limit")
+    @Query("SELECT * FROM tasks WHERE accountId = :accountId AND listId = :listId ORDER BY position ASC, dueAtMs ASC")
+    fun getByList(accountId: String, listId: String): Flow<List<Task>>
+
+    @Query("SELECT * FROM tasks WHERE accountId = :accountId AND status != :completedStatus ORDER BY dueAtMs ASC, position ASC")
+    fun getActiveByAccount(accountId: String, completedStatus: TaskStatus): Flow<List<Task>>
+
+    @Query("SELECT * FROM tasks WHERE accountId IN (:accountIds) AND status != :completedStatus ORDER BY dueAtMs ASC, position ASC")
+    fun getActiveUnified(accountIds: List<String>, completedStatus: TaskStatus): Flow<List<Task>>
+
+    // ponytail: returns every task (open + completed) so the UI filter chips (Completed/
+    // Starred/Overdue/Today) can be applied in Kotlin instead of being limited to NEEDS_ACTION.
+    @Query("SELECT * FROM tasks WHERE accountId IN (:accountIds) ORDER BY dueAtMs ASC, position ASC")
+    fun getAllUnified(accountIds: List<String>): Flow<List<Task>>
+
+    @Query("SELECT * FROM tasks WHERE (title LIKE :query OR description LIKE :query) AND accountId IN (:accountIds) ORDER BY dueAtMs ASC LIMIT :limit")
     fun searchTasks(query: String, accountIds: List<String>, limit: Int): Flow<List<Task>>
 
     @Query("SELECT * FROM tasks WHERE needsSync = 1 AND accountId = :accountId")
