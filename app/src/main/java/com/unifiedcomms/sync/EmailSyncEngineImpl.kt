@@ -353,6 +353,26 @@ class EmailSyncEngineImpl(
         return Session.getInstance(props)
     }
 
+    /**
+     * Decode an RFC 2047 encoded-word subject, handling adjacent encoded words
+     * with no inter-word whitespace (e.g. "...?==?utf-8...") that JavaMail's
+     * getter and MimeUtility.decodeText leave partially raw. Each =?..?= token is
+     * decoded individually and concatenated with the literal text between them.
+     */
+    private fun decodeRfc2047Subject(raw: String): String {
+        if (!raw.contains("=?")) return raw
+        val sb = StringBuilder()
+        val regex = Regex("=\\?[^?]+\\?[qQbB]\\?[^?]*\\?=")
+        var last = 0
+        for (m in regex.findAll(raw)) {
+            sb.append(raw.substring(last, m.range.first))
+            sb.append(runCatching { javax.mail.internet.MimeUtility.decodeWord(m.value) }.getOrDefault(m.value))
+            last = m.range.last + 1
+        }
+        sb.append(raw.substring(last))
+        return sb.toString().trim()
+    }
+
     private fun parseEmail(msg: JMailMessage, accountId: String, folder: String, messageId: String?, uid: String): Email? {
         return try {
             val uid = uid
@@ -360,9 +380,12 @@ class EmailSyncEngineImpl(
             val inReplyTo = msg.getHeader("In-Reply-To")?.firstOrNull()
             val references = msg.getHeader("References")?.toList() ?: emptyList()
 
+            val fromAddrs = runCatching { msg.from }.getOrNull()
+            val fromAddr = (fromAddrs?.firstOrNull() as? javax.mail.internet.InternetAddress)
             val sender = EmailAddress(
-                name = msg.getHeader("From")?.firstOrNull()?.takeIf { it.contains("<") }?.substringBefore("<")?.trim(),
-                email = msg.getHeader("From")?.firstOrNull()?.takeIf { it.contains("<") }?.substringAfter("<")?.substringBefore(">")?.trim()
+                name = fromAddr?.personal?.takeIf { it.isNotBlank() },
+                email = fromAddr?.address?.takeIf { it.isNotBlank() }
+                    ?: msg.getHeader("From")?.firstOrNull()?.takeIf { it.contains("<") }?.substringAfter("<")?.substringBefore(">")?.trim()
                     ?: msg.getHeader("From")?.firstOrNull()?.trim() ?: ""
             )
 
@@ -373,7 +396,13 @@ class EmailSyncEngineImpl(
                 replyTo = parseReplyToAddresses(msg)
             )
 
-            val subject = msg.getHeader("Subject")?.firstOrNull() ?: ""
+            // ponytail: decode RFC2047 subjects robustly. msg.subject (the getter) and
+            // MimeUtility.decodeText both bail on adjacent encoded words with no
+            // whitespace between them (?==?), leaking raw =?utf-8?q? into the UI.
+            // Decode each encoded word individually via regex and concatenate, so
+            // servers that omit the inter-word space still render correctly.
+            val rawSubject = msg.getHeader("Subject")?.firstOrNull() ?: ""
+            val subject = decodeRfc2047Subject(rawSubject)
             val sentAt = parseDateHeader(msg, "Date")
             val receivedAt = parseDateHeader(msg, "Received") ?: sentAt
 
