@@ -64,7 +64,7 @@ class TaskSyncEngineImpl(
                         val parsed = ICalParser.parse(res.ical, account.id, list.path, entry.href)
                         parsed.tasks.firstOrNull() ?: continue
                         val task = parsed.tasks.first().copy(
-                            listId = list.path,
+                            listId = list.path.trimEnd('/'),
                             uid = uid,
                             etag = entry.etag,
                             isLocalOnly = false
@@ -99,7 +99,8 @@ class TaskSyncEngineImpl(
                 // (isLocalOnly tasks are kept — they were just pushed above.)
                 val serverUids = etagsUids(dav, lists)
                 for (list in lists) {
-                    val tasks = taskRepo.getByList(account.id, list.path).first()
+                    val normalizedPath = list.path.trimEnd('/')
+                    val tasks = taskRepo.getByList(account.id, normalizedPath).first()
                     for (local in tasks) {
                         if (!local.isLocalOnly && local.uid.isNotBlank() && local.uid !in serverUids) {
                             taskRepo.delete(local)

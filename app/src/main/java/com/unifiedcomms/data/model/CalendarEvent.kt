@@ -64,6 +64,10 @@ data class CalendarEvent(
     val geoLocation: GeoLocation? = null,
     @TypeConverters(EventDateTimeConverter::class) val startAt: EventDateTime,
     @TypeConverters(EventDateTimeConverter::class) val endAt: EventDateTime,
+    // ponytail: Long epoch mirror of startAt for SQL range/date queries. EventDateTime is
+    // stored as JSON TEXT (EventDateTimeConverter), so comparing it with Long params in SQL
+    // is lexicographic garbage. This column is the queryable index.
+    val startAtMs: Long = startAt.toInstant(kotlinx.datetime.TimeZone.of(startAt.timeZone)).toEpochMilliseconds(),
     val timezone: String = TimeZone.currentSystemDefault().id,
     @TypeConverters(EventColorConverter::class) val color: EventColor = EventColor.Default(),
     @TypeConverters(EventAttendeeConverter::class) val organizer: EventAttendee? = null,

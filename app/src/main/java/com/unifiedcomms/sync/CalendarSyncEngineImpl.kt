@@ -188,8 +188,11 @@ class CalendarSyncEngineImpl(
     override suspend fun deleteEvent(account: Account, calendarId: String, uid: String): SyncResult {
         // ponytail: delete both server object (if any) and local row. Server 404 is
         // treated as success (already gone). A local-only event has no server object.
+        // Normalize the href the same way createEvent's hrefFor does (single slash)
+        // to avoid double-slash paths that servers may not resolve.
         return try {
-            val href = "$calendarId/${uid}.ics".trimEnd('/').let { if (it.endsWith(".ics")) it else "$it.ics" }
+            val cal = calendarId.trimEnd('/')
+            val href = "$cal/$uid.ics"
             val local = calendarRepo.getEventByUid(uid, account.id)
             if (local != null && !local.isLocalOnly) {
                 val client = clientFor(account)

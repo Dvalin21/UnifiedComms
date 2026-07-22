@@ -40,20 +40,24 @@ object ProviderProfiles {
             carddavUrl = "https://www.googleapis.com/carddav/v1/"
         ),
         "outlook.com" to ProviderProfile(
-            caldavUrl = "https://outlook.office.com/owa/calendar/",
-            carddavUrl = "https://outlook.office.com/owa/contacts/"
+            imapHost = "outlook.office365.com", smtpHost = "smtp-mail.outlook.com",
+            caldavUrl = "https://outlook.office365.com/ews/exchange.asmx",
+            carddavUrl = "https://outlook.office365.com/ews/exchange.asmx"
         ),
         "hotmail.com" to ProviderProfile(
-            caldavUrl = "https://outlook.office.com/owa/calendar/",
-            carddavUrl = "https://outlook.office.com/owa/contacts/"
+            imapHost = "outlook.office365.com", smtpHost = "smtp-mail.outlook.com",
+            caldavUrl = "https://outlook.office365.com/ews/exchange.asmx",
+            carddavUrl = "https://outlook.office365.com/ews/exchange.asmx"
         ),
         "live.com" to ProviderProfile(
-            caldavUrl = "https://outlook.office.com/owa/calendar/",
-            carddavUrl = "https://outlook.office.com/owa/contacts/"
+            imapHost = "outlook.office365.com", smtpHost = "smtp-mail.outlook.com",
+            caldavUrl = "https://outlook.office365.com/ews/exchange.asmx",
+            carddavUrl = "https://outlook.office365.com/ews/exchange.asmx"
         ),
         "office365.com" to ProviderProfile(
-            caldavUrl = "https://outlook.office.com/owa/calendar/",
-            carddavUrl = "https://outlook.office.com/owa/contacts/"
+            imapHost = "outlook.office365.com", smtpHost = "smtp-mail.outlook.com",
+            caldavUrl = "https://outlook.office365.com/ews/exchange.asmx",
+            carddavUrl = "https://outlook.office365.com/ews/exchange.asmx"
         ),
         "icloud.com" to ProviderProfile(
             caldavUrl = "https://caldav.icloud.com/",

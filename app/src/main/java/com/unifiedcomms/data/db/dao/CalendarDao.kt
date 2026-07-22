@@ -53,34 +53,34 @@ interface CalendarEventDao {
     @Query("SELECT * FROM calendar_events WHERE accountId IN (:accountIds) AND isCancelled = 0 ORDER BY startAt ASC")
     fun getUnifiedCalendar(accountIds: List<String>): Flow<List<CalendarEvent>>
 
-    @Query("SELECT * FROM calendar_events WHERE accountId = :accountId AND startAt >= :start AND startAt <= :end AND isCancelled = 0 ORDER BY startAt ASC")
+    @Query("SELECT * FROM calendar_events WHERE accountId = :accountId AND startAtMs >= :start AND startAtMs <= :end AND isCancelled = 0 ORDER BY startAtMs ASC")
     fun getInRange(accountId: String, start: Long, end: Long): Flow<List<CalendarEvent>>
 
-    @Query("SELECT * FROM calendar_events WHERE accountId IN (:accountIds) AND startAt >= :start AND startAt <= :end AND isCancelled = 0 ORDER BY startAt ASC")
+    @Query("SELECT * FROM calendar_events WHERE accountId IN (:accountIds) AND startAtMs >= :start AND startAtMs <= :end AND isCancelled = 0 ORDER BY startAtMs ASC")
     fun getInRangeUnified(accountIds: List<String>, start: Long, end: Long): Flow<List<CalendarEvent>>
 
-    @Query("SELECT * FROM calendar_events WHERE accountId = :accountId AND date(startAt) = :date AND isCancelled = 0 ORDER BY startAt ASC")
+    @Query("SELECT * FROM calendar_events WHERE accountId = :accountId AND date(datetime(startAtMs / 1000, 'unixepoch')) = date(datetime(:date / 1000, 'unixepoch')) AND isCancelled = 0 ORDER BY startAtMs ASC")
     fun getForDate(accountId: String, date: Long): Flow<List<CalendarEvent>>
 
-    @Query("SELECT * FROM calendar_events WHERE accountId IN (:accountIds) AND date(startAt) = :date AND isCancelled = 0 ORDER BY startAt ASC")
+    @Query("SELECT * FROM calendar_events WHERE accountId IN (:accountIds) AND date(datetime(startAtMs / 1000, 'unixepoch')) = date(datetime(:date / 1000, 'unixepoch')) AND isCancelled = 0 ORDER BY startAtMs ASC")
     fun getForDateUnified(accountIds: List<String>, date: Long): Flow<List<CalendarEvent>>
 
-    @Query("SELECT * FROM calendar_events WHERE accountId = :accountId AND startAt >= :now AND isCancelled = 0 ORDER BY startAt ASC LIMIT :limit")
+    @Query("SELECT * FROM calendar_events WHERE accountId = :accountId AND startAtMs >= :now AND isCancelled = 0 ORDER BY startAtMs ASC LIMIT :limit")
     fun getUpcoming(accountId: String, now: Long, limit: Int): Flow<List<CalendarEvent>>
 
-    @Query("SELECT * FROM calendar_events WHERE accountId IN (:accountIds) AND startAt >= :now AND isCancelled = 0 ORDER BY startAt ASC LIMIT :limit")
+    @Query("SELECT * FROM calendar_events WHERE accountId IN (:accountIds) AND startAtMs >= :now AND isCancelled = 0 ORDER BY startAtMs ASC LIMIT :limit")
     fun getUpcomingUnified(accountIds: List<String>, now: Long, limit: Int): Flow<List<CalendarEvent>>
 
     @Query("SELECT * FROM calendar_events WHERE recurrenceRule IS NOT NULL AND accountId = :accountId")
     fun getRecurringEvents(accountId: String): Flow<List<CalendarEvent>>
 
-    @Query("SELECT * FROM calendar_events WHERE accountId = :accountId AND (:email IS NOT NULL OR 1=1) AND isCancelled = 0 ORDER BY startAt ASC")
+    @Query("SELECT * FROM calendar_events WHERE accountId = :accountId AND instr(organizer, :email) > 0 AND isCancelled = 0 ORDER BY startAtMs ASC")
     fun getOrganizedBy(accountId: String, email: String): Flow<List<CalendarEvent>>
 
-    @Query("SELECT * FROM calendar_events WHERE accountId = :accountId AND (:email IS NOT NULL OR 1=1) AND isCancelled = 0 ORDER BY startAt ASC")
+    @Query("SELECT * FROM calendar_events WHERE accountId = :accountId AND instr(attendees, :email) > 0 AND isCancelled = 0 ORDER BY startAtMs ASC")
     fun getAttendedBy(accountId: String, email: String): Flow<List<CalendarEvent>>
 
-    @Query("SELECT * FROM calendar_events WHERE (title LIKE :query OR description LIKE :query OR location LIKE :query) AND accountId IN (:accountIds) AND isCancelled = 0 ORDER BY startAt DESC LIMIT :limit")
+    @Query("SELECT * FROM calendar_events WHERE (title LIKE :query OR description LIKE :query OR location LIKE :query) AND accountId IN (:accountIds) AND isCancelled = 0 ORDER BY startAtMs DESC LIMIT :limit")
     fun searchEvents(query: String, accountIds: List<String>, limit: Int): Flow<List<CalendarEvent>>
 
     @Query("SELECT * FROM calendar_events WHERE needsSync = 1 AND accountId = :accountId")

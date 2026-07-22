@@ -42,21 +42,8 @@ class ContactRepositoryImpl(private val dao: ContactDao) : ContactRepository {
     override suspend fun getAllByAccountAndSource(accountId: String, source: ContactSource): List<UnifiedContact> =
         dao.getAllByAccountAndSource(accountId, source)
 
+    @androidx.room.Transaction
     override suspend fun mergeContacts(primaryId: String, secondaryIds: List<String>) {
-        val primary = getById(primaryId) ?: return
-        secondaryIds.forEach { secondaryId ->
-            val secondary = getById(secondaryId) ?: return@forEach
-            // Merge emails, phones, etc.
-            val merged = primary.copy(
-                emails = (primary.emails + secondary.emails).distinct(),
-                phoneNumbers = (primary.phoneNumbers + secondary.phoneNumbers).distinct(),
-                addresses = (primary.addresses + secondary.addresses).distinct(),
-                websites = (primary.websites + secondary.websites).distinct(),
-                notes = "${primary.notes ?: ""}\n\n-- Merged from ${secondary.displayName} --\n${secondary.notes ?: ""}",
-                tags = (primary.tags + secondary.tags).distinct()
-            )
-            update(merged)
-            deleteById(secondaryId)
-        }
+        dao.mergeContacts(primaryId, secondaryIds)
     }
 }

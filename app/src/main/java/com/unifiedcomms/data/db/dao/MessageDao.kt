@@ -49,7 +49,7 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE conversationId = :conversationId AND status IN (:statuses) ORDER BY sentAt ASC")
     fun getPendingMessages(conversationId: String, statuses: List<MessageStatus>): Flow<List<Message>>
 
-    @Query("SELECT * FROM messages WHERE senderId = :senderId AND recipientId = :recipientId ORDER BY sentAt DESC LIMIT :limit")
+    @Query("SELECT * FROM messages WHERE (senderId = :senderId AND recipientId = :recipientId) OR (senderId = :recipientId AND recipientId = :senderId) ORDER BY sentAt DESC LIMIT :limit")
     suspend fun getDirectMessages(senderId: String, recipientId: String, limit: Int): List<Message>
 
     @Query("SELECT * FROM messages WHERE content LIKE :query ORDER BY sentAt DESC LIMIT :limit")
@@ -240,4 +240,22 @@ interface ContactDao {
 
     @Query("SELECT * FROM contacts WHERE accountId = :accountId AND source = :source")
     suspend fun getAllByAccountAndSource(accountId: String, source: com.unifiedcomms.data.model.ContactSource): List<UnifiedContact>
+
+    @Transaction
+    suspend fun mergeContacts(primaryId: String, secondaryIds: List<String>) {
+        val primary = getById(primaryId) ?: return
+        secondaryIds.forEach { secondaryId ->
+            val secondary = getById(secondaryId) ?: return@forEach
+            val merged = primary.copy(
+                emails = (primary.emails + secondary.emails).distinct(),
+                phoneNumbers = (primary.phoneNumbers + secondary.phoneNumbers).distinct(),
+                addresses = (primary.addresses + secondary.addresses).distinct(),
+                websites = (primary.websites + secondary.websites).distinct(),
+                notes = "${primary.notes ?: ""}\n\n-- Merged from ${secondary.displayName} --\n${secondary.notes ?: ""}",
+                tags = (primary.tags + secondary.tags).distinct()
+            )
+            update(merged)
+            deleteById(secondaryId)
+        }
+    }
 }

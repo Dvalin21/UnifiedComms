@@ -300,8 +300,6 @@ val MockTask.isOverdue: Boolean
 val MockTask.priorityColor: Color
     get() = priority.color
 
-fun getMockTasks(): List<MockTask> = emptyList()
-
 private fun com.unifiedcomms.data.model.Task.toMockTask(): MockTask = MockTask(
     id = id,
     title = title,

@@ -48,6 +48,15 @@ object DemoDataSeeder {
         }
     }
 
+    suspend fun clearDemoData(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val db = UnifiedCommsDatabase.getInstance(context)
+        db.accountDao().getByEmail("demo@example.com")?.let { account ->
+            db.accountDao().delete(account)
+        }
+        prefs.edit().putBoolean(KEY_SEEDED, false).putBoolean(KEY_USER_REQUESTED_DEMO, false).commit()
+    }
+
     private suspend fun seed(context: Context) {
         val db = UnifiedCommsDatabase.getInstance(context)
         // Idempotent: never create a second demo account if one already exists.
