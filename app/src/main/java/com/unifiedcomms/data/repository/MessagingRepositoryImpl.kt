@@ -55,6 +55,8 @@ class MessagingRepositoryImpl(
 
     override suspend fun markMessagesRead(messageIds: List<String>) = msgDao.markRead(messageIds)
 
+    override suspend fun markConversationRead(conversationId: String, currentUserId: String) = convDao.markConversationRead(conversationId, currentUserId)
+
     // Conversations
     override suspend fun insertConversation(conversation: Conversation): Long = convDao.insert(conversation)
 

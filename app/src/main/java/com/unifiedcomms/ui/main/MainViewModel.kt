@@ -29,6 +29,7 @@ import com.unifiedcomms.sync.SendResult
 import com.unifiedcomms.sync.SyncManager
 import com.unifiedcomms.sync.SyncResult
 import com.unifiedcomms.sync.TaskSyncEngineImpl
+import com.unifiedcomms.sync.ChatSyncEngineImpl
 import com.unifiedcomms.data.model.UnifiedContact
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -60,6 +61,7 @@ class MainViewModel(
         CalendarSyncEngineImpl(calendarRepo, accountRepo, crypto, viewModelScope),
         TaskSyncEngineImpl(taskRepo, accountRepo, crypto, viewModelScope),
         ContactSyncEngineImpl(contactRepo, accountRepo, crypto, viewModelScope),
+        ChatSyncEngineImpl(messagingRepo, accountRepo, crypto, viewModelScope, app),
         accountRepo,
         viewModelScope,
         app,
@@ -165,9 +167,6 @@ class MainViewModel(
 
     suspend fun sendMessage(conversationId: String, content: String) {
         val currentUserId = com.unifiedcomms.data.model.getCurrentUserId()
-        // ponytail: ComposeMessageScreen passes the raw recipient as conversationId when no
-        // thread exists yet. Materialise a local DIRECT conversation so the message isn't
-        // orphaned (no Conversation row -> queries/listing break). (#18)
         var conversation = messagingRepo.getConversationById(conversationId)
         if (conversation == null) {
             val peer = conversationId
@@ -178,7 +177,7 @@ class MainViewModel(
             )
             messagingRepo.insertConversation(conversation)
         }
-        val message = Message(
+        val message = com.unifiedcomms.data.model.Message(
             conversationId = conversation.id,
             senderId = currentUserId,
             recipientId = conversation.participantIds.firstOrNull { it != currentUserId }.orEmpty(),
@@ -187,6 +186,26 @@ class MainViewModel(
         )
         messagingRepo.insertMessage(message)
         messagingRepo.updateLastMessage(conversation.id, message, currentUserId)
+        val account = getDefaultAccount()
+        if (account != null && account.syncConfig.syncChat) {
+            viewModelScope.launch {
+                val chatResult = runCatching { syncManager.sendChatMessage(account, conversation, message) }.getOrNull()
+                if (chatResult != null && chatResult.success) {
+                    messagingRepo.updateMessage(message.copy(status = com.unifiedcomms.data.model.MessageStatus.SENT, needsSync = false))
+                } else {
+                    messagingRepo.updateMessage(message.copy(status = com.unifiedcomms.data.model.MessageStatus.FAILED))
+                }
+            }
+        }
+        val peer = conversation?.getOtherParticipantNames(currentUserId)?.firstOrNull() ?: conversationId
+        if (com.unifiedcomms.util.MessagingForegroundGate.isOpen(conversationId).not()) {
+            com.unifiedcomms.util.NotificationHelper.showMessageNotification(
+                app,
+                conversationId,
+                peer,
+                content
+            )
+        }
     }
 
     suspend fun sendEmail(email: com.unifiedcomms.data.model.Email): SendResult {

@@ -26,6 +26,7 @@ interface MessagingRepository {
     suspend fun updateMessageStatus(id: String, status: MessageStatus): Int
     suspend fun markMessagesDelivered(messageIds: List<String>)
     suspend fun markMessagesRead(messageIds: List<String>)
+    suspend fun markConversationRead(conversationId: String, currentUserId: String)
 
     // Conversations
     suspend fun insertConversation(conversation: Conversation): Long
