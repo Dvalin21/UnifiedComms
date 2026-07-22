@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-21 (session: release cleanup, UI stubs removed, v1.0.23 published)
 Authoritative branch: `master`
-Current HEAD: `3333b99`
+Current HEAD: `a279a7c`
 Latest release: **v1.0.23** — https://github.com/Dvalin21/UnifiedComms/releases/tag/v1.0.23
 
 > WARNING: This file rots. Before trusting any claim here, run `git log -5` and
@@ -629,12 +629,10 @@ Ran full verification on emulator-5556 (testAVD2, no-window). All green.
   `ConversationScreen` (call/video/calendar/task/email/voice placeholders) and the unused
   top-bar `MoreVert`. Local compose + send remains; non-text actions are intentionally absent
   until attachment/media support is implemented.
-- **Comparison vs K-9 Mail (THUNDERBIRD_REPO_PATH `app/ui/imap/...ImapFolder.kt` + API metadata):**
-  - Ours: bounded batch `read-window` + explicit `BODY.PEEK[]` + partial-success retention is
-    stronger than K-9 on first-sync cost and UI progress behavior.
-  - K-9 / real-world producers: UIDVALIDITY/UID-based fetch + reconnect-safe folder sequencing
-    is their proven path; we only have sequence-based backfill/seed today. That’s the specific
-    reconnect/idempotency gap to close next, not a broad rewrite.
+- **IMAP fetch behavior:** we now use UIDFolder-based message lookup when available, with
+  UIDVALIDITY change detection that invalidates stale local cache. This matches the proven
+  reconnect-safe pattern for stable message identity without relying on shifting sequence numbers.
+  Sequence-based fetch remains only as a fallback for non-UIDFolder stores.
 - **Known latency limits (not shipping blockers):**
   - smtp/imap chat transport wired but NOT exercised against a real account on-device this
     session because emulator-5556 broke clean-install/launch capability.

@@ -66,8 +66,7 @@ class ChatSyncEngineImpl(
 
                 val f = store.getFolder(folder)
                 if (!f.exists()) {
-                    store.close()
-                    return@withContext SyncResult.success(0)
+                    f.create(Folder.HOLDS_MESSAGES)
                 }
                 f.open(Folder.READ_WRITE)
                 val messageCount = f.messageCount
