@@ -665,14 +665,10 @@ class EmailSyncEngineImpl(
             try {
                 val config = account.serverConfig
                 val auth = crypto.decryptAuthConfig(account.authConfig)
-                val props = Properties().apply {
-                    put("mail.imap.host", config.imapHost)
-                    put("mail.imap.port", config.imapPort)
-                    put("mail.imap.ssl.enable", config.imapUseSsl)
-                    put("mail.imap.connectiontimeout", 10000)
-                    put("mail.imap.timeout", 10000)
-                }
-                val session = Session.getInstance(props)
+                // ponytail: reuse openImapSession so acceptAllCerts is honored
+                // (testConnection previously built its own Properties and ignored
+                // the flag, so 993 + self-signed/wildcard certs failed silently).
+                val session = openImapSession(config)
                 val store = session.getStore("imap")
                 store.connect(config.imapHost, auth.username!!, auth.passwordEncrypted!!)
                 store.close()
