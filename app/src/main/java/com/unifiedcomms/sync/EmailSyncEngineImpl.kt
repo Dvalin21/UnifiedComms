@@ -150,9 +150,17 @@ class EmailSyncEngineImpl(
         }
 
         val MAX_INITIAL_MESSAGES = 300
-        val startIdx = maxOf(1, messageCount - MAX_INITIAL_MESSAGES + 1)
-        val effectiveCount = messageCount - startIdx + 1
-        Log.d("EmailSyncEngineImpl", "folder=$folderName total=$messageCount syncing most-recent $effectiveCount (from #$startIdx)")
+        val messages: Array<JMailMessage> = if (uidFolder != null) {
+            val uidNext = uidFolder.uidNext
+            val startUid = maxOf(1L, uidNext - MAX_INITIAL_MESSAGES)
+            val endUid = maxOf(0L, uidNext - 1)
+            if (endUid >= startUid) uidFolder.getMessagesByUID(startUid, endUid) else emptyArray()
+        } else {
+            val startIdx = maxOf(1, messageCount - MAX_INITIAL_MESSAGES + 1)
+            folder.getMessages(startIdx, messageCount)
+        }
+        val effectiveCount = messages.size
+        Log.d("EmailSyncEngineImpl", "folder=$folderName total=$messageCount syncing $effectiveCount via ${if (uidFolder != null) "UID" else "sequence"}")
 
         updateProgress(account.id, folderName, SyncStage.FETCHING_HEADERS, 0, effectiveCount)
 
@@ -162,81 +170,68 @@ class EmailSyncEngineImpl(
         val newItems = mutableListOf<String>()
         val updatedItems = mutableListOf<String>()
         val pendingFlagUpdates = mutableListOf<Pair<Email, com.unifiedcomms.data.model.EmailFlags>>()
+        val fp = FetchProfile()
+        fp.add(FetchProfile.Item.ENVELOPE)
+        fp.add(FetchProfile.Item.FLAGS)
+        fp.add("X-GM-LABELS")
+        fp.add("BODY.PEEK[]")
+        folder.fetch(messages, fp)
 
-        val batchSize = 50
-        for (start in startIdx..messageCount step batchSize) {
-            val end = minOf(start + batchSize - 1, messageCount)
-            val messages = folder.getMessages(start, end)
-
-            val fp = FetchProfile()
-            fp.add(FetchProfile.Item.ENVELOPE)
-            fp.add(FetchProfile.Item.FLAGS)
-            fp.add("X-GM-LABELS")
-            // PEEK fetches without setting SEEN, preserving unread state.
-            fp.add("BODY.PEEK[]")
-            folder.fetch(messages, fp)
-
-            for (msg in messages) {
-                if (!folder.isOpen) break
-                try {
-                    val messageId = msg.getHeader("Message-ID")?.firstOrNull()
-                    // Legacy local key only: once UID is available, imapUid becomes
-                    // the stable identity across reconnects.
-                    val sequenceUid = "$folderName#$start+${msg.messageNumber}"
-
-                    // Derive stable server UID from UIDFolder when available;
-                    // otherwise fall back to sequence-based key.
-                    val imapUid = uidFolder?.getUID(msg)?.toString() ?: sequenceUid
-                    val email = parseEmail(msg, account.id, folderName, messageId, imapUid)
-                    if (email != null) {
-                        val stableUid = serverUidValidity ?: email.uidValidity
-                        var local = emailRepo.getByImapUid(account.id, imapUid, folderName)
-                        if (local == null) {
-                            local = emailRepo.getByUid(account.id, email.uid, folderName)
-                        }
-                        if (local == null) {
-                            emailRepo.insert(email.copy(uidValidity = stableUid, imapUid = imapUid))
-                            newItems.add(email.id)
-                        } else if (local.etag != email.etag || local.flags != email.flags) {
-                            emailRepo.update(
-                                local.copy(
-                                    flags = email.flags,
-                                    labels = email.labels,
-                                    systemLabels = email.systemLabels,
-                                    etag = email.etag,
-                                    updatedAt = Clock.System.now(),
-                                    needsSync = false,
-                                    messageId = email.messageId,
-                                    subject = email.subject,
-                                    bodyText = email.bodyText,
-                                    bodyHtml = email.bodyHtml,
-                                    preview = email.preview,
-                                    uidValidity = stableUid ?: local.uidValidity,
-                                    imapUid = imapUid
-                                )
-                            )
-
-                            // Bidirectional flag sync: push local-only changes back to IMAP.
-                            // Established clients apply local flag changes with STORE so the
-                            // server agrees with the DB; without this, mark-as-read/unread only
-                            // works on-device and diverges on next reconnect.
-                            // Deferred to post-batch pass to avoid mutating READ_ONLY folder state
-                            // mid-iteration.
-                            pendingFlagUpdates.add(local to email.flags)
-
-                            updatedItems.add(local.id)
-                        }
-                        totalSynced++
-                    } else {
-                        parsedFail++
+        for (msg in messages) {
+            if (!folder.isOpen) break
+            try {
+                val messageId = msg.getHeader("Message-ID")?.firstOrNull()
+                val imapUid = uidFolder?.getUID(msg)?.toString()
+                    ?: "$folderName#${msg.messageNumber}"
+                val email = parseEmail(msg, account.id, folderName, messageId, imapUid)
+                if (email != null) {
+                    val stableUid = serverUidValidity ?: email.uidValidity
+                    var local = emailRepo.getByImapUid(account.id, imapUid, folderName)
+                    if (local == null) {
+                        local = emailRepo.getByUid(account.id, email.uid, folderName)
                     }
-                } catch (e: Exception) {
-                    totalFailed++
-                }
-            }
+                    if (local == null) {
+                        emailRepo.insert(email.copy(uidValidity = stableUid, imapUid = imapUid))
+                        newItems.add(email.id)
+                    } else if (local.etag != email.etag || local.flags != email.flags) {
+                        emailRepo.update(
+                            local.copy(
+                                flags = email.flags,
+                                labels = email.labels,
+                                systemLabels = email.systemLabels,
+                                etag = email.etag,
+                                updatedAt = Clock.System.now(),
+                                needsSync = false,
+                                messageId = email.messageId,
+                                subject = email.subject,
+                                bodyText = email.bodyText,
+                                bodyHtml = email.bodyHtml,
+                                preview = email.preview,
+                                uidValidity = stableUid ?: local.uidValidity,
+                                imapUid = imapUid
+                            )
+                        )
 
-            updateProgress(account.id, folderName, SyncStage.FETCHING_HEADERS, end, messageCount)
+                        // Bidirectional flag sync: push local-only changes back to IMAP.
+                        // Established clients apply local flag changes with STORE so the
+                        // server agrees with the DB; without this, mark-as-read/unread only
+                        // works on-device and diverges on next reconnect.
+                        // Deferred to post-batch pass to avoid mutating READ_ONLY folder state
+                        // mid-iteration.
+                        pendingFlagUpdates.add(local to email.flags)
+
+                        updatedItems.add(local.id)
+                    }
+                    totalSynced++
+                } else {
+                    parsedFail++
+                }
+            } catch (e: Exception) {
+                totalFailed++
+            }
         }
+
+        updateProgress(account.id, folderName, SyncStage.FETCHING_HEADERS, totalSynced, messages.size)
 
         if (pendingFlagUpdates.isNotEmpty() && folder.isOpen) {
             try {

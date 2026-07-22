@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.material3.AlertDialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.unifiedcomms.data.model.Message
@@ -148,8 +149,10 @@ fun ConversationScreen(
     onBack: () -> Unit
 ) {
     var conversation by remember { mutableStateOf<Conversation?>(null) }
+    val currentUserId = com.unifiedcomms.data.model.getCurrentUserId()
     LaunchedEffect(conversationId) {
         conversation = viewModel.messagingRepository.getConversationById(conversationId)
+        com.unifiedcomms.util.MessagingForegroundGate.setOpen(conversationId, true)
     }
     val messages by viewModel.messagingRepository.getMessagesByConversation(conversationId, 100, 0)
         .collectAsStateWithLifecycle(initialValue = emptyList())
@@ -158,29 +161,18 @@ fun ConversationScreen(
         conversation?.toMockConversation(messages)
             ?: MockConversation(conversationId, "Unknown", "", "No conversation", "", false, 0, ConversationType.DIRECT)
     }
+    DisposableEffect(conversationId) {
+        onDispose { com.unifiedcomms.util.MessagingForegroundGate.setOpen(conversationId, false) }
+    }
+    LaunchedEffect(messages, conversationId) {
+        val unread = messages.filter { it.recipientId == currentUserId && it.status != com.unifiedcomms.data.model.MessageStatus.READ }
+        if (unread.isNotEmpty()) {
+            runCatching { viewModel.messagingRepository.markConversationRead(conversationId, currentUserId) }
+            runCatching { viewModel.messagingRepository.markMessagesRead(unread.map { it.id }) }
+        }
+    }
     var messageText by remember { mutableStateOf("") }
-    var showDialog by remember { mutableStateOf<String?>(null) }
-    val dialogMessage = when (showDialog) {
-        "call" -> "Voice calls are not yet implemented."
-        "video" -> "Video calls are not yet implemented."
-        "attach" -> "Attachments are not yet implemented."
-        "calendar" -> "Calendar invites require a create_event flow."
-        "task" -> "Task sharing is not yet implemented."
-        "email" -> "Email sharing is not yet implemented."
-        "voice" -> "Voice messages are not yet implemented."
-        else -> ""
-    }
-
-    if (showDialog != null && dialogMessage.isNotBlank()) {
-        AlertDialog(
-            onDismissRequest = { showDialog = null },
-            title = { Text("Coming Soon") },
-            text = { Text(dialogMessage) },
-            confirmButton = { TextButton(onClick = { showDialog = null }) { Text("OK") } }
-        )
-    }
-
-    val coroutineScope = rememberCoroutineScope()
+    val scope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
@@ -195,11 +187,6 @@ fun ConversationScreen(
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Back")
                     }
-                },
-                actions = {
-                    IconButton(onClick = { showDialog = "call" }) { Icon(Icons.Default.Call, contentDescription = "Call") }
-                    IconButton(onClick = { showDialog = "video" }) { Icon(Icons.Default.Videocam, contentDescription = "Video call") }
-                    IconButton(onClick = { showDialog = "menu" }) { Icon(Icons.Default.MoreVert, contentDescription = "Menu") }
                 }
             )
         }
@@ -229,19 +216,6 @@ fun ConversationScreen(
                     modifier = Modifier.padding(16.dp).fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { showDialog = "attach" }) {
-                        Icon(Icons.Default.AttachFile, contentDescription = "Attach")
-                    }
-                    IconButton(onClick = { showDialog = "calendar" }) {
-                        Icon(Icons.Default.CalendarMonth, contentDescription = "Calendar invite")
-                    }
-                    IconButton(onClick = { showDialog = "task" }) {
-                        Icon(Icons.Default.Checklist, contentDescription = "Share task")
-                    }
-                    IconButton(onClick = { showDialog = "email" }) {
-                        Icon(Icons.Default.Email, contentDescription = "Share email")
-                    }
-
                     androidx.compose.material3.TextField(
                         value = messageText,
                         onValueChange = { messageText = it },
@@ -249,26 +223,20 @@ fun ConversationScreen(
                         placeholder = { Text("Message") },
                         singleLine = true
                     )
-
-                    IconButton(onClick = { showDialog = "voice" }) {
-                        Icon(Icons.Default.Mic, contentDescription = "Voice message")
-                    }
-
-                    IconButton(
-                        onClick = {
-                            if (messageText.isNotBlank()) {
-                                coroutineScope.launch {
-                                    viewModel.sendMessage(
-                                        conversationId = conversationId,
-                                        content = messageText
-                                    )
+                    if (messageText.isNotBlank() || true) {
+                        IconButton(
+                            onClick = {
+                                if (messageText.isNotBlank()) {
+                                    scope.launch {
+                                        viewModel.sendMessage(conversationId = conversationId, content = messageText)
+                                    }
+                                    messageText = ""
                                 }
-                                messageText = ""
-                            }
-                        },
-                        enabled = messageText.isNotBlank()
-                    ) {
-                        Icon(Icons.AutoMirrored.Default.Send, contentDescription = "Send", tint = MaterialTheme.colorScheme.primary)
+                            },
+                            enabled = messageText.isNotBlank()
+                        ) {
+                            Icon(Icons.AutoMirrored.Default.Send, contentDescription = "Send", tint = MaterialTheme.colorScheme.primary)
+                        }
                     }
                 }
             }
