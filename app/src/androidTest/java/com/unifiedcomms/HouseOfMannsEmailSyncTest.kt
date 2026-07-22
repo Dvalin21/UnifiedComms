@@ -30,7 +30,12 @@ import java.util.UUID
 class HouseOfMannsEmailSyncTest {
 
     private val user = "testbox@houseofmanns.com"
-    private val pass = "REMOVED_SECRET"
+    // ponytail: NEVER hardcode credentials in source. The password is injected at
+    // test runtime via instrumentation arg: -e password "...". Falls back to a
+    // placeholder so the test compiles but fails fast if not supplied.
+    private val pass = androidx.test.platform.app.InstrumentationRegistry
+        .getInstrumentation().arguments.getString("password")
+        ?: error("Supply test password via: -e password \"...\"")
 
     @Test
     fun fullEmailSyncRoundTrip(): Unit = runBlocking {
