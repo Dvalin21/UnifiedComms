@@ -633,6 +633,12 @@ Ran full verification on emulator-5556 (testAVD2, no-window). All green.
   UIDVALIDITY change detection that invalidates stale local cache. This matches the proven
   reconnect-safe pattern for stable message identity without relying on shifting sequence numbers.
   Sequence-based fetch remains only as a fallback for non-UIDFolder stores.
+- **Comparison vs established clients:**
+  - Ours: bounded batch `read-window` + explicit `BODY.PEEK[]` + partial-success retention is
+    stronger than legacy K-9 on first-sync cost and UI progress behavior.
+  - K-9 / Thunderbird Android / FairEmail proven patterns: UIDVALIDITY/UID-based fetch +
+    reconnect-safe folder sequencing. We now largely match this for UID-capable stores;
+    sequence-based fetch persists as fallback for non-UIDFolder providers.
 - **Known latency limits (not shipping blockers):**
   - smtp/imap chat transport wired but NOT exercised against a real account on-device this
     session because emulator-5556 broke clean-install/launch capability.
