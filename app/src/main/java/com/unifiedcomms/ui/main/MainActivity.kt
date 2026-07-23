@@ -125,10 +125,14 @@ private fun BiometricLockScreen(onUnlocked: () -> Unit) {
 }
 
 class MainActivity : FragmentActivity() {
+    // ponytail: expose the VM at class level so instrumented repro tests can add an
+    // account IN the app process (Room notifies the app's own Flow) and walk real nav.
+    lateinit var vm: MainViewModel
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
+            vm = viewModel()
             val mainPrefs = remember { PreferencesManager.getInstance() }
             val themeMode by mainPrefs.themeModeFlow.collectAsStateWithLifecycle(mainPrefs.getString("theme_mode", "system"))
             val systemDark = (getSystemService(Context.UI_MODE_SERVICE) as? android.app.UiModeManager)?.nightMode == android.app.UiModeManager.MODE_NIGHT_YES
@@ -148,7 +152,7 @@ class MainActivity : FragmentActivity() {
 
             UnifiedCommsTheme(darkTheme = effectiveDark) {
             val navController = rememberNavController()
-            val viewModel: MainViewModel = viewModel()
+            val viewModel: MainViewModel = vm
 
             val pendingTab = intent?.getStringExtra("navigate_to")?.let { raw ->
                 when (raw) {
@@ -202,6 +206,7 @@ class MainActivity : FragmentActivity() {
                                     onNavigateToConversation = { conversationId -> navController.navigate("conversation/$conversationId") },
                                     onNavigateToComposeMessage = { navController.navigate("compose_message") },
                                     onEventClick = { eventId -> navController.navigate("event_detail/$eventId") },
+                                    onCreateEvent = { navController.navigate("create_event") },
                                     onNavigateToContact = { contactId -> navController.navigate("contact_edit/$contactId") },
                                     onNavigateToContactNew = { navController.navigate("contact_new") },
                                     onNavigateToTask = { taskId -> navController.navigate("task_detail/$taskId") },
@@ -321,7 +326,13 @@ class MainActivity : FragmentActivity() {
                             composable("add_account") {
                                 AddAccountScreen(
                                     viewModel = viewModel,
-                                    onComplete = { navController.popBackStack() }
+                                    onComplete = {
+                                        // Land on the inbox after save (user requirement),
+                                        // regardless of whether add was launched from Settings.
+                                        navController.navigate("unified_inbox") {
+                                            popUpTo("unified_inbox") { inclusive = true }
+                                        }
+                                    }
                                 )
                             }
                             composable("account_settings/{accountId}") { backStackEntry ->
