@@ -15,8 +15,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.horizontalScroll
@@ -30,6 +34,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
+import kotlinx.datetime.Instant
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.material.icons.filled.AccountCircle
@@ -82,6 +87,7 @@ fun UnifiedInboxScreen(
     onNavigateToConversation: (String) -> Unit = {},
     onNavigateToComposeMessage: () -> Unit = {},
     onEventClick: (String) -> Unit = {},
+    onCreateEvent: () -> Unit = {},
     onNavigateToContact: (String) -> Unit = {},
     onNavigateToContactNew: () -> Unit = {},
     onNavigateToTask: (String) -> Unit = {},
@@ -185,7 +191,7 @@ fun UnifiedInboxScreen(
         Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
             when (selectedTab) {
                 0 -> EmailOverviewScreen(activeAccounts, viewModel, onNavigateToEmail, onNavigateToAddAccount)
-                1 -> CalendarScreen(viewModel, onNavigateToCalendar, onEventClick)
+                1 -> CalendarScreen(viewModel, onCreateEvent = onCreateEvent, onEventClick = onEventClick)
                 2 -> TasksScreen(viewModel, onCreateTask = onCreateTask, onTaskClick = { onNavigateToTask(it.id) })
                 3 -> MessagesScreen(viewModel, onConversationClick = onNavigateToConversation, onNewMessage = onNavigateToComposeMessage)
                 4 -> ContactsScreen(viewModel, onContactClick = onNavigateToContact, onAddContact = onNavigateToContactNew)
@@ -204,13 +210,23 @@ fun EmailOverviewScreen(
     onNavigateToEmail: (String, String) -> Unit,
     onAddAccount: () -> Unit = {}
 ) {
-    if (accounts.isEmpty()) {
+    val activeAccounts = accounts.filter { it.isActive }
+    val activeIds = activeAccounts.map { it.id }
+    val repo = viewModel.emailRepository
+    val emails by (if (activeIds.isEmpty()) kotlinx.coroutines.flow.flowOf(emptyList())
+    else repo.getUnifiedInbox(activeIds, listOf("INBOX"), 100))
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val accountColorById = remember(activeAccounts) {
+        activeAccounts.associate { it.id to AccountColors.getColorForAccount(it.id) }
+    }
+
+    if (emails.isEmpty()) {
         Column(
             modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(text = "No email yet", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Text(text = "No emails yet", fontWeight = FontWeight.Bold, fontSize = 18.sp)
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = "Add an account to see your inbox.",
@@ -224,57 +240,68 @@ fun EmailOverviewScreen(
         }
         return
     }
-    val repo = viewModel.emailRepository
-    Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(24.dp)
-    ) {
-        accounts.forEach { account ->
-            val color = AccountColors.getColorForAccount(account.id)
-            val inbox by repo.getUnreadByAccountAndFolder(account.id, "INBOX").collectAsStateWithLifecycle(initialValue = emptyList())
-            val sent by repo.getByAccountAndFolder(account.id, "Sent", 300, 0).collectAsStateWithLifecycle(initialValue = emptyList())
-            val drafts by repo.getByAccountAndFolder(account.id, "Drafts", 300, 0).collectAsStateWithLifecycle(initialValue = emptyList())
-            val trash by repo.getByAccountAndFolder(account.id, "Trash", 300, 0).collectAsStateWithLifecycle(initialValue = emptyList())
 
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        items(emails) { email ->
+            val color = accountColorById[email.accountId]
+                ?: com.unifiedcomms.ui.theme.AccountColor(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onPrimary, "Default")
+            val fromName = email.sender.name ?: email.sender.email
+            val avatarColor = color.container
+            val initials = email.sender.getInitials()
             Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerLow
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigateToEmail(email.accountId, "INBOX") },
+                color = if (email.isUnread()) MaterialTheme.colorScheme.surfaceContainerHighest
+                else MaterialTheme.colorScheme.surface,
+                tonalElevation = if (email.isUnread()) 1.dp else 0.dp
             ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(modifier = Modifier.weight(1f)) {
+                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier.size(40.dp).background(avatarColor, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = initials, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                    Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = account.name,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 18.sp,
-                                color = color.container,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                text = fromName,
+                                fontWeight = if (email.isUnread()) FontWeight.Bold else FontWeight.Normal,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
                             )
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = account.email,
-                                fontSize = 14.sp,
+                                text = java.time.format.DateTimeFormatter.ofPattern("MMM d, h:mm a").format(
+                                    java.time.LocalDateTime.ofInstant(
+                                        java.time.Instant.ofEpochMilli(email.receivedAt.toEpochMilliseconds()),
+                                        java.time.ZoneId.systemDefault()
+                                    )
+                                ),
+                                fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                maxLines = 1
                             )
                         }
-                    }
-                    Row(
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        FolderChip("Inbox", inbox.size, color.container, onClick = { onNavigateToEmail(account.id, "INBOX") })
-                        FolderChip("Sent", sent.size, color.container, onClick = { onNavigateToEmail(account.id, "Sent") })
-                        FolderChip("Drafts", drafts.size, color.container, onClick = { onNavigateToEmail(account.id, "Drafts") })
-                        FolderChip("Trash", trash.size, color.container, onClick = { onNavigateToEmail(account.id, "Trash") })
+                        Text(
+                            text = email.subject.ifBlank { "(no subject)" },
+                            fontWeight = if (email.isUnread()) FontWeight.SemiBold else FontWeight.Normal,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = email.getSnippet(),
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
             }
+            HorizontalDivider()
         }
     }
 }

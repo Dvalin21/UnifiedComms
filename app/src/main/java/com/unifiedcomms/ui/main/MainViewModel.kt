@@ -102,7 +102,9 @@ class MainViewModel(
     fun getAccountById(accountId: String): Account? = _accounts.value.find { it.id == accountId }
 
     suspend fun addAccount(account: Account) {
-        accountRepo.insert(account)
+        // First account becomes the default (root cause of "Default account OFF").
+        val toInsert = if (_accounts.value.isEmpty()) account.copy(isDefault = true) else account
+        accountRepo.insert(toInsert)
         loadAccounts()
     }
 
