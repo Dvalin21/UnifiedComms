@@ -930,3 +930,56 @@ Both would have shipped broken. Fixed in `ChatSyncEngineImpl.kt`, committed `cb8
 - Fix the 2 pre-existing unit-test failures in a dedicated pass (TZ resolution on test JVM;
   mergeContacts) — separate from the sync-engine work.
 
+## Session 2026-07-23 (late) — account-add "saving…" investigation (INCONCLUSIVE, restarted)
+
+### User report
+Adding a real account via the app's Add Account UI shows only "Saving…" and never
+completes. User is frustrated that emulator testing (nav screenshot + LiveDavE2ETest, which
+inserts the account PROGRAMMATICALLY via AccountRepositoryImpl.insertAccount — bypassing the
+UI ViewModel/save-coroutine path) never caught this.
+
+### What was examined (source-level, no fix applied)
+- `AddAccountScreen.kt` save flow (lines 436-567): Button sets `saving=true`, launches a
+  coroutine, `withTimeout(45_000){ viewModel.provisionAccount(draft) }`, then
+  `viewModel.addAccount(withSync)`, `finally { saving=false }`. Every code path resets
+  `saving` — so a *permanent* stick requires the coroutine to never reach `finally`.
+- `SyncManager.provision()` (lines 240-271): 4 concurrent `testConnection` asyncs with NO
+  per-call timeout. Comment on line 249 claims "Each test has its own 20s timeout" — that
+  code does NOT exist (false doc). Only bound is the outer 45s UI timeout.
+- `EmailSyncEngineImpl.testConnection` reuses `openImapSession` → sets
+  `mail.imap.connectiontimeout=60000` (line 335). So IMAP can't black-hole forever.
+- All CalDAV/CardDAV `testConnection` paths build `OkHttpClient` with connect/read timeouts
+  (15-60s). So DAV can't black-hole forever either.
+- `OAuthTokenRefresher.ensureFreshToken` early-returns for non-OAuth (line 37) — not the block.
+- `MainViewModel.addAccount` = `accountRepo.insert + loadAccounts` (lines 104-107).
+
+### Empirical repro (ran on emulator-5556, real account password)
+- `LiveChatE2ETest#liveChatRoundTrip` → OK (1 test, 4.7s). Chat envelope fix verified.
+- `AddAccountProvisionRepro#reproProvision` → with a BLACK-HOLE DAV host (10.255.255.1)
+  provision returned in 5.5s with calOk/conOk=true (DAV testConnection fails fast, not hang),
+  then `accountRepo.insert` succeeded in 108ms. So the programmatic save path works.
+- NOTE: the repro used a black-hole DAV host, NOT the user's real DAV host. The user's
+  actual hang (real `email.houseofmanns.com` DAV, MAILCOW draft with syncEmail=true +
+  calendar/contacts/tasks=true) was NOT reproduced. Root cause NOT confirmed.
+
+### Open question for next session
+The UI "Saving…" stick was NOT root-caused. Leading theories (unverified):
+1. The real-host DAV `testConnection` (principal/discovery walk) behaves differently than
+   the black-hole case — needs a repro with REAL MailcowDefaults DAV URLs.
+2. `provision`'s `withTimeout(45s)` cannot interrupt a blocking socket (JavaMail/OkHttp on
+   Dispatchers.IO with no suspension point); `finally` only runs when the blocking call
+   returns. If a real-host call exceeds 45s, UI appears stuck until it returns.
+3. `viewModel.addAccount` / Room insert on the real device (encryption/DB lock) — untested
+   against real-device behavior.
+
+RECOMMENDED NEXT STEP: run `AddAccountProvisionRepro` adapted to the REAL MailcowDefaults
+DAV URLs (not black-hole) to see if provision hangs with the actual host. Then, if UI-only,
+drive the real `AddAccountScreen` via `AddAccountAutodiscoverUiTest` (Compose UI rule)
+filling the real credentials and asserting `saving` clears or surfaces an error.
+
+### Files added this session (UNTAGGED, not committed — delete or keep as repro harness)
+- `app/src/androidTest/java/com/unifiedcomms/ProvisionHangReproTest.kt` (new, by agent)
+- `app/src/androidTest/java/com/unifiedcomms/AddAccountProvisionRepro.kt` (pre-existing untracked)
+Working tree otherwise clean. No app code changed this session. No secrets in tree
+(release.jks + local.properties gitignored; passwords via -e arg only).
+
