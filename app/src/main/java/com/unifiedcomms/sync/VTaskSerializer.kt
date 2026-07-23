@@ -19,6 +19,12 @@ object VTaskSerializer {
 
     fun toVtodo(task: Task, uid: String = task.uid.ifBlank { java.util.UUID.randomUUID().toString() }): String {
         val sb = StringBuilder()
+        // ponytail: CalDAV requires a full VCALENDAR envelope around the VTODO.
+        // A bare BEGIN:VTODO (no VCALENDAR) is rejected by SOGo/mailcow with 404 on
+        // PUT. Mirrors the VEventSerializer fix.
+        sb.appendLine("BEGIN:VCALENDAR")
+        sb.appendLine("VERSION:2.0")
+        sb.appendLine("PRODID:-//UnifiedComms//Tasks//EN")
         sb.appendLine("BEGIN:VTODO")
         sb.appendLine("UID:$uid")
 
@@ -55,6 +61,7 @@ object VTaskSerializer {
         if (task.categories.isNotEmpty()) sb.appendLine("CATEGORIES:${task.categories.joinToString(",") { escape(it) }}")
 
         sb.appendLine("END:VTODO")
+        sb.appendLine("END:VCALENDAR")
         return sb.toString()
     }
 

@@ -30,6 +30,13 @@ object VEventSerializer {
         uid: String = event.uid.ifBlank { java.util.UUID.randomUUID().toString() }
     ): String {
         val sb = StringBuilder()
+        // ponytail: CalDAV requires a full VCALENDAR envelope around the VEVENT.
+        // A bare BEGIN:VEVENT (no VCALENDAR) is rejected by SOGo/mailcow with 404
+        // on PUT. This matches what ICalParser reads back and what VTaskSerializer
+        // must also emit for VTODO.
+        sb.appendLine("BEGIN:VCALENDAR")
+        sb.appendLine("VERSION:2.0")
+        sb.appendLine("PRODID:-//UnifiedComms//Calendar//EN")
         sb.appendLine("BEGIN:VEVENT")
         sb.appendLine("UID:$uid")
         sb.appendLine("DTSTAMP:${nowUtcStamp()}")
@@ -71,6 +78,7 @@ object VEventSerializer {
         }
 
         sb.appendLine("END:VEVENT")
+        sb.appendLine("END:VCALENDAR")
         return sb.toString()
     }
 
