@@ -99,8 +99,17 @@ class ChatSyncEngineImpl(
                         if (existing == null) {
                             val normalized = normalizeChatMessage(msg, account, folder, chatUid)
                             if (normalized != null) {
-                                messagingRepo.insertMessage(normalized.first)
-                                normalized.second?.let { messagingRepo.updateConversation(it) }
+                                val (chatMsg, chatConv) = normalized
+                                // ponytail: Room enforces FK messages.conversationId ->
+                                // conversations.id. The conversation MUST exist before the
+                                // message is inserted, and updateConversation() only updates
+                                // an existing row (never creates one) — so upsert it here.
+                                chatConv?.let { conv ->
+                                    val known = messagingRepo.getConversationsByIds(listOf(conv.id)).firstOrNull()
+                                    if (known == null) messagingRepo.insertConversation(conv)
+                                    else messagingRepo.updateConversation(conv)
+                                }
+                                messagingRepo.insertMessage(chatMsg)
                                 synced++
                             }
                         }
@@ -222,7 +231,15 @@ class ChatSyncEngineImpl(
             val recipientEmail = InternetAddress.parse(recipientRaw).firstOrNull()?.address ?: ""
 
             val subject = msg.getHeader("Subject")?.firstOrNull() ?: ""
-            val content = msg.content?.toString() ?: ""
+            // ponytail: IMAP Part.content is a streaming IMAPInputStream (not materialized
+            // text); .toString() yields the object ref. Read the stream as text. String
+            // content (already-parsed text/plain) is used directly.
+            val rawContent = msg.content
+            val content = when (rawContent) {
+                is String -> rawContent
+                else -> runCatching { msg.getInputStream().bufferedReader().readText() }
+                    .getOrDefault(rawContent?.toString() ?: "")
+            }
             val chatConvId = msg.getHeader("X-Chat-Conversation-Id")?.firstOrNull()
                 ?: buildThreadId(account.email, setOf(senderEmail, recipientEmail))
 
