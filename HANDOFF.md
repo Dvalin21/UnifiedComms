@@ -1,8 +1,8 @@
 # UnifiedComms — HANDOFF (session restart)
 
-Last updated: 2026-07-22 (session: live IMAP E2E against houseofmanns.com — email sync PROVEN working)
+Last updated: 2026-07-22 (evening) — biometric re-fix + bottom-nav restructure + Live DAV E2E written (blocked server-side) + DAV server-architecture note from Keith
 Authoritative branch: `master`
-Current HEAD: `d5c4a68`
+Current HEAD: `d5c4a68` (v1.0.25). UNCOMMITTED working tree this session: biometric fix + nav restructure + LiveDavE2ETest + broken-test compile fix. Not yet pushed (Keith workflow: push when green+verified; fingerprint needs on-device confirm).
 Latest release: **v1.0.25** — https://github.com/Dvalin21/UnifiedComms/releases/tag/v1.0.25
 
 > WARNING: This file rots. Before trusting any claim here, run `git log -5` and
@@ -118,6 +118,15 @@ debug + androidTest APKs; run the instrument command above.
   Probe was a throwaway; removed after run.
 - **Note**: cannot screenshot-verify on the physical V2170A (can't press a finger remotely),
   but the mechanism is device-independent and proven on the identical code path.
+- **DOC-ROT CORRECTION (2026-07-22 evening)**: the claim above that the gate already used
+  `BIOMETRIC_WEAK or DEVICE_CREDENTIAL` was INACCURATE vs the code actually present this
+  session. At session start `MainActivity.BiometricLockScreen` used `BIOMETRIC_STRONG or
+  DEVICE_CREDENTIAL` ONLY (the "WEAK" was in a comment, not the `allowed` set). Result:
+  fingerprint enrolls as WEAK on the vivo/emulator → `canAuthenticate` returned
+  `BIOMETRIC_ERROR_NONE_ENROLLED` → Unlock button never rendered → user saw "device not
+  found" (his exact report). RE-FIXED this session by adding `BIOMETRIC_WEAK` to the set.
+  So the fix described here is NOW actually in the code; treat the 2026-07-16 "already fixed"
+  wording as wrong.
 - **ON-DEVICE STATUS (2026-07-16)**: app APK is now INSTALLED and RUNNING on the V2170A
   (verified: launches to "No accounts yet" + full bottom nav). The biometric fix is in that
   installed build.
@@ -587,7 +596,7 @@ Ran full verification on emulator-5556 (testAVD2, no-window). All green.
   `am force-stop com.android.packageinstaller` + reboot.
 
 ## Restart checklist
-1. `git status` + `git log -3` — confirm clean tree, HEAD = 346aa17 (or newer).
+1. `git status` + `git log -3` — confirm tree state. HEAD = `d5c4a68` (v1.0.25) with UNCOMMITTED biometric+nav+LiveDavE2E work this session.
 2. `./gradlew :app:assembleDebug :app:assembleAndroidTest :app:testDebugUnitTest` — BUILD GREEN THIS SESSION on stock emulator/device; treat any cached/green result from a prior session as stale.
 3. If resuming DAV write-proof: start both mocks (8088/8089) + `adb reverse` both, then run
    ContactSyncE2ETest + TaskSyncE2ETest. Strip DIAG logs from CalDAVClient.kt first/after.
@@ -723,4 +732,115 @@ For EACH remaining sync leg, replicate the houseofmanns method:
   avoid reading stale buffer lines from prior runs.
 - Server LOCKOUT: >2 wrong passwords in 2 min blocks the account. Entered creds
   exactly once per run; never hit the lockout.
+
+## DAV SERVER ARCHITECTURE (Keith, 2026-07-22) — READ BEFORE FIXING THE DAV 401
+Why the live CardDAV/CalDAV path is blocked at the server, and where the fix belongs.
+Two distinct stacks; only ONE goes through NPM.
+
+### Path A — mail protocols (IMAP 993/143, SMTP 587/465, POP 995)
+- These do NOT touch NPM or mailcow's nginx. NPM is an HTTP reverse proxy; it cannot
+  proxy IMAP. Port forwards / firewall send these straight to Dovecot + Postfix on
+  `10.0.0.26`. TLS terminates in Dovecot/Postfix, which serve the same
+  `/assets/ssl/cert.pem` — the `*.houseofmanns.com` wildcard.
+- So when Thunderbird/Outlook/an Android MUA dials `email.houseofmanns.com:993`:
+  - Cert covers `email.` (one label under `*.`) → validates, no trust warning.
+  - SNI is irrelevant to routing here. Dovecot with `ENABLE_SSL_SNI=n` presents the one
+    wildcard cert regardless of dialed name. `mail.`/`email.`/`imap.` all get the same cert.
+  - `server_name` is an nginx HTTP concept; Dovecot doesn't care what hostname you dialed.
+  - ONLY risk: DNS/forward for `email.:993` must actually reach `10.0.0.26`. If `email.`
+    resolves to NPM's box (`10.0.0.27`) and nothing forwards 993 from there → connection
+    refused (routing gap, NOT a cert problem).
+
+### Path B — HTTP discovery + ActiveSync/EAS (THIS is where the DAV 401 lives)
+- Before opening IMAP, Outlook fetches `https://autodiscover.houseofmanns.com/Autodiscover/
+  Autodiscover.xml`, Thunderbird fetches `https://autoconfig.houseofmanns.com/mail/
+  config-v1.1.xml`. Those are HTTPS → NPM → mailcow nginx. mailcow's `server_name` already
+  includes `autodiscover.*`/`autoconfig.*`, so they route. The NPM proxy hosts for those
+  two names cover the front hop.
+- mailcow autodiscover hands out `MAILCOW_HOSTNAME` = `mail.houseofmanns.com`. So an
+  autoconfiguring client connects to `mail.`, not `email.` — covered by the wildcard either
+  way; don't be surprised when account settings show `mail.`.
+- **ActiveSync/EAS** (Outlook mobile, native Android "Exchange"): Path B end-to-end —
+  `/Microsoft-Server-ActiveSync` over HTTPS through NPM into the SAME auth-gated nginx block
+  that serves `/SOGo/dav`. IF the DAV Basic-auth problem is NPM stripping `Authorization`,
+  EAS clients break identically. Same diagnosis, same fix.
+- **Conclusion for the app's LiveDavE2ETest**: the DAV failure (nginx/openresty bare 401,
+  no `WWW-Authenticate`) is server-side — the nginx `location /SOGo/dav` does not forward
+  Basic auth to SOGo the way `/SOGo/` web root does. The app code is correct (proven by the
+  mock E2E round-trips). When Keith fixes the nginx DAV auth, re-run `LiveDavE2ETest` AS-IS.
+
+### Verified host facts this session (curl + openssl, not assumed)
+- `/.well-known/caldav` → 301 → `https://email.houseofmanns.com/SOGo/dav/`.
+- `/SOGo/dav/testbox@houseofmanns.com` → 401 (valid principal). `/SOGo/dav/testbox@.../
+  Calendar/personal/` → 401 (valid collection). `/dav/SOGo/...` → 404 (Keith's stated URL
+  form is WRONG; canonical SOGo layout is `/SOGo/dav/<user>/...`).
+- IMAP `LOGIN testbox@houseofmanns.com` with the real password → OK on BOTH `email.` and
+  apex hosts (proves creds + full-email username form correct; no account lockout).
+- `email.houseofmanns.com/SOGo/dav` PROPFIND with correct Basic header → openresty 401,
+  no `WWW-Authenticate` (nginx gate, not SOGo).
+
+## Session 2026-07-22 (evening) — biometric re-fix + nav restructure + Live DAV E2E
+UNCOMMITTED on master (HEAD `d5c4a68`). Green builds; fingerprint needs on-device confirm.
+
+### Biometric lock — RE-FIXED (real root cause)
+- Symptom (Keith): "biometric fingerprint still doesn't work. Comes up as device not found
+  which is not true, I use it all the time."
+- Root cause: `MainActivity.BiometricLockScreen` `allowed` set = `BIOMETRIC_STRONG or
+  DEVICE_CREDENTIAL` ONLY. Fingerprint on the vivo/emulator enrolls as `BIOMETRIC_WEAK`, so
+  `canAuthenticate` returned `BIOMETRIC_ERROR_NONE_ENROLLED` → the Unlock button was never
+  rendered → "device not found / unavailable" text. (The 2026-07-16 HANDOFF block wrongly
+  claimed WEAK was already in the set — see DOC-ROT CORRECTION above; it was not.)
+- Fix: added `BiometricManager.Authenticators.BIOMETRIC_WEAK` to the set. Any enrolled
+  biometric (weak or strong) or device credential now satisfies the lock. The
+  `DEVICE_CREDENTIAL` negative-button guard (no `setNegativeButtonText` when credential
+  fallback present) was already correct and kept.
+- Verification: `:app:compileDebugKotlin --no-daemon --no-configuration-cache --rerun-tasks`
+  GREEN. Logic is device-independent; live fingerprint prompt needs Keith's device to
+  confirm end-to-end (can't press a finger remotely).
+
+### Bottom-nav restructure (screenshot-verified on emulator-5556)
+- Dropped the redundant account-card tab. The **Inbox** tab now lands straight on email
+  (`EmailOverviewScreen`) — Keith's exact ask ("inbox button at the bottom should go
+  straight to emails"). Accounts remain visible in Settings (top-bar gear → AccountBlock),
+  per his ask.
+- New 5-tab nav: `Inbox · Calendar · Tasks · Chat · People` (full words, no truncation —
+  vision-reviewed: all single-line, no wrap/ellipsis).
+- Added an empty state to the Inbox tab ("No email yet" + Add Account button) so it is
+  never a blank screen (was a blank white area when no account was synced).
+- Removed ~110 lines of dead account-card code (`UnifiedInboxContent` + `AccountInboxCard`)
+  — Ponytail: no dead code. They were only referenced by the removed tab.
+- Updated `MainActivity.pendingTab` deep-link indices to the new tab order
+  (inbox/email→0, calendar→1, tasks→2, messages→3, contacts→4).
+- Build: `:app:assembleDebug` GREEN. Screenshots: Inbox shows email directly + clean 5-tab
+  nav + proper empty state. Both light (default) verified.
+
+### Live DAV E2E — WRITTEN, blocked server-side (not an app bug)
+- New `app/src/androidTest/.../LiveDavE2ETest.kt`: 3 methods — `liveContactsSync`
+  (CardDAV), `liveCalendarSync` (CalDAV VEVENT), `liveTasksSync` (VTODO) — exercising the
+  REAL engine against `email.houseofmanns.com/SOGo/dav/<user>/...`. Password injected at
+  runtime via `-e password "..."` (NEVER hardcoded; credential policy honored).
+- Also FIXED a latent compile break in the existing `HouseOfMannsEmailSyncTest.kt`
+  (`getInstrumentation().arguments` — wrong androidx.test API — blocked the ENTIRE
+  androidTest compile). Now uses `InstrumentationRegistry.getArguments()`.
+- Ran the contact canary: creds CORRECT (IMAP 993 LOGIN OK, no lockout). DAV blocked by the
+  nginx/openresty bare 401 described in the DAV SERVER ARCHITECTURE block above. The app
+  code path is correct; the server must forward Basic auth for `/SOGo/dav`. Re-run
+  `LiveDavE2ETest` as-is once Keith fixes nginx.
+- Run command (both APKs installed, emulator-5556):
+  `adb -s emulator-5556 shell am instrument -w -r -e user testbox@houseofmanns.com \
+   -e password '...' -e class com.unifiedcomms.LiveDavE2ETest \
+   com.unifiedcomms.debug.test/androidx.test.runner.AndroidJUnitRunner`
+
+### Build/verify status (this session)
+- `:app:compileDebugKotlin --rerun-tasks` GREEN. `:app:assembleDebug` GREEN.
+- androidTest compile GREEN after the HouseOfMannsEmailSyncTest fix.
+- UI verified via `adb screencap` + vision review (Inbox tab + empty state + 5-tab nav).
+
+### Carry-over / next
+- Commit + push the biometric fix + nav restructure (Keith workflow: green+verified → push).
+- LiveDavE2ETest: re-run after Keith fixes nginx DAV Basic-auth. Credentials NOT stored.
+- Chat feature: Keith named it the next build item. `MessagesScreen` is currently a stub
+  (ChatSyncEngineImpl transport wired 2026-07-21 but not exercised on-device). Scope it
+  before building.
+- Biometric: confirm on-device fingerprint prompt once Keith installs the new build.
 

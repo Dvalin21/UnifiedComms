@@ -92,11 +92,11 @@ fun UnifiedInboxScreen(
     val activeAccounts = accounts.value.filter { it.isActive }.distinctBy { it.id }
     val coroutineScope = rememberCoroutineScope()
 
-    var selectedTab by rememberSaveable { mutableIntStateOf(initialTab?.coerceIn(0, 5) ?: 0) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(initialTab?.coerceIn(0, 4) ?: 0) }
     val pendingTab by viewModel.pendingTab.collectAsStateWithLifecycle()
     LaunchedEffect(pendingTab) {
         pendingTab?.let {
-            selectedTab = it.coerceIn(0, 5)
+            selectedTab = it.coerceIn(0, 4)
             viewModel.clearPendingTab()
         }
     }
@@ -150,11 +150,10 @@ fun UnifiedInboxScreen(
                 ) {
                     val items = listOf(
                         NavigationItem("Inbox", Icons.Default.Inbox, 0),
-                        NavigationItem("Email", Icons.Default.Email, 1),
-                        NavigationItem("Cal", Icons.Default.CalendarMonth, 2),
-                        NavigationItem("Tasks", Icons.Default.Checklist, 3),
-                        NavigationItem("Chat", Icons.AutoMirrored.Default.Message, 4),
-                        NavigationItem("People", Icons.Default.Contacts, 5)
+                        NavigationItem("Calendar", Icons.Default.CalendarMonth, 1),
+                        NavigationItem("Tasks", Icons.Default.Checklist, 2),
+                        NavigationItem("Chat", Icons.AutoMirrored.Default.Message, 3),
+                        NavigationItem("People", Icons.Default.Contacts, 4)
                     )
                     items.forEach { item ->
                         NavigationBarItem(
@@ -175,12 +174,11 @@ fun UnifiedInboxScreen(
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
             when (selectedTab) {
-                0 -> UnifiedInboxContent(activeAccounts, onNavigateToEmail, onAddAccount = onNavigateToAddAccount, viewModel = viewModel)
-                1 -> EmailOverviewScreen(activeAccounts, viewModel, onNavigateToEmail)
-                2 -> CalendarScreen(viewModel, onNavigateToCalendar, onEventClick)
-                3 -> TasksScreen(viewModel, onCreateTask = onCreateTask, onTaskClick = { onNavigateToTask(it.id) })
-                4 -> MessagesScreen(viewModel, onConversationClick = onNavigateToConversation, onNewMessage = onNavigateToComposeMessage)
-                5 -> ContactsScreen(viewModel, onContactClick = onNavigateToContact, onAddContact = onNavigateToContactNew)
+                0 -> EmailOverviewScreen(activeAccounts, viewModel, onNavigateToEmail, onNavigateToAddAccount)
+                1 -> CalendarScreen(viewModel, onNavigateToCalendar, onEventClick)
+                2 -> TasksScreen(viewModel, onCreateTask = onCreateTask, onTaskClick = { onNavigateToTask(it.id) })
+                3 -> MessagesScreen(viewModel, onConversationClick = onNavigateToConversation, onNewMessage = onNavigateToComposeMessage)
+                4 -> ContactsScreen(viewModel, onContactClick = onNavigateToContact, onAddContact = onNavigateToContactNew)
             }
         }
     }
@@ -190,117 +188,32 @@ data class NavigationItem(val label: String, val icon: ImageVector, val index: I
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UnifiedInboxContent(
-    accounts: List<Account>,
-    onNavigateToEmail: (String, String) -> Unit,
-    onAddAccount: () -> Unit = {},
-    viewModel: MainViewModel
-) {
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        if (accounts.isEmpty()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 24.dp),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(text = "No accounts yet", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Add an email, calendar, or messaging account to get started.",
-                    fontSize = 14.sp
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                androidx.compose.material3.Button(onClick = onAddAccount) {
-                    androidx.compose.material3.Text("Add Account")
-                }
-            }
-            return@Column
-        }
-        accounts.forEachIndexed { _, account ->
-            val color = AccountColors.getColorForAccount(account.id)
-            AccountInboxCard(
-                account = account,
-                color = color,
-                viewModel = viewModel,
-                onClick = { onNavigateToEmail(account.id, "INBOX") }
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun AccountInboxCard(
-    account: Account,
-    color: com.unifiedcomms.ui.theme.AccountColor,
-    viewModel: MainViewModel,
-    onClick: () -> Unit
-) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .clickable(onClick = onClick)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(28.dp)),
-        color = color.container,
-        tonalElevation = 3.dp,
-        shape = RoundedCornerShape(28.dp)
-    ) {
-        androidx.compose.foundation.layout.Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Account avatar/indicator
-            androidx.compose.foundation.layout.Box(
-                modifier = Modifier.size(40.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = (account.name.firstOrNull()?.uppercase() ?: "?"),
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = color.onContainer
-                )
-            }
-            androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(12.dp))
-            // Account info
-            androidx.compose.foundation.layout.Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(text = account.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = color.onContainer)
-                Text(text = account.email, fontSize = 14.sp, color = color.onContainer.copy(alpha = 0.8f))
-            }
-            // Unread count badge (hidden when zero)
-            val inbox by viewModel.emailRepository.getUnreadByAccountAndFolder(account.id, "INBOX").collectAsStateWithLifecycle(initialValue = emptyList())
-            if (inbox.isNotEmpty()) {
-                androidx.compose.foundation.layout.Box(
-                    modifier = Modifier
-                        .padding(start = 8.dp)
-                        .wrapContentSize()
-                        .background(Color(0xFF6750A4), RoundedCornerShape(12.dp))
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text(text = inbox.size.toString(), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
 fun EmailOverviewScreen(
     accounts: List<Account>,
     viewModel: MainViewModel,
-    onNavigateToEmail: (String, String) -> Unit
+    onNavigateToEmail: (String, String) -> Unit,
+    onAddAccount: () -> Unit = {}
 ) {
+    if (accounts.isEmpty()) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(text = "No email yet", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Add an account to see your inbox.",
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            androidx.compose.material3.Button(onClick = onAddAccount) {
+                androidx.compose.material3.Text("Add Account")
+            }
+        }
+        return
+    }
     val repo = viewModel.emailRepository
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp),
