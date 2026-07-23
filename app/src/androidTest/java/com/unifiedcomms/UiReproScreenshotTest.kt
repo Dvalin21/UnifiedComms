@@ -113,8 +113,9 @@ class UiReproScreenshotTest : kotlinx.coroutines.CoroutineScope {
         }
         Thread.sleep(2500)
 
-        // Calendar (month) view.
-        tapText("Calendar", 2500)
+        // Calendar (month) view — 2nd bottom-nav tab is at x=280 on this build
+        // (Inbox=100, Calendar=280, Tasks=453, Chat=626, People=799; y=2171).
+        ui.click(280, 2171); Thread.sleep(2500)
         ui.executeShellCommand("rm -f /sdcard/uc_calendar.png")
         ui.executeShellCommand("screencap -p /sdcard/uc_calendar.png")
         Thread.sleep(300)
