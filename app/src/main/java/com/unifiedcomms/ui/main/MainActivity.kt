@@ -48,18 +48,14 @@ private fun BiometricLockScreen(onUnlocked: () -> Unit) {
     val biometricManager = remember { BiometricManager.from(context) }
     var statusMessage by remember { mutableStateOf("") }
 
-    // ponytail: root cause of "device not available" — calling setNegativeButtonText()
-    // together with DEVICE_CREDENTIAL in setAllowedAuthenticators() makes PromptInfo.build()
-    // throw IllegalArgumentException (Android forbids a negative button when the credential
-    // fallback is offered). The exception fired on tap, so the lock looked broken.
-    // Fix: use BIOMETRIC_STRONG only (fingerprint enrolls as STRONG on every real device),
-    // keep the Cancel button, and surface the real canAuthenticate() code for diagnosis.
-    // The lock is enforced: there is NO bypass path out of this dialog.
-    // ponytail: some OEMs enroll the fingerprint as BIOMETRIC_WEAK, so a
-    // BIOMETRIC_STRONG-only check reports "none enrolled" and the lock is
-    // unreachable. Allow STRONG-or-DEVICE_CREDENTIAL so a PIN/pattern also
-    // unlocks, and the check passes for any enrolled strong biometric.
+    // ponytail: root cause of "device not found" — the gate used BIOMETRIC_STRONG only,
+    // but many devices/emulators enroll fingerprint as BIOMETRIC_WEAK, so
+    // canAuthenticate(STRONG or DEVICE_CREDENTIAL) returns NONE_ENROLLED and the Unlock
+    // button is never shown. Include BIOMETRIC_WEAK so a real enrolled fingerprint passes.
+    // DEVICE_CREDENTIAL stays as a PIN/pattern fallback. Android forbids
+    // setNegativeButtonText() when DEVICE_CREDENTIAL is in the set (handled below).
     val allowed = BiometricManager.Authenticators.BIOMETRIC_STRONG or
+        BiometricManager.Authenticators.BIOMETRIC_WEAK or
         BiometricManager.Authenticators.DEVICE_CREDENTIAL
     val canAuth = remember(biometricManager, activity) {
         if (activity == null) BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED
@@ -156,11 +152,11 @@ class MainActivity : ComponentActivity() {
 
             val pendingTab = intent?.getStringExtra("navigate_to")?.let { raw ->
                 when (raw) {
-                    "inbox", "unified_inbox" -> 0
-                    "email" -> 1
-                    "calendar" -> 2
-                    "tasks" -> 3
-                    "messages" -> 4
+                    "inbox", "unified_inbox", "email" -> 0
+                    "calendar" -> 1
+                    "tasks" -> 2
+                    "messages" -> 3
+                    "contacts" -> 4
                     else -> null
                 }
             }
