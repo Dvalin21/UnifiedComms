@@ -73,6 +73,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.TimeoutCancellationException
 
 import androidx.compose.ui.res.painterResource
@@ -521,13 +522,11 @@ fun AddAccountScreen(
                                 }
                                 // Disable any DAV sync legs that failed to connect (honest,
                                 // not silent — the user is told which failed after save).
-                                val withSync = draft.copy(
-                                    syncConfig = draft.syncConfig.copy(
-                                        syncCalendar = draft.syncConfig.syncCalendar && provision.calendarOk,
-                                        syncContacts = draft.syncConfig.syncContacts && provision.contactsOk,
-                                        syncTasks = draft.syncConfig.syncTasks && provision.tasksOk
-                                    )
-                                )
+                                // ponytail: keep the user's sync intent. Do NOT silently disable
+                                // calendar/contacts on a failed DAV probe — that was the root
+                                // cause of "calendar/contacts default OFF". Surface DAV failure as
+                                // a non-blocking note (davNotes below); let sync retry later.
+                                val withSync = draft
                                 runCatching { viewModel.addAccount(withSync) }
                                     .onFailure { e ->
                                         error = "Could not save account: ${e.message ?: e::class.simpleName}"
@@ -551,6 +550,9 @@ fun AddAccountScreen(
                                 // cancelled when the user leaves this screen, which would
                                 // abort the in-flight sync and leave every folder empty.
                                 viewModel.syncAccountAsync(withSync)
+                                // Auto-return to the inbox on successful save (user requirement).
+                                kotlinx.coroutines.delay(700)
+                                onComplete()
                             } catch (e: TimeoutCancellationException) {
                                 error = "Save timed out contacting the server (45s). Check the IMAP/CalDAV host and try again."
                             } catch (e: Exception) {

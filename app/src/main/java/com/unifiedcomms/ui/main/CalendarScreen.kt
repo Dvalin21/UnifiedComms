@@ -142,8 +142,7 @@ fun CalendarScreen(
                         text = currentDate.value.format(java.time.format.DateTimeFormatter.ofPattern("MMMM yyyy")),
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Ellipsis
+                        softWrap = false
                     )
                 },
                 actions = {
