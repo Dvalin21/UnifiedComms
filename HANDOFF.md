@@ -1,12 +1,80 @@
 # UnifiedComms — HANDOFF (session restart)
 
-Last updated: 2026-07-22 (evening) — biometric re-fix + bottom-nav restructure + Live DAV E2E written (blocked server-side) + DAV server-architecture note from Keith
+Last updated: 2026-07-23 — provision "Saving…" hang ROOT-CAUSED + FIXED (measured) + signed v1.0.25 released. Live happy-path E2E PENDING: blocked only on testbox password (user will supply after restart).
 Authoritative branch: `master`
-Current HEAD: `d5c4a68` (v1.0.25). UNCOMMITTED working tree this session: biometric fix + nav restructure + LiveDavE2ETest + broken-test compile fix. Not yet pushed (Keith workflow: push when green+verified; fingerprint needs on-device confirm).
-Latest release: **v1.0.25** — https://github.com/Dvalin21/UnifiedComms/releases/tag/v1.0.25
+Current HEAD: `a3a9227` (v1.0.25). Working tree: CLEAN. Latest release: **v1.0.25** (Latest) — https://github.com/Dvalin21/UnifiedComms/releases/tag/v1.0.25 — contains signed `unifiedcomms-v1.0.25-release.apk` (10.8 MB, versionCode 25, apksigner v1+v2 verified, CN=UnifiedComms).
 
 > WARNING: This file rots. Before trusting any claim here, run `git log -5` and
 > `git status`. Git is the source of truth, not this doc.
+
+## Session 2026-07-23 — provision "Saving…" hang: root cause + fix + release
+
+### Symptom
+Add-account screen clicked Confirm → stuck on "Saving…" indefinitely (pre-band-aid) /
+for minutes. Band-aid commit `3678a9b` added `withTimeout(45_000){ provisionAccount }`
++ `finally { saving=false }` in AddAccountScreen, which masked the wedge but left the
+engine architecturally broken.
+
+### Root cause (REPRODUCED on emulator-5556, no live creds — black-hole host 10.255.255.1)
+1. `SyncManager.provision()` ran 4 concurrent `testConnection` legs with NO internal
+   timeout. A dead/half-open CalDAV host made `CalDAVClient.findPrincipalPath()` do
+   **6 sequential PROPFIND attempts** (baseUrl + 5 COMMON_CALDAV_PATHS), each 20s =
+   **~120s**. The IMAP leg inherited `mail.imap.timeout=300000` (5 min) from
+   `openImapSession`.
+2. Coroutine cancellation CANNOT interrupt OS-level TCP connect. `withTimeout`/`withTimeoutOrNull`
+   around the blocking connect wait for it to finish — so the 45s UI cap did not fire.
+   (Proven: `withTimeoutOrNull(45s){ provision }` returned only after 120s.)
+3. `CalendarSyncEngineImpl`/`ContactSyncEngineImpl`/`TaskSyncEngineImpl` `testConnection`
+   built OKHttp clients with 20s timeouts (works in isolation — raw probe aborted at
+   20038ms), but the sequential walk multiplied them to 120s.
+4. SECONDARY BUG found: against a dead host, Contacts/Tasks `testConnection` reported
+   `ok=true` (false success) because the discover fallback returned a default collection.
+
+### The fix (commit 545515b, version bump a3a9227)
+- `EmailSyncEngineImpl.timedConnect()`: bounds the blocking IMAP `store.connect()` via
+  `Future.get(timeout)` on a daemon thread pool. 15s for `testConnection`, 30s/attempt
+  (retry once) for real sync. CRITICAL: do NOT call `store.close()` on timeout — close()
+  blocks on the uncancellable connect thread (observed +105s self-inflicted hang during
+  debugging). `future.cancel(true)` + return immediately.
+- `CalDAVClient.propfind` is now `suspend` (cancellation checkpoint); each `discoverX()`
+  (`discoverCalendars`/`discoverTaskLists`/`discoverAddressBooks`) wrapped in
+  `withTimeout(20_000)`. `findPrincipalPath`/`tryFindPrincipalAt`/`findCalendarHomeSet`
+  made `suspend` to call it. The 6× walk is now capped at 20s.
+- `SyncManager.provision()` comment corrected (the "20s per leg" claim was FALSE — there
+  was no such timeout).
+
+### Proof (characterization test, black-hole host — since deleted, not committed)
+- provision() wall-clock: **120,285ms → 20,162ms**.
+- All 4 legs now `ok=false` on a dead host (no more false-success for contacts/tasks).
+
+### Release
+- `versionCode 25 / versionName "1.0.25"`.
+- `./gradlew :app:assembleRelease --rerun-tasks` → `app/build/outputs/apk/release/app-release.apk`
+  (10.8 MB). apksigner v1+v2 verified (CN=UnifiedComms).
+- Pushed `master` to `a3a9227`. Moved `v1.0.25` tag to HEAD; recreated GitHub release
+  with signed `unifiedcomms-v1.0.25-release.apk`. Deleted the stale `v1.0.24` release
+  (had only a debug APK + a redundant signed .24) to fix the version mismatch Keith saw
+  (.24 said vs .25 latest).
+
+### REMAINING (PENDING) — live happy-path E2E
+- NOT yet run. Needs `testbox@houseofmanns.com` password, injected at runtime via
+  `-e password` (NEVER hardcoded — credential policy).
+- Lockout: account locks after >2 wrong passwords in 2 min. DO NOT guess.
+- The `LiveDavE2ETest` harness (app/src/androidTest/java/com/unifiedcomms/LiveDavE2ETest.kt)
+  is the real E2E (contacts/calendar/tasks CRUD vs email.houseofmanns.com). Verified it
+  COMPILES + RUNS against the fixed build: it fails only at the password guard (no server
+  contact, no lockout) — `IllegalStateException: Supply the live test password...`.
+- Server config (verified from KTC_MAIL scripts): IMAP 993 implicit TLS (cert SAN is
+  `*.houseofmanns.com` wildcard → app must use `acceptAllCerts=true`, OR IMAP 143
+  STARTTLS); SMTP 587 STARTTLS works.
+- Run command (after restart, with password):
+  ```
+  adb -s emulator-5556 shell am instrument -w -r \
+    -e user testbox@houseofmanns.com -e password 'THE_PASSWORD' \
+    -e class com.unifiedcomms.LiveDavE2ETest \
+    com.unifiedcomms.debug.test/androidx.test.runner.AndroidJUnitRunner
+  ```
+- Debug APKs already installed on emulator-5556 (com.unifiedcomms.debug + .test), tree clean.
 
 ## What the app is
 Unified communications client for Android (email + calendar + tasks + encrypted
