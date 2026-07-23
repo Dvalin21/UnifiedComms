@@ -27,11 +27,13 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -84,28 +86,13 @@ fun TasksScreen(
             TopAppBar(
                 title = { Text("Tasks", fontWeight = FontWeight.Bold) },
                 actions = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                    IconButton(onClick = { /* Filter */ }) {
-                        Icon(Icons.Default.FilterList, contentDescription = "Filter")
-                    }
-                    IconButton(onClick = onCreateTask) {
-                        Icon(Icons.Default.Add, contentDescription = "New Task")
-                    }
-                    }
+                    // ponytail: the old lone filter IconButton was a dead no-op (onClick = {})
+                    // and the Add action lived in a FAB that floated over the list, colliding
+                    // with content. Both actions now live as correctly-sized, clearly-labeled
+                    // controls in the filter Surface below (see TaskFilter row + Add pill),
+                    // matching where the user expects them. No duplicate FAB.
                 }
             )
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = onCreateTask,
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Create task")
-            }
         }
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
@@ -125,6 +112,19 @@ fun TasksScreen(
                                 }
                             }
                         )
+                    }
+                    // ponytail: real, correctly-sized "New Task" action placed inline with the
+                    // filters (where it reads as a control, not a floating overlay). Pill height
+                    // matches the FilterChips so the row stays aligned.
+                    OutlinedButton(
+                        onClick = onCreateTask,
+                        modifier = Modifier.height(40.dp),
+                        shape = RoundedCornerShape(20.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("New Task", maxLines = 1, softWrap = false)
                     }
                 }
             }

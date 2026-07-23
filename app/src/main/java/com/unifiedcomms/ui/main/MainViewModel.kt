@@ -161,6 +161,20 @@ class MainViewModel(
         }
     }
 
+    // Calendar-screen trigger: sync calendar for the active accounts without
+    // blocking (used by CalendarScreen's LaunchedEffect so events surface on open).
+    fun syncCalendarForAccounts(accountIds: List<String>) {
+        if (accountIds.isEmpty()) return
+        viewModelScope.launch {
+            for (id in accountIds) {
+                val account = accountRepository.getById(id) ?: continue
+                if (account.syncConfig.syncCalendar) {
+                    runCatching { syncManager.syncCalendar(account) }
+                }
+            }
+        }
+    }
+
     /** Pre-persist gate: prove the connection over TLS before saving. See SyncManager.provision. */
     suspend fun provisionAccount(account: Account): com.unifiedcomms.sync.ProvisionResult =
         syncManager.provision(account)

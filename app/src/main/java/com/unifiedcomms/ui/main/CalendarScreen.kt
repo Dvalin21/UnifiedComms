@@ -6,6 +6,7 @@ import androidx.compose.material.icons.filled.Search
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,6 +50,8 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CalendarViewDay
 import androidx.compose.material.icons.filled.CalendarViewMonth
 import androidx.compose.material.icons.filled.CalendarViewWeek
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.MoreVert
@@ -67,6 +70,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -100,58 +104,117 @@ fun CalendarScreen(
     // ponytail: Room's `accountId IN ()` with an empty list throws; guard it so the
     // Flow never errors on first composition (before accounts emit) and stays empty.
     // Also expand recurring events into the visible window (getUnifiedEvents returned
-    // raw masters only, so repeats never appeared). Window recomputed on view/date change.
-    val eventWindow = remember(selectedView, currentDate.value) {
-        val d = currentDate.value
+    // raw masters only, so repeats never appeared).
+    // FIX (2026-07-23): the window was a narrow ~1-5 week slice around the current
+    // month, so any event outside it (next month's appointment, a birthday, a
+    // recurring series) silently never rendered -> looked like "calendar not
+    // syncing". The engine DID sync it into Room; the query just excluded it. Use a
+    // full-year span so every synced event is always in the loaded set; the
+    // day/week/month views slice this same data by their own cell dates, so nothing
+    // is lost and far-future/past events now appear. Window recomputed on date change.
+    val eventWindow = remember(currentDate.value) {
+        val now = currentDate.value
         val z = java.time.ZoneId.systemDefault()
-        val startOfDay = { day: java.time.LocalDate -> day.atStartOfDay(z).toInstant().toEpochMilli() }
-        when (selectedView) {
-            CalendarView.DAY -> startOfDay(d) to startOfDay(d.plusDays(1))
-            CalendarView.WEEK -> startOfDay(d.minusDays(7)) to startOfDay(d.plusDays(7))
-            CalendarView.MONTH -> startOfDay(d.withDayOfMonth(1).minusWeeks(1)) to startOfDay(d.withDayOfMonth(d.lengthOfMonth()).plusWeeks(1))
-        }
+        val start = now.withDayOfYear(1).atStartOfDay(z).toInstant().toEpochMilli()
+        val end = now.withDayOfYear(1).plusYears(1).atStartOfDay(z).toInstant().toEpochMilli()
+        start to end
     }
     val allEvents by (if (activeAccountIds.isEmpty()) kotlinx.coroutines.flow.flowOf(emptyList())
     else viewModel.calendarRepository.getEventsInRangeUnified(activeAccountIds, eventWindow.first, eventWindow.second))
         .collectAsStateWithLifecycle(initialValue = emptyList())
 
+    // ponytail: the unified-inbox has its own periodic/observer sync, but the
+    // Calendar tab was never given a trigger, so a freshly added account's events
+    // only appeared after some other screen happened to sync. Kick a foreground
+    // calendar sync (non-cancellable ViewModel scope) whenever the screen opens or
+    // the active-account set changes, so events surface immediately.
+    LaunchedEffect(activeAccountIds) {
+        if (activeAccountIds.isNotEmpty()) {
+            viewModel.syncCalendarForAccounts(activeAccountIds)
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(currentDate.value.toString(), fontWeight = FontWeight.Bold)
+                    Text(
+                        text = currentDate.value.format(java.time.format.DateTimeFormatter.ofPattern("MMMM yyyy")),
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 },
                 actions = {
+                    // ponytail: grouped, evenly-sized controls. Prev/Next step the month;
+                    // Today jumps back. View switch is a 3-segment pill so the active
+                    // mode is obvious. All icons are fixed 24dp and never clip (no Text in
+                    // an IconButton slot). This matches the clean market-calendar header
+                    // (rounded, uncluttered) without naming any vendor.
+                    IconButton(onClick = { currentDate.value = currentDate.value.minusMonths(1) }) {
+                        Icon(Icons.Default.ChevronLeft, contentDescription = "Previous month")
+                    }
                     IconButton(onClick = { currentDate.value = java.time.LocalDate.now() }) {
                         Icon(Icons.Default.Today, contentDescription = "Today")
                     }
-                    IconButton(onClick = { selectedView = CalendarView.DAY }) {
-                        Icon(Icons.Default.CalendarViewDay, contentDescription = "Day view", tint = if (selectedView == CalendarView.DAY) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                    IconButton(onClick = { currentDate.value = currentDate.value.plusMonths(1) }) {
+                        Icon(Icons.Default.ChevronRight, contentDescription = "Next month")
                     }
-                    IconButton(onClick = { selectedView = CalendarView.WEEK }) {
-                        Icon(Icons.Default.CalendarViewWeek, contentDescription = "Week view", tint = if (selectedView == CalendarView.WEEK) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.width(4.dp))
+                    // 3-segment view switch pill
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        tonalElevation = 1.dp
+                    ) {
+                        Row(modifier = Modifier.padding(4.dp)) {
+                            CalendarView.values().forEach { v ->
+                                val selected = selectedView == v
+                                val label = when (v) {
+                                    CalendarView.DAY -> "Day"
+                                    CalendarView.WEEK -> "Week"
+                                    CalendarView.MONTH -> "Month"
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .height(32.dp)
+                                        .clickable { selectedView = v }
+                                        .background(
+                                            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+                                            RoundedCornerShape(16.dp)
+                                        )
+                                        .padding(horizontal = 12.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        label,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                                if (v != CalendarView.MONTH) Spacer(Modifier.width(2.dp))
+                            }
+                        }
                     }
-                    IconButton(onClick = { selectedView = CalendarView.MONTH }) {
-                        Icon(Icons.Default.CalendarViewMonth, contentDescription = "Month view", tint = if (selectedView == CalendarView.MONTH) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    IconButton(onClick = onCreateEvent) {
-                        Icon(Icons.Default.Add, contentDescription = "Create event")
-                    }
-                    }
-                )
-                },
-            floatingActionButton = {
-                androidx.compose.material3.FloatingActionButton(
-                    onClick = onCreateEvent,
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Create event")
                 }
+            )
+        },
+        floatingActionButton = {
+            androidx.compose.material3.FloatingActionButton(
+                onClick = onCreateEvent,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Create event")
             }
-        ) { innerPadding ->
-            Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
-                when (selectedView) {
+        }
+    ) { innerPadding ->
+        Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+            when (selectedView) {
                 CalendarView.DAY -> DayView(date = currentDate.value, events = allEvents, onEventClick = onEventClick)
                 CalendarView.WEEK -> WeekView(date = currentDate.value, events = allEvents, onEventClick = onEventClick)
                 CalendarView.MONTH -> MonthView(date = currentDate.value, allEvents = allEvents, onDayClick = { date -> currentDate.value = date; selectedView = CalendarView.DAY })
@@ -236,69 +299,116 @@ fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onDayCl
     val firstOfMonth = date.withDayOfMonth(1)
     val dayOfWeekOffset = firstOfMonth.dayOfWeek.value - 1 // Monday = 0
     val daysInMonth = firstOfMonth.lengthOfMonth()
+    val today = java.time.LocalDate.now()
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun").forEach { day ->
-                Text(text = day, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp)) {
+        // Weekday header strip (Mon..Sun), evenly weighted, no wrap/clip.
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun").forEach { d ->
+                Text(
+                    text = d,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    softWrap = false
+                )
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(6.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-        Column {
-            var day = 1
-            for (week in 0..5) {
-                if (day > daysInMonth) break
+        // 6-week grid, 7 columns. Each cell is a fixed-height rounded surface.
+        val cells = mutableListOf<java.time.LocalDate?>().apply {
+            repeat(dayOfWeekOffset) { add(null) }
+            for (d in 1..daysInMonth) add(firstOfMonth.plusDays((d - 1).toLong()))
+            while (size % 7 != 0) add(null)
+        }
+        Column(modifier = Modifier.fillMaxWidth()) {
+            cells.chunked(7).forEach { week ->
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier.fillMaxWidth().height(96.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    (0..6).forEach { weekDay ->
-                        val cellDate = if (week == 0 && weekDay < dayOfWeekOffset) {
-                            null
-                        } else if (day <= daysInMonth) {
-                            firstOfMonth.plusDays((day - 1).toLong()).also { day++ }
-                        } else {
-                            null
-                        }
-
-                        val events = cellDate?.let { date ->
+                    week.forEach { cellDate ->
+                        val events = cellDate?.let { cd ->
                             allEvents.filter { ev ->
-                                val evZone = java.time.ZoneId.of(com.unifiedcomms.data.model.TimeZoneUtil.normalize(ev.startAt.timeZone) ?: "UTC")
-                                isSameDay(ev.startAt.toInstant(com.unifiedcomms.data.model.TimeZoneUtil.toKtxZone(ev.startAt.timeZone)), date, evZone)
+                                val evZone = java.time.ZoneId.of(
+                                    com.unifiedcomms.data.model.TimeZoneUtil.normalize(ev.startAt.timeZone) ?: "UTC"
+                                )
+                                isSameDay(
+                                    ev.startAt.toInstant(com.unifiedcomms.data.model.TimeZoneUtil.toKtxZone(ev.startAt.timeZone)),
+                                    cd,
+                                    evZone
+                                )
                             }
                         } ?: emptyList()
-
-                        Surface(
+                        val isToday = cellDate == today
+                        Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .height(72.dp)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(12.dp))
+                                .then(if (cellDate != null) Modifier.clickable { onDayClick(cellDate) } else Modifier)
                                 .background(
-                                    if (cellDate == java.time.LocalDate.now()) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-                                    RoundedCornerShape(8.dp)
+                                    if (isToday) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                    RoundedCornerShape(12.dp)
                                 )
-                                .padding(4.dp),
-                            shape = RoundedCornerShape(8.dp),
-                            onClick = { cellDate?.let { onDayClick(it) } }
+                                .padding(6.dp)
                         ) {
-                            Column(modifier = Modifier.fillMaxWidth().padding(4.dp), verticalArrangement = Arrangement.Top) {
-                                Text(text = cellDate?.dayOfMonth?.toString() ?: "", fontSize = 12.sp, fontWeight = if (cellDate == java.time.LocalDate.now()) FontWeight.Bold else FontWeight.Normal)
-                                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    // ponytail: show one colored dot per event (kills the "T..." title
-                                    // truncation in ~140px cells); cap at 3 dots, "+n" overflow.
-                                    val shown = events.take(3)
-                                    shown.forEach { event ->
+                            if (cellDate != null) {
+                                // Day number: today gets a filled circle badge.
+                                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopStart) {
+                                    if (isToday) {
                                         Box(
                                             modifier = Modifier
-                                                .size(8.dp)
-                                                .background(Color(event.color.toColorInt()), CircleShape)
+                                                .size(28.dp)
+                                                .background(MaterialTheme.colorScheme.primary, CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = cellDate.dayOfMonth.toString(),
+                                                color = MaterialTheme.colorScheme.onPrimary,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    } else {
+                                        Text(
+                                            text = cellDate.dayOfMonth.toString(),
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.onSurface
                                         )
                                     }
-                                    if (events.size > shown.size) {
-                                        Text(text = "+${events.size - shown.size}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                // Event summary: count + color dots, bottom-aligned.
+                                Column(
+                                    modifier = Modifier.fillMaxSize(),
+                                    verticalArrangement = Arrangement.Bottom
+                                ) {
+                                    if (events.isNotEmpty()) {
+                                        val shown = events.take(3)
+                                        Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                                            shown.forEach { ev ->
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(7.dp)
+                                                        .background(Color(ev.color.toColorInt()), CircleShape)
+                                                )
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = if (events.size == 1) "1 event" else "${events.size} events",
+                                            fontSize = 10.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
                                     }
                                 }
                             }

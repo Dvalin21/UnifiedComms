@@ -541,14 +541,37 @@ class EmailSyncEngineImpl(
         }
     }
 
+    // ponytail: IMAP-fetched text parts return an InputStream (com.sun.mail.imap
+    // .IMAPInputStream / ByteArrayInputStream), NOT a String. The old code did
+    // `part.content as? String` which is null for a stream -> the body was silently
+    // dropped -> EmailDetailScreen showed "(no content)" for every real message.
+    // Read the stream with the part's own charset. Same root cause class as the
+    // chat IMAPInputStream bug.
+    private fun partCharset(part: Part): java.nio.charset.Charset {
+        val ct = runCatching { part.contentType }.getOrNull() ?: return java.nio.charset.StandardCharsets.UTF_8
+        val m = Regex("charset=[\"']?([^\"';\\s]+)", RegexOption.IGNORE_CASE).find(ct)
+        return m?.let { runCatching { java.nio.charset.Charset.forName(it.groupValues[1]) }.getOrNull() }
+            ?: java.nio.charset.StandardCharsets.UTF_8
+    }
+
+    private fun readText(part: Part): String? = try {
+        when (val c = part.content) {
+            is String -> c
+            is java.io.InputStream -> c.bufferedReader(partCharset(part)).readText()
+            else -> c?.toString()
+        }?.trim()?.takeIf { it.isNotBlank() }
+    } catch (_: Exception) {
+        null
+    }
+
     private fun extractContent(part: Part): Pair<String?, String?> {
         return try {
             when {
                 part.isMimeType("text/plain") -> {
-                    part.content as? String to null
+                    readText(part) to null
                 }
                 part.isMimeType("text/html") -> {
-                    null to (part.content as? String)
+                    null to readText(part)
                 }
                 part.isMimeType("multipart/*") -> {
                     val mp = part.content as MimeMultipart
