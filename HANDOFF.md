@@ -764,10 +764,32 @@ Two distinct stacks; only ONE goes through NPM.
   `/Microsoft-Server-ActiveSync` over HTTPS through NPM into the SAME auth-gated nginx block
   that serves `/SOGo/dav`. IF the DAV Basic-auth problem is NPM stripping `Authorization`,
   EAS clients break identically. Same diagnosis, same fix.
-- **Conclusion for the app's LiveDavE2ETest**: the DAV failure (nginx/openresty bare 401,
-  no `WWW-Authenticate`) is server-side — the nginx `location /SOGo/dav` does not forward
-  Basic auth to SOGo the way `/SOGo/` web root does. The app code is correct (proven by the
-  mock E2E round-trips). When Keith fixes the nginx DAV auth, re-run `LiveDavE2ETest` AS-IS.
+- **Conclusion for the app's LiveDavE2ETest (CORRECTED 2026-07-22, post-helper-review):**
+  the bare 401 without `WWW-Authenticate` is NOT "nginx refused it / missing DAV location."
+  It is mailcow's STOCK `auth_request` → `mailcowauth.php` rejection: the PHP returns 401
+  with a JSON body and never sets a challenge header, and nginx propagates it. There is NO
+  dedicated `location /SOGo/dav` block — `/SOGo/dav` matches `location ^~ /SOGo`, which
+  already forwards `Authorization "$auth"`. So "add a DAV location that forwards Basic" is a
+  NO-OP (DO NOT churn nginx there).
+  PROOF (curl, this session): via NPM → `Server: openresty`, 401; DIRECT to mailcow
+  `10.0.0.26` via `--resolve` → `Server: nginx`, SAME bare 401. Both hops reject identically
+  → rejection is mailcow-side, NOT NPM stripping `Authorization`. App code is correct (proven
+  by mock E2E). The live blocker is a mailcow-side auth rejection of the creds — most likely
+  app-password / per-service DAV enforcement (see Test 2 below), NOT an nginx config bug.
+- **Test 1 (DONE, discriminating):** direct curl bypassing NPM (`--resolve mail.houseofmanns.com:443:10.0.0.26`)
+  returns `Server: nginx` + 401 (no challenge). Confirms rejection is mailcow-side, not NPM.
+- **Test 2 (Keith must run — only thing left that settles it):** `docker compose logs --since 10m
+  php-fpm-mailcow | grep MAILCOWAUTH` on the mailcow host:
+  - `Bad Request` → no creds arrived → NPM stripped `Authorization` (now unlikely given Test 1).
+  - `Login failed for user testbox@... with service <X>` → creds arrived + rejected → DAV
+    protocol disabled for mailbox OR mailbox enforces app-passwords and the real password 401s
+    BY POLICY. If app-password: fix = mint a DAV-scoped app password, NOT nginx. (This would
+    also explain IMAP/SMTP working with the same password but DAV not — different service scope.)
+  - No MAILCOWAUTH line → died before mailcow → NPM.
+- **Drift check (Keith):** `docker exec $(docker ps -qf name=nginx-mailcow) grep -c 'SOGo/dav'
+  /etc/nginx/includes/sites-default.conf` — stock = only the two `.well-known` rewrites +
+  `/principals` redirect; a dedicated `location /SOGo/dav` means a customized patch is present
+  and suspect.
 
 ### Verified host facts this session (curl + openssl, not assumed)
 - `/.well-known/caldav` → 301 → `https://email.houseofmanns.com/SOGo/dav/`.
@@ -822,10 +844,14 @@ UNCOMMITTED on master (HEAD `d5c4a68`). Green builds; fingerprint needs on-devic
 - Also FIXED a latent compile break in the existing `HouseOfMannsEmailSyncTest.kt`
   (`getInstrumentation().arguments` — wrong androidx.test API — blocked the ENTIRE
   androidTest compile). Now uses `InstrumentationRegistry.getArguments()`.
-- Ran the contact canary: creds CORRECT (IMAP 993 LOGIN OK, no lockout). DAV blocked by the
-  nginx/openresty bare 401 described in the DAV SERVER ARCHITECTURE block above. The app
-  code path is correct; the server must forward Basic auth for `/SOGo/dav`. Re-run
-  `LiveDavE2ETest` as-is once Keith fixes nginx.
+- Ran the contact canary: creds CORRECT (IMAP 993 LOGIN OK, no lockout). DAV blocked by a
+  mailcow-side auth rejection (bare 401, no `WWW-Authenticate`) — PROVEN mailcow-side, NOT
+  NPM stripping `Authorization`, via direct `--resolve` curl to 10.0.0.26 (`Server: nginx`,
+  same 401). See the CORRECTED conclusion + Test 1/2 in the DAV SERVER ARCHITECTURE block.
+  The most likely root cause is app-password / per-service DAV enforcement (IMAP/SMTP use a
+  different service scope than DAV). The app code path is correct; the credential needed may
+  be a DAV-scoped app password, not the account password. Re-run `LiveDavE2ETest` (supplying
+  the correct DAV credential via `-e password`) once Keith runs Test 2 on the mailcow host.
 - Run command (both APKs installed, emulator-5556):
   `adb -s emulator-5556 shell am instrument -w -r -e user testbox@houseofmanns.com \
    -e password '...' -e class com.unifiedcomms.LiveDavE2ETest \
