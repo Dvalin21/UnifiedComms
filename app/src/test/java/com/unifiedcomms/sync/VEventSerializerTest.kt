@@ -33,14 +33,17 @@ class VEventSerializerTest {
     @Test
     fun serializesUidSummaryAndTimes() {
         val ical = VEventSerializer.toVevent(timedEvent("evt-1", "America/New_York"))
-        assertTrue("must be a VEVENT", ical.startsWith("BEGIN:VEVENT"))
+        // ponytail: CalDAV requires a full VCALENDAR envelope; the VEVENT is wrapped inside.
+        assertTrue("must be a VCALENDAR", ical.startsWith("BEGIN:VCALENDAR"))
+        assertTrue(ical.contains("VERSION:2.0"))
+        assertTrue(ical.contains("BEGIN:VEVENT"))
         assertTrue(ical.contains("UID:evt-1"))
         assertTrue(ical.contains("SUMMARY:Standup\\; with\\, team"))
         assertTrue(ical.contains("DESCRIPTION:Daily\\n sync"))
         assertTrue(ical.contains("LOCATION:Room 5"))
         assertTrue(ical.contains("DTSTART;TZID=America/New_York:20260720T090000"))
         assertTrue(ical.contains("DTEND;TZID=America/New_York:20260720T100000"))
-        assertTrue("must close VEVENT", ical.trimEnd().endsWith("END:VEVENT"))
+        assertTrue("must close VCALENDAR", ical.trimEnd().endsWith("END:VCALENDAR"))
     }
 
     @Test
