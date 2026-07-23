@@ -124,7 +124,7 @@ private fun BiometricLockScreen(onUnlocked: () -> Unit) {
     )
 }
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
