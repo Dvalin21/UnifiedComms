@@ -101,6 +101,16 @@ fun UnifiedInboxScreen(
         }
     }
 
+    // ponytail: email (and other legs) had NO auto-sync trigger on launch — the inbox
+    // stayed empty until the user tapped the Sync icon. Calendar had a LaunchedEffect
+    // trigger; email did not. Kick a foreground sync whenever the active-account set
+    // appears or changes, so the inbox populates automatically like the calendar does.
+    LaunchedEffect(activeAccounts.map { it.id }) {
+        if (activeAccounts.isNotEmpty()) {
+            coroutineScope.launch { viewModel.syncAllAccounts() }
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -236,9 +246,23 @@ fun EmailOverviewScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(text = account.name, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = color.container)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = account.email, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = account.name,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp,
+                                color = color.container,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = account.email,
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                     Row(
                         modifier = Modifier.horizontalScroll(rememberScrollState()),
@@ -261,7 +285,7 @@ fun FolderChip(label: String, count: Int, color: Color, onClick: () -> Unit) {
     Surface(
         modifier = Modifier
             .padding(vertical = 8.dp, horizontal = 4.dp)
-            .clickable(onClick = onClick)
+            .clickable(onClick = { android.util.Log.e("CHIP", "chip clicked: $label"); onClick() })
             .background(color.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
     ) {
         Column(
