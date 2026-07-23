@@ -870,3 +870,63 @@ UNCOMMITTED on master (HEAD `d5c4a68`). Green builds; fingerprint needs on-devic
   before building.
 - Biometric: confirm on-device fingerprint prompt once Keith installs the new build.
 
+## Session 2026-07-23 — Chat Live E2E + ALL DOMAINS LIVE-VERIFIED + RELEASE
+HEAD now `cb8958e` (master, pushed). All five sync domains are live-proven against
+`houseofmanns.com` (real creds, real server, real Room persistence).
+
+### Chat Live E2E — WRITTEN + PASSES (real IMAP/SMTP, Path A)
+- New `app/src/androidTest/.../LiveChatE2ETest.kt` (`liveChatRoundTrip`): builds a
+  `GENERIC_IMAP_SMTP` account (same transport/serverConfig as the email E2E),
+  `AuthConfig.AppPassword(user, accountPassword)` — chat authenticates over IMAP/SMTP,
+  NOT CalDAV, so it uses the ACCOUNT password, NOT the DAV app-password. `syncChat=true`,
+  `chatFolder="Chat"`.
+- Flow: `testConnection` (IMAP 993+acceptAllCerts) → `sendChatMessage` (MimeMessage with
+  X-Chat-* headers, IMAP APPEND into the Chat folder, SMTP fallback) → `syncAccount`
+  (open Chat folder, normalize, insert into Room) → assertion: message persisted with
+  correct content.
+- **Result: OK (1 test).** Chat is now live-verified end-to-end.
+
+### Two REAL engine bugs the live chat test exposed (masked by mock/UI)
+Both would have shipped broken. Fixed in `ChatSyncEngineImpl.kt`, committed `cb8958e`:
+1. **Room FK violation (SQLITE 787).** `syncFolder` inserted the `Message` BEFORE its
+   `Conversation` existed, and `updateConversation()` only UPDATES (never creates) rows.
+   `messages.conversationId` has a FK to `conversations.id` → insert aborted. Fix: upsert
+   the conversation (insert if absent, update if present) BEFORE the message.
+2. **IMAP stream-as-content.** `normalizeChatMessage` did `msg.content?.toString()`. For
+   IMAP, `msg.content` is a streaming `IMAPInputStream`; `.toString()` yielded the OBJECT
+   REF, not the text → chat messages stored as `com.sun.mail.imap.IMAPInputStream@...`.
+   Fix: read the stream as text (`getInputStream().bufferedReader().readText()`), fall back
+   to String content when already materialized.
+
+### Verification status
+- Live E2E matrix (all real-server):
+  | Domain | Transport | Result |
+  |--------|-----------|--------|
+  | Email  | IMAP/SMTP          | ✓ (prior session) |
+  | Contacts | CardDAV          | ✓ 3/3 (LiveDavE2ETest) |
+  | Calendar | CalDAV VEVENT    | ✓ 3/3 |
+  | Tasks   | VTODO            | ✓ 3/3 |
+  | Chat    | IMAP APPEND+sync | ✓ OK(1) (LiveChatE2ETest) |
+- `:app:assembleDebug` + `:app:assembleAndroidTest` GREEN. `:app:assembleRelease` GREEN
+  (app-release.apk produced).
+- Secret hygiene: LiveChatE2ETest reads the password via `-e password` arg only; the
+  account password literal was deliberately kept OUT of source (only a placeholder in the
+  doc comment). DAV app-password never hardcoded. `release.jks` + `local.properties` are
+  gitignored (not committed).
+
+### Remaining unverified (NOT sync-engine correctness — device-interaction layer)
+- Biometric fingerprint prompt: logic fixed (BIOMETRIC_WEAK), but the live finger-press
+  needs Keith's physical device to confirm.
+- Chat/Conversation UI taps, notification routing, foreground-suppression: engine proven;
+  the Compose UI wiring still needs on-device confirmation (emulator screenshot only covers
+  paint, not behavior).
+- `normalizesNonCanonicalTzCase` + `ContactRepositoryImplTest.mergeContacts` unit-test
+  failures are PRE-EXISTING (fail identically on the pre-change tree) — not regressions from
+  this work.
+
+### Carry-over / next
+- Push signed release APK to GitHub (Keith: "push apk release to github").
+- Confirm on-device: biometric prompt + chat UI send/receive loop.
+- Fix the 2 pre-existing unit-test failures in a dedicated pass (TZ resolution on test JVM;
+  mergeContacts) — separate from the sync-engine work.
+
