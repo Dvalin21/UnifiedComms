@@ -3,6 +3,7 @@ package com.unifiedcomms.sync
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import okhttp3.Credentials
 import okhttp3.Headers.Companion.toHeaders
 import okhttp3.MediaType.Companion.toMediaType
@@ -183,7 +184,8 @@ class CalDAVClient(
         }
     }
 
-    suspend fun discoverCalendars(): List<CalendarInfo> = withContext(Dispatchers.IO) {
+    suspend fun discoverCalendars(): List<CalendarInfo> = withTimeout(20_000) {
+        withContext(Dispatchers.IO) {
         // Evidence: user mandate + mailcow manual + stalwart#1796 — for mailcow/SOGo the CalDAV URL
         // is already the exact calendar collection `.../SOGo/dav/<user>/Calendar/personal/`. Using it
         // directly avoids the generic principal walk (which can mangle the path via resolve()/URI
@@ -205,6 +207,7 @@ class CalDAVClient(
         scanForCalendars(target, calendars)
         if (calendars.isEmpty()) calendars += CalendarInfo(principal, "Calendar", "", true)
         calendars
+        }
     }
 
     // --- Calendar discovery ported from Hearthboard's proven CalDAVClient
@@ -218,7 +221,7 @@ class CalDAVClient(
         "/dav/"
     )
 
-    private fun findPrincipalPath(): String? {
+    private suspend fun findPrincipalPath(): String? {
         tryFindPrincipalAt(baseUrl)?.let { return it }
         val origin = extractOrigin(baseUrl)
         for (suffix in COMMON_CALDAV_PATHS) {
@@ -227,7 +230,7 @@ class CalDAVClient(
         return null
     }
 
-    private fun tryFindPrincipalAt(url: String): String? {
+    private suspend fun tryFindPrincipalAt(url: String): String? {
         return try {
             val xml = """
                 <?xml version="1.0" encoding="utf-8"?>
@@ -243,7 +246,7 @@ class CalDAVClient(
         }
     }
 
-    private fun findCalendarHomeSet(principal: String): String? {
+    private suspend fun findCalendarHomeSet(principal: String): String? {
         val base = buildUrl(principal)
         return try {
             val xml = """
@@ -376,12 +379,14 @@ class CalDAVClient(
     }
 
     // ponytail: task lists are CalDAV collections that advertise VTODO in their component set.
-    suspend fun discoverTaskLists(): List<CalendarInfo> = withContext(Dispatchers.IO) {
-        val principal = findPrincipalPath() ?: return@withContext emptyList()
-        val homeSet = findCalendarHomeSet(principal) ?: principal
-        val out = mutableListOf<CalendarInfo>()
-        scanForTaskLists(homeSet, out)
-        out
+    suspend fun discoverTaskLists(): List<CalendarInfo> = withTimeout(20_000) {
+        withContext(Dispatchers.IO) {
+            val principal = findPrincipalPath() ?: return@withContext emptyList()
+            val homeSet = findCalendarHomeSet(principal) ?: principal
+            val out = mutableListOf<CalendarInfo>()
+            scanForTaskLists(homeSet, out)
+            out
+        }
     }
 
     private suspend fun scanForTaskLists(url: String, result: MutableList<CalendarInfo>, visited: MutableSet<String> = mutableSetOf()) {
@@ -469,12 +474,14 @@ class CalDAVClient(
     // whose resourcetype contains "addressbook". vCard GET/PUT/DELETE use putResource/deleteResource.
     data class AddressBookInfo(val path: String, val displayName: String)
 
-    suspend fun discoverAddressBooks(): List<AddressBookInfo> = withContext(Dispatchers.IO) {
-        val principal = findPrincipalPath() ?: return@withContext emptyList()
-        val homeSet = findAddressBookHomeSet(principal) ?: principal
-        val out = mutableListOf<AddressBookInfo>()
-        scanForAddressBooks(homeSet, out)
-        out
+    suspend fun discoverAddressBooks(): List<AddressBookInfo> = withTimeout(20_000) {
+        withContext(Dispatchers.IO) {
+            val principal = findPrincipalPath() ?: return@withContext emptyList()
+            val homeSet = findAddressBookHomeSet(principal) ?: principal
+            val out = mutableListOf<AddressBookInfo>()
+            scanForAddressBooks(homeSet, out)
+            out
+        }
     }
 
     private suspend fun findAddressBookHomeSet(principal: String): String? = withContext(Dispatchers.IO) {
@@ -628,7 +635,7 @@ class CalDAVClient(
         }
     }
 
-    private fun propfind(url: String, body: String, depth: String = "1"): String {
+    private suspend fun propfind(url: String, body: String, depth: String = "1"): String = withContext(Dispatchers.IO) {
         val target = resolve(url)
         val req = Request.Builder()
             .url(target)
@@ -637,7 +644,7 @@ class CalDAVClient(
             .build()
         internalClient.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) throw IOException("HTTP ${resp.code}: ${resp.message}")
-            return resp.body?.string().orEmpty()
+            resp.body?.string().orEmpty()
         }
     }
 
