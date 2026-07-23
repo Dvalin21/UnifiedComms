@@ -359,7 +359,7 @@ fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onDayCl
                                 .padding(6.dp)
                         ) {
                             if (cellDate != null) {
-                                // Day number: today gets a filled circle badge.
+                                // Day number: today gets a SOLID filled circle badge (Samsung One UI style).
                                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopStart) {
                                     if (isToday) {
                                         Box(
@@ -384,31 +384,53 @@ fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onDayCl
                                         )
                                     }
                                 }
-                                // Event summary: count + color dots, bottom-aligned.
+                                // Event summary: Samsung-style colored rounded BARS with the title
+                                // text inside (stacked). Overflow beyond 3 collapses to small dots.
                                 Column(
-                                    modifier = Modifier.fillMaxSize(),
-                                    verticalArrangement = Arrangement.Bottom
+                                    modifier = Modifier.fillMaxSize().padding(top = 2.dp),
+                                    verticalArrangement = Arrangement.Bottom,
+                                    horizontalAlignment = Alignment.Start
                                 ) {
                                     if (events.isNotEmpty()) {
                                         val shown = events.take(3)
-                                        Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                                            shown.forEach { ev ->
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(7.dp)
-                                                        .background(Color(ev.color.toColorInt()), CircleShape)
+                                        shown.forEach { ev ->
+                                            val barColor = Color(ev.color.toColorInt())
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(16.dp)
+                                                    .clip(RoundedCornerShape(4.dp))
+                                                    .background(barColor)
+                                                    .padding(horizontal = 4.dp),
+                                                contentAlignment = Alignment.CenterStart
+                                            ) {
+                                                Text(
+                                                    text = ev.title ?: "",
+                                                    color = Color.White,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    overflow = TextOverflow.Ellipsis
                                                 )
                                             }
+                                            Spacer(modifier = Modifier.height(2.dp))
                                         }
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Text(
-                                            text = if (events.size == 1) "1 event" else "${events.size} events",
-                                            fontSize = 10.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 1,
-                                            softWrap = false,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
+                                        if (events.size > shown.size) {
+                                            Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                                                repeat(minOf(events.size - shown.size, 3)) {
+                                                    Box(modifier = Modifier.size(5.dp).background(MaterialTheme.colorScheme.onSurfaceVariant, CircleShape))
+                                                }
+                                                if (events.size - shown.size > 3) {
+                                                    Text(
+                                                        text = "+${events.size - shown.size - 3}",
+                                                        fontSize = 9.sp,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        maxLines = 1
+                                                    )
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
