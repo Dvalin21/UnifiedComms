@@ -20,6 +20,9 @@ import kotlinx.coroutines.flow.transform
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import java.util.Properties
+import java.util.concurrent.Callable
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import javax.mail.Session
 import javax.mail.Store
 import javax.mail.Folder
@@ -260,19 +263,19 @@ class EmailSyncEngineImpl(
         } else {
             auth.username!! to auth.passwordEncrypted!!
         }
+        // ponytail: a single connect is hard-bounded at 30s via timedConnect (the
+        // blocking JavaMail call ignores coroutine cancellation). Retry once.
+        val perAttemptMs = 30_000L
+        var lastErr: Throwable? = null
         for (attempt in 1..2) {
             try {
-                store.connect(
-                    config.imapHost,
-                    config.imapPort,
-                    user,
-                    pass
-                )
+                timedConnect(store, config.imapHost, config.imapPort, user, pass, perAttemptMs)
                 return
             } catch (e: javax.mail.MessagingException) {
-                if (attempt == 2) throw e
+                lastErr = e
             }
         }
+        throw lastErr ?: javax.mail.MessagingException("IMAP connect failed")
     }
 
     private suspend fun applyLocalFlagsToServer(
@@ -325,15 +328,19 @@ class EmailSyncEngineImpl(
     private fun base64(s: String): String =
         android.util.Base64.encodeToString(s.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
 
-    private fun openImapSession(config: com.unifiedcomms.data.model.ServerConfig): Session {
+    private fun openImapSession(
+        config: com.unifiedcomms.data.model.ServerConfig,
+        connectTimeoutMs: Int = 60000,
+        readTimeoutMs: Int = 300000
+    ): Session {
         val props = Properties().apply {
             put("mail.store.protocol", "imap")
             put("mail.imap.host", config.imapHost)
             put("mail.imap.port", config.imapPort)
             put("mail.imap.ssl.enable", config.imapUseSsl)
             put("mail.imap.auth", true)
-            put("mail.imap.connectiontimeout", 60000)
-            put("mail.imap.timeout", 300000)
+            put("mail.imap.connectiontimeout", connectTimeoutMs)
+            put("mail.imap.timeout", readTimeoutMs)
             put("mail.imap.writetimeout", 120000)
             // ponytail: android-mail 1.6.7 enforces cert hostname verification by
             // default (Angus 1.1.0: "check server identity by default"). For a
@@ -351,6 +358,44 @@ class EmailSyncEngineImpl(
             }
         }
         return Session.getInstance(props)
+    }
+
+    // ponytail: a blocking JavaMail store.connect() is NOT cancellable by Kotlin
+    // coroutine cancellation — the OS-level TCP connect to a dead/half-open host
+    // ignores interrupts, so withTimeout() waits the full hang (observed 120s on a
+    // black-hole host) before the child acknowledges. The ONLY hard bound is on the
+    // blocking result, via Future.get(timeout). We run the connect on a dedicated
+    // pool and cap it; get() returns at the bound no matter what the thread does.
+    // The thread is left running (daemon) and GC'd; it cannot wedge the caller.
+    private val connectExecutor = Executors.newCachedThreadPool { r ->
+        Thread(r, "imap-connect").apply { isDaemon = true }
+    }
+
+    private fun timedConnect(
+        store: Store,
+        host: String?,
+        port: Int? = null,
+        user: String,
+        pass: String,
+        timeoutMs: Long
+    ) {
+        val future = connectExecutor.submit(Callable {
+            if (port != null) store.connect(host, port, user, pass)
+            else store.connect(host, user, pass)
+        })
+        try {
+            future.get(timeoutMs, TimeUnit.MILLISECONDS)
+        } catch (e: java.util.concurrent.TimeoutException) {
+            // ponytail: do NOT call store.close() here — close() blocks until the
+            // uncancellable OS connect finishes (observed +105s), which would make
+            // THIS method hang past its own timeout and defeat the whole fix. The
+            // connect runs on a daemon thread; future.cancel(true) signals it and the
+            // JVM reclaims it. We return immediately at the bound.
+            future.cancel(true)
+            throw javax.mail.MessagingException("IMAP connect timed out after ${timeoutMs}ms", e)
+        } catch (e: java.util.concurrent.ExecutionException) {
+            throw e.cause ?: e
+        }
     }
 
     /**
@@ -697,9 +742,13 @@ class EmailSyncEngineImpl(
                 // ponytail: reuse openImapSession so acceptAllCerts is honored
                 // (testConnection previously built its own Properties and ignored
                 // the flag, so 993 + self-signed/wildcard certs failed silently).
+                // A connection TEST must not inherit the 5-minute bulk-sync read
+                // timeout — a hanging IMAP connect would wedge the pre-save gate.
+                // timedConnect hard-bounds the blocking connect at 15s regardless of
+                // coroutine cancellation (which cannot interrupt OS-level TCP).
                 val session = openImapSession(config)
                 val store = session.getStore("imap")
-                store.connect(config.imapHost, auth.username!!, auth.passwordEncrypted!!)
+                timedConnect(store, config.imapHost, null, auth.username!!, auth.passwordEncrypted!!, 15_000L)
                 store.close()
                 ConnectionTestResult(true, System.currentTimeMillis() - start, listOf("IMAP"))
             } catch (e: Exception) {

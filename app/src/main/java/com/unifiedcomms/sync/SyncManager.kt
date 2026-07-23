@@ -246,8 +246,11 @@ class SyncManager(
         val engineCfg = account.copy(authConfig = crypto.encryptAuthConfig(account.authConfig))
         val fresh = tokenRefresher.ensureFreshToken(engineCfg)
         // ponytail: run the four connection tests concurrently so a single slow/hanging
-        // server can't stretch the pre-save gate to ~80s. Each test has its own 20s timeout,
-        // so the gate now settles in ~20s worst case.
+        // server can't stretch the pre-save gate. The IMAP test's blocking connect is
+        // hard-bounded inside EmailSyncEngineImpl.timedConnect (Future.get timeout),
+        // because coroutine cancellation cannot interrupt OS-level TCP. DAV legs use
+        // OkHttp, which IS cancellable. Worst case per leg ~20s (OkHttp) / ~15s (IMAP),
+        // so the gate settles in ~20s. The UI's own 45s withTimeout is the final backstop.
         return withContext(Dispatchers.IO) {
             val emailDef = async { if (account.syncConfig.syncEmail) emailSync.testConnection(fresh) else ConnectionTestResult(true, 0, listOf("IMAP"), null) }
             val calDef = async { if (account.syncConfig.syncCalendar) calendarSync.testConnection(fresh) else ConnectionTestResult(true, 0, listOf("CalDAV"), null) }
