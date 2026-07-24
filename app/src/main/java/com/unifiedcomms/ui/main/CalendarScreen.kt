@@ -22,8 +22,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
@@ -75,6 +73,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.foundation.shape.GenericShape
 import kotlin.math.abs
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
@@ -225,6 +226,18 @@ fun CalendarScreen(
 
 enum class CalendarView { DAY, WEEK, MONTH }
 
+// ponytail: right-pointing triangle used as the current-time pointer (Samsung-style),
+// drawn on the left edge of the red "now" line in Day view.
+val TriangleEdgeShape = GenericShape { size, _ ->
+    val path = Path().apply {
+        moveTo(0f, 0f)
+        lineTo(size.width, size.height / 2f)
+        lineTo(0f, size.height)
+        close()
+    }
+    path
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DayView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick: (String) -> Unit) {
@@ -236,6 +249,14 @@ fun DayView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick
             ldt.hour == h
         }
     }
+    val now = java.time.LocalDateTime.now()
+    val isToday = date == java.time.LocalDate.now()
+    val nowOffsetDp = if (isToday) (8 + now.hour * 56 + (now.minute / 60f * 56)).dp else 0.dp
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val scrollState = rememberScrollState()
+    LaunchedEffect(isToday) {
+        if (isToday) scrollState.scrollTo(((nowOffsetDp - 120.dp).value * density.density).toInt().coerceAtLeast(0))
+    }
     Column(modifier = Modifier.fillMaxSize()) {
         Text(
             text = "Day View: ${date.dayOfWeek}, ${date.month} ${date.dayOfMonth}",
@@ -244,31 +265,49 @@ fun DayView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
-            contentPadding = PaddingValues(vertical = 8.dp)
-        ) {
-            items(eventsByHour) { (hour, hourEvents) ->
-                Row(modifier = Modifier.fillMaxWidth().height(56.dp)) {
-                    Text(
-                        text = java.time.LocalTime.of(hour, 0).format(java.time.format.DateTimeFormatter.ofPattern("h a")),
-                        fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.width(56.dp).padding(top = 2.dp), textAlign = TextAlign.End
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f), modifier = Modifier.weight(1f).align(Alignment.Top))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        hourEvents.forEach { ev ->
-                            EventChip(
-                                event = ev.toMockEvent(),
-                                onClick = { onEventClick(ev.id) },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier.fillMaxSize().verticalScroll(scrollState).padding(horizontal = 8.dp, vertical = 8.dp)
+            ) {
+                eventsByHour.forEach { (hour, hourEvents) ->
+                    Row(modifier = Modifier.fillMaxWidth().height(56.dp)) {
+                        Text(
+                            text = java.time.LocalTime.of(hour, 0).format(java.time.format.DateTimeFormatter.ofPattern("h a")),
+                            fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.width(56.dp).padding(top = 2.dp), textAlign = TextAlign.End
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f), modifier = Modifier.weight(1f).align(Alignment.Top))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            hourEvents.forEach { ev ->
+                                EventChip(
+                                    event = ev.toMockEvent(),
+                                    onClick = { onEventClick(ev.id) },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                            }
                         }
                     }
                 }
+            }
+            if (isToday) {
+                val lineY = nowOffsetDp - (scrollState.value / density.density).dp
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset(y = lineY)
+                        .padding(start = 64.dp)
+                        .height(2.dp)
+                        .background(Color(0xFFE53935))
+                )
+                Box(
+                    modifier = Modifier
+                        .offset(y = lineY - 5.dp)
+                        .size(12.dp)
+                        .background(Color(0xFFE53935), TriangleEdgeShape)
+                )
             }
         }
     }
@@ -372,7 +411,7 @@ fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onDayCl
                                 .clip(RoundedCornerShape(12.dp))
                                 .then(if (cellDate != null) Modifier.clickable { onDayClick(cellDate) } else Modifier)
                                 .background(
-                                    if (isToday) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f) else Color.Transparent,
+                                    Color.Transparent,
                                     RoundedCornerShape(12.dp)
                                 )
                                 .padding(6.dp)
@@ -383,14 +422,14 @@ fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onDayCl
                                     if (isToday) {
                                         Box(
                                             modifier = Modifier
-                                                .size(28.dp)
-                                                .background(MaterialTheme.colorScheme.primary, CircleShape),
+                                                .size(30.dp)
+                                                .background(Color.White, RoundedCornerShape(8.dp)),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Text(
                                                 text = cellDate.dayOfMonth.toString(),
-                                                color = MaterialTheme.colorScheme.onPrimary,
-                                                fontSize = 13.sp,
+                                                color = Color.Black,
+                                                fontSize = 14.sp,
                                                 fontWeight = FontWeight.Bold
                                             )
                                         }
