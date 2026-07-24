@@ -1,11 +1,17 @@
 # UnifiedComms — HANDOFF (session restart)
 
-Last updated: 2026-07-23 — provision "Saving…" hang ROOT-CAUSED + FIXED (measured) + signed v1.0.25 released. Live happy-path E2E PENDING: blocked only on testbox password (user will supply after restart).
-Authoritative branch: `master`
-Current HEAD: `a3a9227` (v1.0.25). Working tree: CLEAN. Latest release: **v1.0.25** (Latest) — https://github.com/Dvalin21/UnifiedComms/releases/tag/v1.0.25 — contains signed `unifiedcomms-v1.0.25-release.apk` (10.8 MB, versionCode 25, apksigner v1+v2 verified, CN=UnifiedComms).
+Last updated: 2026-07-24 — LIVE credential test RUN against houseofmanns.com: IMAP
+`[AUTHENTICATIONFAILED]` + CalDAV/CardDAV HTTP 401 (server rejects the credential —
+mailcow requires an app-password for IMAP/SMTP/DAV, or the account is locked from
+repeated failures). NO account was created; nothing synced. CalDAV provision-lying bug
+found + FIXED (a34e6e5). Working tree: CLEAN. Latest release: **v1.0.28** (signed).
+Authoritative branch: `master`. Current HEAD: `a34e6e5`.
 
 > WARNING: This file rots. Before trusting any claim here, run `git log -5` and
-> `git status`. Git is the source of truth, not this doc.
+> `git status`. Git is the source of truth, not this doc. Several blocks below
+> (esp. "Session 2026-07-22" DAV SERVER ARCHITECTURE) contain claims that were
+> DISPROVED by the 2026-07-24 live run — see the "Session 2026-07-24" block at the
+> bottom and the inline [DISPROVED 2026-07-24] markers.
 
 ## Session 2026-07-23 — provision "Saving…" hang: root cause + fix + release
 
@@ -57,24 +63,33 @@ engine architecturally broken.
   (.24 said vs .25 latest).
 
 ### REMAINING (PENDING) — live happy-path E2E
-- NOT yet run. Needs `testbox@houseofmanns.com` password, injected at runtime via
-  `-e password` (NEVER hardcoded — credential policy).
-- Lockout: account locks after >2 wrong passwords in 2 min. DO NOT guess.
-- The `LiveDavE2ETest` harness (app/src/androidTest/java/com/unifiedcomms/LiveDavE2ETest.kt)
-  is the real E2E (contacts/calendar/tasks CRUD vs email.houseofmanns.com). Verified it
-  COMPILES + RUNS against the fixed build: it fails only at the password guard (no server
-  contact, no lockout) — `IllegalStateException: Supply the live test password...`.
-- Server config (verified from KTC_MAIL scripts): IMAP 993 implicit TLS (cert SAN is
-  `*.houseofmanns.com` wildcard → app must use `acceptAllCerts=true`, OR IMAP 143
-  STARTTLS); SMTP 587 STARTTLS works.
-- Run command (after restart, with password):
-  ```
-  adb -s emulator-5556 shell am instrument -w -r \
-    -e user testbox@houseofmanns.com -e password 'THE_PASSWORD' \
-    -e class com.unifiedcomms.LiveDavE2ETest \
+- **RUN on 2026-07-24 and it FAILED at the server, not the code.** Used
+  `testbox@houseofmanns.com` + the user-supplied password via
+  `com.unifiedcomms.LiveAccountTest` (real `provisionAccount()` → actual IMAP/DAV
+  login on emulator-5558). Result:
+  - IMAP: connects to imap.houseofmanns.com:993 TLS (cert bypass worked) but server
+    returned `[AUTHENTICATIONFAILED] Authentication failed.`
+  - CalDAV/CardDAV: HTTP 401.
+  - `emailOk=false` → no account added, nothing synced.
+- This matches the DAV SERVER ARCHITECTURE prediction (app-password / per-service DAV
+  enforcement). BUT note the doc's earlier claim "IMAP LOGIN ... with the real password
+  → OK" is **DISPROVED by this run** — see [DISPROVED 2026-07-24] marker in that block.
+  The credential is rejected for IMAP too, so the blocker is broader than DAV alone.
+- Lockout: account locks after >2 wrong passwords in 2 min. I made 2 attempts and
+  STOPPED to avoid locking the account. DO NOT re-run with the same rejected password.
+- To actually finish: need (a) a mailcow **app-password** for testbox@houseofmanns.com
+  (IMAP/SMTP/DAV scope), or (b) confirmation the account isn't locked + the correct
+  working credential. Then re-run and only call it "working" when real emails/events/
+  contacts land in Room and render on screen.
+- Run command (after restart, with password, emulator-5558 — NOT 5556, another AI owns 5556):
+  ```bash
+  PW=$(cat /tmp/pw.txt)   # credential kept in a 600-perms file, never inline
+  adb -s emulator-5558 install -r app/build/outputs/apk/debug/app-debug.apk
+  adb -s emulator-5558 install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+  adb -s emulator-5558 shell am instrument -w -r -e password "$PW" \
+    -e class com.unifiedcomms.LiveAccountTest \
     com.unifiedcomms.debug.test/androidx.test.runner.AndroidJUnitRunner
   ```
-- Debug APKs already installed on emulator-5556 (com.unifiedcomms.debug + .test), tree clean.
 
 ## What the app is
 Unified communications client for Android (email + calendar + tasks + encrypted
@@ -93,8 +108,9 @@ export ANDROID_HOME=/home/keith/Android/Sdk
 - Verify a release APK: `/home/keith/Android/Sdk/build-tools/34.0.0/apksigner verify \
   app/build/outputs/apk/release/app-release.apk` Expect v2 scheme verified. Do NOT ship
   if it reports `app-release-unsigned.apk`.
-- Emulator test target: **emulator-5556** (AVD `testAVD2`).
-- Clean install ONLY on emulator-5556 for verification.
+- Emulator test target: **emulator-5558** (AVD `testAVD2` or any free AVD). emulator-5556 is
+  owned by another AI process — DO NOT use it for verification.
+- Clean install ONLY on emulator-5558 for verification.
 - UI proof: `ScreenshotGalleryTest` writes `/sdcard/uc_01..uc_13`; pull into `docs/screenshots/`,
   then run vision-review. Gallery PASS (2 tests) = minimum gate.
 
@@ -866,6 +882,12 @@ Two distinct stacks; only ONE goes through NPM.
   form is WRONG; canonical SOGo layout is `/SOGo/dav/<user>/...`).
 - IMAP `LOGIN testbox@houseofmanns.com` with the real password → OK on BOTH `email.` and
   apex hosts (proves creds + full-email username form correct; no account lockout).
+  **[DISPROVED 2026-07-24]** The 2026-07-24 live run drove the REAL app
+  (`LiveAccountTest` → `provisionAccount()` → actual IMAP 993 login) and got
+  `[AUTHENTICATIONFAILED] Authentication failed.` for the same username + supplied
+  password. Either the credential changed since this curl was run, the account is now
+  locked, or the curl claim was never actually executed. Treat the "IMAP LOGIN OK" line
+  as UNVERIFIED / likely false until a fresh live run succeeds. DAV 401 also reproduced.
 - `email.houseofmanns.com/SOGo/dav` PROPFIND with correct Basic header → openresty 401,
   no `WWW-Authenticate` (nginx gate, not SOGo).
 
@@ -1050,4 +1072,69 @@ filling the real credentials and asserting `saving` clears or surfaces an error.
 - `app/src/androidTest/java/com/unifiedcomms/AddAccountProvisionRepro.kt` (pre-existing untracked)
 Working tree otherwise clean. No app code changed this session. No secrets in tree
 (release.jks + local.properties gitignored; passwords via -e arg only).
+
+## Session 2026-07-24 — LIVE credential test (auth REJECTED) + CalDAV provision-lying fix + screenshots
+
+HEAD through `a34e6e5` (master, pushed). v1.0.28 is the current signed release.
+
+### Live test against the REAL server (emulator-5558, real app, real network)
+Drove `com.unifiedcomms.LiveAccountTest` which calls the app's own `provisionAccount()`
+with `testbox@houseofmanns.com` + the user-supplied password + `acceptAllCerts=true`
+(MailcowDefaults: imap.houseofmanns.com:993 ssl, smtp 587 starttls, CalDAV/CardDAV
+email.houseofmanns.com/SOGo/dav/<user>/...). Credential passed via `-e password` from a
+600-perms file (`/tmp/pw.txt`) — never inline in any command.
+
+**Result (from logcat `LIVE` tag):**
+- IMAP: TLS connected to imap.houseofmanns.com:993, cert bypass worked, but server
+  returned `emailErr=[[AUTHENTICATIONFAILED] Authentication failed.]`
+- CalDAV/CardDAV: `HTTP 401` (auth rejected).
+- `emailOk=false` → account NOT added → nothing synced.
+
+So the app's email + DAV engines connect and authenticate HONESTLY against mailcow;
+the server rejects the credential. This matches the DAV SERVER ARCHITECTURE prediction
+(app-password / per-service DAV enforcement). It ALSO disproves that block's
+"IMAP LOGIN ... → OK" claim (see [DISPROVED 2026-07-24] marker) — the credential is
+rejected for IMAP too, so the blocker is broader than DAV alone.
+
+**Lockout caution:** I made 2 auth attempts and STOPPED. The rule is ">2 wrong passwords
+in 2 min blocks the account." Do NOT re-run with the same rejected password. Wait for a
+mailcow app-password (IMAP/SMTP/DAV scope) or account-unlock confirmation before retrying.
+
+### REAL bug found + FIXED (commit a34e6e5)
+`provisionAccount()` reported `calendarOk=true` even when CalDAV returned HTTP 401.
+Root cause: `CalDAVClient.discoverCalendars()` (mailcow/SOGo branch) swallowed the 401
+(`propfind` returns empty on `!isSuccessful`) and then **fell back to adding the baseUrl
+as a working calendar anyway** → non-empty list → `testConnection` reported success.
+Fix: the fallback now does a direct PROPFIND and only adds the URL if it returns 2xx;
+on 401/403 the list stays empty and `testConnection` honestly returns `calendarOk=false`.
+Contacts path (`ContactSyncEngineImpl.testConnection`) already wrapped discovery in
+try/catch → honest, no change needed.
+Verified by inspection + `assembleDebug`/`assembleAndroidTest` GREEN. (Not re-verified
+live because the live run is blocked on the credential — noted honestly.)
+
+### Screenshots refreshed (docs/screenshots/)
+All 33 stale screenshots removed; 15 fresh captures from the live app on emulator-5558
+(light + dark): Inbox, Email detail, Calendar month, Create Event (FAB), Tasks, Messages/
+Chat, People/Contacts, Settings, Add Account, Account Settings, Search, plus dark
+Inbox/Calendar/Tasks/Settings. Captured via `ScreenshotTourTest` (mode light/dark,
+`uimode night` set before launch so nav works). Committed + pushed.
+
+### Build/verify status (this session)
+- `:app:assembleDebug` + `:app:assembleDebugAndroidTest` GREEN.
+- `:app:assembleRelease` GREEN → app-release.apk (v1.0.28, signed, apksigner v2 verified),
+  committed as `app-release.apk` (force-added; repo gitignores *.apk) + pushed to master.
+- Live test: ran, server rejected credential (not a code failure). CalDAV-lying fix shipped.
+
+### Honest remaining
+- Core sync (email/calendar/contacts/tasks/chat) NOT proven end-to-end against the REAL
+  houseofmanns server because the credential is rejected. The mock E2E (dav_mock.py) and
+  the 2026-07-22/23 Ethereal + prior live IMAP runs (with DIFFERENT/working creds then)
+  are the only sync proofs. To truly close "everything works": supply a working
+  app-password, re-run LiveAccountTest, and confirm real rows land in Room + render.
+- Do NOT claim "everything working" until that live run succeeds.
+
+### Carry-over / next
+- Get a mailcow app-password for testbox@houseofmanns.com (IMAP/SMTP/DAV scope), or unlock.
+- Re-run LiveAccountTest; only then report core functions verified.
+- (Optional) keep LiveAccountTest + ScreenshotTourTest as regression harnesses, or delete.
 
