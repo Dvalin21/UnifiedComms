@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -208,7 +209,7 @@ fun CalendarScreen(
         floatingActionButton = { }
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
-            Column(modifier = Modifier.fillMaxSize()) {
+            Column(modifier = Modifier.fillMaxSize().padding(bottom = 88.dp)) {
                 when (selectedView) {
                     CalendarView.DAY -> DayView(date = currentDate.value, events = allEvents, onEventClick = onEventClick, onDateSelected = { currentDate.value = it })
                     CalendarView.WEEK -> WeekView(date = currentDate.value, events = allEvents, onEventClick = onEventClick, onDateSelected = { currentDate.value = it; selectedView = CalendarView.DAY })
@@ -407,38 +408,54 @@ fun WeekView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClic
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         WeekStripRow(date = date, events = events, onDateSelected = onDateSelected)
         Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
+        // Samsung-style week timeline: time labels on the left, 7 day columns with hourly slots.
+        Row(modifier = Modifier.fillMaxSize().horizontalScroll(rememberScrollState())) {
+            // Time-label column
+            Column(modifier = Modifier.width(48.dp).verticalScroll(rememberScrollState())) {
+                Spacer(modifier = Modifier.height(28.dp)) // aligns with day-column header row
+                (0..23).forEach { hour ->
+                    Box(modifier = Modifier.height(56.dp), contentAlignment = Alignment.TopEnd) {
+                        Text(
+                            text = java.time.LocalTime.of(hour, 0).format(java.time.format.DateTimeFormatter.ofPattern("h a")),
+                            fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(end = 4.dp, top = 2.dp)
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.width(4.dp))
             (0..6).forEach { dayOffset ->
                 val day = weekStart.plusDays(dayOffset.toLong())
                 val selected = day == date
                 Column(
-                    modifier = Modifier.weight(1f).fillMaxHeight()
+                    modifier = Modifier.width(110.dp)
                         .then(if (selected) Modifier.background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f), RoundedCornerShape(12.dp)) else Modifier)
-                        .padding(4.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Top
+                        .padding(4.dp)
+                        .verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(text = day.dayOfWeek.name.take(3), fontWeight = FontWeight.Bold, fontSize = 12.sp,
                         color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(8.dp))
-
                     val dayEvents = events.filter { isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), day) }
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        dayEvents.take(3).forEach { event ->
-                            EventChip(event = event.toMockEvent(), onClick = { onEventClick(event.id) })
-                        }
-                        if (dayEvents.size > 3) {
-                            Text(text = "+${dayEvents.size - 3} more", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    val byHour = (0..23).map { h -> h to dayEvents.filter { ev ->
+                        val ktz = com.unifiedcomms.data.model.TimeZoneUtil.toKtxZone(ev.startAt.timeZone)
+                        ev.startAt.toInstant(ktz).toLocalDateTime(ktz).hour == h
+                    } }
+                    byHour.forEach { (hour, hourEvents) ->
+                        Column(modifier = Modifier.fillMaxWidth().height(56.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            hourEvents.take(2).forEach { ev ->
+                                EventChip(event = ev.toMockEvent(), onClick = { onEventClick(ev.id) },
+                                    modifier = Modifier.fillMaxWidth())
+                            }
+                            if (hourEvents.size > 2) {
+                                Text(text = "+${hourEvents.size - 2}", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                     }
                 }
             }
         }
-        Spacer(modifier = Modifier.weight(1f))
-        CurrentTimePanel(events = events)
     }
 }
 
