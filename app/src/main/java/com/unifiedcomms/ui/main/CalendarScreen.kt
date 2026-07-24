@@ -5,6 +5,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
@@ -204,21 +205,47 @@ fun CalendarScreen(
                 }
             )
         },
-        floatingActionButton = {
-            androidx.compose.material3.FloatingActionButton(
-                onClick = onCreateEvent,
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Create event")
-            }
-        }
+        floatingActionButton = { }
     ) { innerPadding ->
-        Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
-            when (selectedView) {
-                CalendarView.DAY -> DayView(date = currentDate.value, events = allEvents, onEventClick = onEventClick)
-                CalendarView.WEEK -> WeekView(date = currentDate.value, events = allEvents, onEventClick = onEventClick)
-                CalendarView.MONTH -> MonthView(date = currentDate.value, allEvents = allEvents, onDayClick = { date -> currentDate.value = date; selectedView = CalendarView.DAY })
+        Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                when (selectedView) {
+                    CalendarView.DAY -> DayView(date = currentDate.value, events = allEvents, onEventClick = onEventClick, onDateSelected = { currentDate.value = it })
+                    CalendarView.WEEK -> WeekView(date = currentDate.value, events = allEvents, onEventClick = onEventClick)
+                    CalendarView.MONTH -> MonthView(date = currentDate.value, allEvents = allEvents, onDayClick = { date -> currentDate.value = date; selectedView = CalendarView.DAY })
+                }
+            }
+            // Samsung-style bottom quick-add: outlined "Add event on <date>" pill + compact FAB.
+            Row(
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    modifier = Modifier.weight(1f).height(48.dp).clickable { onCreateEvent() },
+                    shape = RoundedCornerShape(24.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Add event on ${currentDate.value.format(java.time.format.DateTimeFormatter.ofPattern("MMM d"))}",
+                            fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                androidx.compose.material3.FloatingActionButton(
+                    onClick = onCreateEvent,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Create event")
+                }
             }
         }
     }
@@ -240,7 +267,7 @@ val TriangleEdgeShape = GenericShape { size, _ ->
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DayView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick: (String) -> Unit) {
+fun DayView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick: (String) -> Unit, onDateSelected: (java.time.LocalDate) -> Unit) {
     val dayEvents = events.filter { isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), date) }
     val eventsByHour = (0..23).map { h ->
         h to dayEvents.filter { ev ->
@@ -265,6 +292,7 @@ fun DayView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        WeekStripRow(date = date, events = events, onDateSelected = onDateSelected)
         Box(modifier = Modifier.fillMaxSize()) {
             Column(
                 modifier = Modifier.fillMaxSize().verticalScroll(scrollState).padding(horizontal = 8.dp, vertical = 8.dp)
@@ -308,6 +336,64 @@ fun DayView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick
                         .size(12.dp)
                         .background(Color(0xFFE53935), TriangleEdgeShape)
                 )
+            }
+        }
+    }
+}
+
+// ponytail: Samsung-style 7-day week strip (Sun-start). Selected day gets a white
+// outline circle; days with events show a colored dot. Tapping a day switches the view.
+@Composable
+private fun WeekStripRow(date: java.time.LocalDate, events: List<CalendarEvent>, onDateSelected: (java.time.LocalDate) -> Unit) {
+    val weekStart = date.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.SUNDAY))
+    val days = (0..6).map { weekStart.plusDays(it.toLong()) }
+    val dayInitials = listOf("S", "M", "T", "W", "T", "F", "S")
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly
+    ) {
+        days.forEachIndexed { i, day ->
+            val selected = day == date
+            val hasEvents = events.any { isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), day) }
+            val dotColor = events.firstOrNull { isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), day) }
+                ?.let { runCatching { Color(android.graphics.Color.parseColor(it.color.background)) }.getOrNull() }
+                ?: MaterialTheme.colorScheme.primary
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { onDateSelected(day) },
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = dayInitials[i],
+                    fontSize = 11.sp,
+                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .then(if (selected) Modifier.border(1.5.dp, Color.White, CircleShape) else Modifier)
+                        .background(
+                            if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else Color.Transparent,
+                            CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = day.dayOfMonth.toString(),
+                        fontSize = 14.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                        color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                if (hasEvents) {
+                    Box(modifier = Modifier.size(5.dp).background(dotColor, CircleShape))
+                } else {
+                    Spacer(modifier = Modifier.size(5.dp))
+                }
             }
         }
     }
