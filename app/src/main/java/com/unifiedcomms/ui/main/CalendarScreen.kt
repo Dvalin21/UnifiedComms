@@ -211,7 +211,7 @@ fun CalendarScreen(
             Column(modifier = Modifier.fillMaxSize()) {
                 when (selectedView) {
                     CalendarView.DAY -> DayView(date = currentDate.value, events = allEvents, onEventClick = onEventClick, onDateSelected = { currentDate.value = it })
-                    CalendarView.WEEK -> WeekView(date = currentDate.value, events = allEvents, onEventClick = onEventClick)
+                    CalendarView.WEEK -> WeekView(date = currentDate.value, events = allEvents, onEventClick = onEventClick, onDateSelected = { currentDate.value = it; selectedView = CalendarView.DAY })
                     CalendarView.MONTH -> MonthView(date = currentDate.value, allEvents = allEvents, onDayClick = { date -> currentDate.value = date; selectedView = CalendarView.DAY })
                 }
             }
@@ -401,23 +401,28 @@ private fun WeekStripRow(date: java.time.LocalDate, events: List<CalendarEvent>,
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WeekView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick: (String) -> Unit) {
-    val weekStart = date.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
+fun WeekView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick: (String) -> Unit, onDateSelected: (java.time.LocalDate) -> Unit) {
+    val weekStart = date.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.SUNDAY))
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        WeekStripRow(date = date, events = events, onDateSelected = onDateSelected)
+        Spacer(modifier = Modifier.height(8.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             (0..6).forEach { dayOffset ->
                 val day = weekStart.plusDays(dayOffset.toLong())
+                val selected = day == date
                 Column(
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    modifier = Modifier.weight(1f).fillMaxHeight()
+                        .then(if (selected) Modifier.background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f), RoundedCornerShape(12.dp)) else Modifier)
+                        .padding(4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Top
                 ) {
-                    Text(text = day.dayOfWeek.name.take(3), fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                    Text(text = day.dayOfMonth.toString(), fontSize = 16.sp)
+                    Text(text = day.dayOfWeek.name.take(3), fontWeight = FontWeight.Bold, fontSize = 12.sp,
+                        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(8.dp))
 
                     val dayEvents = events.filter { isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), day) }

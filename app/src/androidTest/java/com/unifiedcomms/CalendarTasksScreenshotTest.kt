@@ -92,6 +92,12 @@ class CalendarTasksScreenshotTest {
         Thread.sleep(2000)
         shot("calendar_day.png")
 
+        // Switch to Week view
+        composeTestRule.onNodeWithText("Week", ignoreCase = true).performClick()
+        composeTestRule.waitForIdle()
+        Thread.sleep(2000)
+        shot("calendar_week.png")
+
         // Tasks tab
         composeTestRule.onNodeWithText("Tasks", ignoreCase = true).performClick()
         composeTestRule.waitForIdle()
