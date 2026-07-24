@@ -241,11 +241,18 @@ fun EmailOverviewScreen(
         return
     }
 
+    // Conversation grouping: collapse by threadId (Gmail X-GM-THRID, else Message-ID).
+    // Representative = latest message in the thread; count shown as a badge.
+    val threads = emails.groupBy { it.threadId }.values.mapNotNull { msgs ->
+        val rep = msgs.maxByOrNull { it.sentAt } ?: return@mapNotNull null
+        rep to msgs.size
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
-        items(emails) { email ->
+        items(threads) { (email, count) ->
             val color = accountColorById[email.accountId]
                 ?: com.unifiedcomms.ui.theme.AccountColor(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onPrimary, "Default")
             val fromName = email.sender.name ?: email.sender.email
@@ -324,6 +331,20 @@ fun EmailOverviewScreen(
                                 .size(8.dp)
                                 .background(MaterialTheme.colorScheme.primary, CircleShape)
                         )
+                    }
+                    if (count > 1) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Surface(
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            shape = CircleShape
+                        ) {
+                            Text(
+                                text = count.toString(),
+                                fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                            )
+                        }
                     }
                 }
             }
