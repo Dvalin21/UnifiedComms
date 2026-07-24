@@ -10,6 +10,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -227,30 +228,49 @@ enum class CalendarView { DAY, WEEK, MONTH }
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DayView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick: (String) -> Unit) {
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text(text = "Day View: ${date.dayOfWeek}, ${date.month} ${date.dayOfMonth}", fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
-        Spacer(modifier = Modifier.height(16.dp))
-
-        val dayEvents = events.filter { isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), date) }
-        if (dayEvents.isNotEmpty()) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp)
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp)),
-                shape = RoundedCornerShape(16.dp),
-                tonalElevation = 2.dp,
-                color = MaterialTheme.colorScheme.surfaceContainerHighest
-            ) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    dayEvents.forEach { event ->
-                        EventChip(event = event.toMockEvent(), onClick = { onEventClick(event.id) })
+    val dayEvents = events.filter { isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), date) }
+    val eventsByHour = (0..23).map { h ->
+        h to dayEvents.filter { ev ->
+            val ktz = com.unifiedcomms.data.model.TimeZoneUtil.toKtxZone(ev.startAt.timeZone)
+            val ldt = ev.startAt.toInstant(ktz).toLocalDateTime(ktz)
+            ldt.hour == h
+        }
+    }
+    Column(modifier = Modifier.fillMaxSize()) {
+        Text(
+            text = "Day View: ${date.dayOfWeek}, ${date.month} ${date.dayOfMonth}",
+            fontSize = 18.sp, fontWeight = FontWeight.Bold,
+            maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
+            contentPadding = PaddingValues(vertical = 8.dp)
+        ) {
+            items(eventsByHour) { (hour, hourEvents) ->
+                Row(modifier = Modifier.fillMaxWidth().height(56.dp)) {
+                    Text(
+                        text = java.time.LocalTime.of(hour, 0).format(java.time.format.DateTimeFormatter.ofPattern("h a")),
+                        fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.width(56.dp).padding(top = 2.dp), textAlign = TextAlign.End
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f), modifier = Modifier.weight(1f).align(Alignment.Top))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        hourEvents.forEach { ev ->
+                            EventChip(
+                                event = ev.toMockEvent(),
+                                onClick = { onEventClick(ev.id) },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                        }
                     }
                 }
             }
         }
-        Spacer(modifier = Modifier.weight(1f))
-        CurrentTimePanel(events = events)
     }
 }
 
@@ -352,7 +372,7 @@ fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onDayCl
                                 .clip(RoundedCornerShape(12.dp))
                                 .then(if (cellDate != null) Modifier.clickable { onDayClick(cellDate) } else Modifier)
                                 .background(
-                                    if (isToday) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                    if (isToday) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f) else Color.Transparent,
                                     RoundedCornerShape(12.dp)
                                 )
                                 .padding(6.dp)
@@ -475,20 +495,20 @@ fun CurrentTimePanel(events: List<CalendarEvent>) {
         ) {
             Column {
                 Text(
-                    text = now.toLocalDate().format(dateFmt),
+                    text = if (todayCount == 0) "No events today" else "$todayCount event${if (todayCount == 1) "" else "s"} today",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = if (todayCount == 0) "No events today" else "$todayCount event${if (todayCount == 1) "" else "s"} today",
+                    text = now.toLocalDate().format(dateFmt),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Text(
                 text = now.toLocalTime().format(timeFmt),
-                style = MaterialTheme.typography.displaySmall,
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
             )
@@ -550,9 +570,9 @@ private fun com.unifiedcomms.data.model.CalendarEvent.toMockEvent(): MockEvent =
 )
 
 @Composable
-fun EventChip(event: MockEvent, compact: Boolean = false, onClick: () -> Unit) {
+fun EventChip(event: MockEvent, compact: Boolean = false, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Surface(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .then(if (compact) Modifier.heightIn(min = 18.dp) else Modifier),
         shape = RoundedCornerShape(6.dp),
