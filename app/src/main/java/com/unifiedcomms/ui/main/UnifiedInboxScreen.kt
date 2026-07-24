@@ -242,8 +242,8 @@ fun EmailOverviewScreen(
     }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         items(emails) { email ->
             val color = accountColorById[email.accountId]
@@ -251,26 +251,43 @@ fun EmailOverviewScreen(
             val fromName = email.sender.name ?: email.sender.email
             val avatarColor = color.container
             val initials = email.sender.getInitials()
+            val unread = email.isUnread()
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { onNavigateToEmail(email.accountId, "INBOX") },
-                color = if (email.isUnread()) MaterialTheme.colorScheme.surfaceContainerHighest
+                color = if (unread) MaterialTheme.colorScheme.surfaceContainerHighest
                 else MaterialTheme.colorScheme.surface,
-                tonalElevation = if (email.isUnread()) 1.dp else 0.dp
+                tonalElevation = if (unread) 1.dp else 0.dp
             ) {
-                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (unread) {
+                        Box(
+                            modifier = Modifier
+                                .size(width = 3.dp, height = 38.dp)
+                                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
                     Box(
-                        modifier = Modifier.size(40.dp).background(avatarColor, CircleShape),
+                        modifier = Modifier
+                            .size(44.dp)
+                            .background(avatarColor, CircleShape)
+                            .border(1.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(text = initials, fontWeight = FontWeight.Bold, color = Color.White)
+                        Text(text = initials, fontWeight = FontWeight.Bold, color = Color.White, fontSize = 15.sp)
                     }
-                    Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = fromName,
-                                fontWeight = if (email.isUnread()) FontWeight.Bold else FontWeight.Normal,
+                                fontWeight = if (unread) FontWeight.Bold else FontWeight.Normal,
+                                fontSize = 15.sp,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f)
                             )
@@ -282,26 +299,35 @@ fun EmailOverviewScreen(
                                         java.time.ZoneId.systemDefault()
                                     )
                                 ),
-                                fontSize = 12.sp,
+                                fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1
                             )
                         }
                         Text(
                             text = email.subject.ifBlank { "(no subject)" },
-                            fontWeight = if (email.isUnread()) FontWeight.SemiBold else FontWeight.Normal,
+                            fontWeight = if (unread) FontWeight.SemiBold else FontWeight.Normal,
+                            fontSize = 14.sp,
                             maxLines = 1, overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = email.getSnippet(),
                             fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                             maxLines = 1, overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    if (unread) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .background(MaterialTheme.colorScheme.primary, CircleShape)
                         )
                     }
                 }
             }
-            HorizontalDivider()
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         }
     }
 }
