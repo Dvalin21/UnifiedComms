@@ -194,9 +194,18 @@ class CalDAVClient(
             val calendars = mutableListOf<CalendarInfo>()
             scanForCalendars(baseUrl, calendars)
             if (calendars.isEmpty()) {
-                // The URL itself is the calendar collection; expose it directly.
-                val name = baseUrl.trimEnd('/').substringAfterLast('/').ifBlank { "Calendar" }
-                calendars += CalendarInfo(path = baseUrl, displayName = name, ctag = "", supportsVTODO = false)
+                // The URL itself is the calendar collection; only expose it if it
+                // actually responds 2xx — a 401/403 means auth failed and must NOT
+                // be reported as a working CalDAV leg (provision would lie).
+                val ok = runCatching {
+                    val xml = """<?xml version="1.0" encoding="utf-8"?>
+<D:propfind xmlns:D="DAV:"><D:prop><D:displayname/></D:prop></D:propfind>""".trimIndent()
+                    propfind(baseUrl, xml, depth = "0")
+                }.isSuccess
+                if (ok) {
+                    val name = baseUrl.trimEnd('/').substringAfterLast('/').ifBlank { "Calendar" }
+                    calendars += CalendarInfo(path = baseUrl, displayName = name, ctag = "", supportsVTODO = false)
+                }
             }
             return@withContext calendars
         }
