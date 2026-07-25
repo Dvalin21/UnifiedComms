@@ -517,7 +517,7 @@ fun AddAccountScreen(
                                 // failed. A CalDAV/CardDAV-only account (syncEmail=false) is
                                 // NOT blocked by the IMAP test — it saves on DAV success.
                                 if (draft.syncConfig.syncEmail && !provision.emailOk) {
-                                    error = "Could not connect (email): ${provision.emailError ?: "IMAP login failed"}"
+                                    error = "Email: ${provision.emailError ?: "IMAP login failed"}"
                                     return@launch
                                 }
                                 // Disable any DAV sync legs that failed to connect (honest,
