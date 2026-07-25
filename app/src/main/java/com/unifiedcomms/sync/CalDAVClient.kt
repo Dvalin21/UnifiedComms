@@ -315,7 +315,12 @@ class CalDAVClient(
                     val ctagNode = byLocalName(resp, "getctag").item(0)
                     val ctag = ctagNode?.textContent?.trim().orEmpty()
                     result += CalendarInfo(path = subUrl, displayName = name, ctag = ctag, supportsVTODO = false)
-                } else if (!isSelf) {
+                } else if (!isSelf && types.contains("collection")) {
+                    // ponytail: only recurse into real sub-collections. A calendar
+                    // collection's depth=1 PROPFIND also returns its child event
+                    // items (.ics); recursing into those re-PROPFINDs every event
+                    // and explodes/hangs (20s CalDAV timeout -> 0 events). Skip
+                    // anything that isn't a collection.
                     scanForCalendars(subUrl, result, visited)
                 }
             }
