@@ -2,6 +2,8 @@ package com.unifiedcomms.data.repository
 
 import com.unifiedcomms.data.db.dao.EmailDao
 import com.unifiedcomms.data.model.Email
+import com.unifiedcomms.data.model.EmailFlags
+import com.unifiedcomms.data.model.SystemLabels
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
@@ -27,8 +29,31 @@ class EmailRepositoryImpl(private val dao: EmailDao) : EmailRepository {
     override suspend fun getByImapUid(accountId: String, imapUid: String, folder: String): Email? =
         dao.getByImapUid(accountId, imapUid, folder)
 
+    override suspend fun getSyncKeyByImapUid(accountId: String, imapUid: String, folder: String): com.unifiedcomms.data.db.dao.EmailSyncKey? =
+        dao.getSyncKeyByImapUid(accountId, imapUid, folder)
+
+    override suspend fun getSyncKeyByUid(accountId: String, uid: String, folder: String): com.unifiedcomms.data.db.dao.EmailSyncKey? =
+        dao.getSyncKeyByUid(accountId, uid, folder)
+
+    override suspend fun updateSyncMeta(
+        id: String,
+        flags: EmailFlags,
+        labels: List<String>,
+        systemLabels: SystemLabels,
+        etag: String,
+        updatedAt: Long,
+        messageId: String,
+        subject: String,
+        bodyText: String?,
+        bodyHtml: String?,
+        preview: String?
+    ) = dao.updateSyncMeta(id, flags, labels, systemLabels, etag, updatedAt, messageId, subject, bodyText, bodyHtml, preview)
+
     override suspend fun getByFolderAndUidValidity(accountId: String, folder: String, uidValidity: String): List<Email> =
         dao.getByFolderAndUidValidity(accountId, folder, uidValidity)
+
+    override suspend fun countByFolderAndUidValidity(accountId: String, folder: String, uidValidity: String): Int =
+        dao.countByFolderAndUidValidity(accountId, folder, uidValidity)
 
     override suspend fun getByMessageId(messageId: String): Email? = dao.getByMessageId(messageId)
 

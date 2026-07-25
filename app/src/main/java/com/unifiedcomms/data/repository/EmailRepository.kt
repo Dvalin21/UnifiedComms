@@ -15,7 +15,27 @@ interface EmailRepository {
     suspend fun getById(id: String): Email?
     suspend fun getByUid(accountId: String, uid: String, folder: String): Email?
     suspend fun getByImapUid(accountId: String, imapUid: String, folder: String): Email?
+    // ponytail: lightweight lookup for the sync update path (no bodyText) so we
+    // never overflow the CursorWindow on large folders.
+    suspend fun getSyncKeyByImapUid(accountId: String, imapUid: String, folder: String): com.unifiedcomms.data.db.dao.EmailSyncKey?
+    suspend fun getSyncKeyByUid(accountId: String, uid: String, folder: String): com.unifiedcomms.data.db.dao.EmailSyncKey?
+    // ponytail: targeted merge update that never reads the (possibly huge) row.
+    suspend fun updateSyncMeta(
+        id: String,
+        flags: EmailFlags,
+        labels: List<String>,
+        systemLabels: SystemLabels,
+        etag: String,
+        updatedAt: Long,
+        messageId: String,
+        subject: String,
+        bodyText: String?,
+        bodyHtml: String?,
+        preview: String?
+    )
     suspend fun getByFolderAndUidValidity(accountId: String, folder: String, uidValidity: String): List<Email>
+    // ponytail: exists-check only (no bodyText) to avoid CursorWindow overflow.
+    suspend fun countByFolderAndUidValidity(accountId: String, folder: String, uidValidity: String): Int
     suspend fun getByMessageId(messageId: String): Email?
     fun getByThreadId(threadId: String): Flow<List<Email>>
     fun getByAccountAndFolder(accountId: String, folder: String, limit: Int, offset: Int): Flow<List<Email>>

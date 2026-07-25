@@ -14,6 +14,16 @@ import com.unifiedcomms.data.model.Email
 import com.unifiedcomms.data.model.EmailFlags
 import com.unifiedcomms.data.model.SystemLabels
 
+/**
+ * ponytail: minimal projection returned by the sync update-path lookups so we
+ * never load a multi-MB bodyText into the CursorWindow.
+ */
+data class EmailSyncKey(
+    val id: String,
+    val etag: String,
+    val flags: EmailFlags
+)
+
 @Dao
 interface EmailDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -40,17 +50,65 @@ interface EmailDao {
     @Query("SELECT * FROM emails WHERE id = :id")
     suspend fun getById(id: String): Email?
 
+    @Query("SELECT * FROM emails WHERE accountId = :accountId AND folder = :folder AND uidValidity = :uidValidity ORDER BY receivedAt DESC")
+    suspend fun getByFolderAndUidValidity(accountId: String, folder: String, uidValidity: String): List<Email>
+
+    // ponytail: exists-check only — must NOT select bodyText (CursorWindow
+    // overflow on large folders with multi-MB bodies). Caller only needs
+    // isEmpty(), so a COUNT is sufficient and safe.
+    @Query("SELECT COUNT(*) FROM emails WHERE accountId = :accountId AND folder = :folder AND uidValidity = :uidValidity")
+    suspend fun countByFolderAndUidValidity(accountId: String, folder: String, uidValidity: String): Int
+
+    @Query("SELECT * FROM emails WHERE messageId = :messageId")
+    suspend fun getByMessageId(messageId: String): Email?
+
     @Query("SELECT * FROM emails WHERE accountId = :accountId AND uid = :uid AND folder = :folder")
     suspend fun getByUid(accountId: String, uid: String, folder: String): Email?
 
     @Query("SELECT * FROM emails WHERE accountId = :accountId AND imapUid = :imapUid AND folder = :folder LIMIT 1")
     suspend fun getByImapUid(accountId: String, imapUid: String, folder: String): Email?
 
-    @Query("SELECT * FROM emails WHERE accountId = :accountId AND folder = :folder AND uidValidity = :uidValidity ORDER BY receivedAt DESC")
-    suspend fun getByFolderAndUidValidity(accountId: String, folder: String, uidValidity: String): List<Email>
+    // ponytail: lightweight lookup used by the sync update path. Selecting the
+    // full row (incl. a possibly multi-MB bodyText) overflows the 2MB
+    // CursorWindow for large folders (Sent/Trash) and aborts the sync. Only the
+    // columns needed to decide insert-vs-update / etag change are fetched.
+    @Query("SELECT id, etag, flags FROM emails WHERE accountId = :accountId AND imapUid = :imapUid AND folder = :folder LIMIT 1")
+    suspend fun getSyncKeyByImapUid(accountId: String, imapUid: String, folder: String): EmailSyncKey?
 
-    @Query("SELECT * FROM emails WHERE messageId = :messageId")
-    suspend fun getByMessageId(messageId: String): Email?
+    @Query("SELECT id, etag, flags FROM emails WHERE accountId = :accountId AND uid = :uid AND folder = :folder LIMIT 1")
+    suspend fun getSyncKeyByUid(accountId: String, uid: String, folder: String): EmailSyncKey?
+
+    // ponytail: targeted merge update that never reads the (possibly huge) row,
+    // so it cannot overflow the CursorWindow. Body is always refreshed from the
+    // freshly parsed value (parseEmail now reliably returns a clean body).
+    @Query("""
+        UPDATE emails SET
+            flags = :flags,
+            labels = :labels,
+            systemLabels = :systemLabels,
+            etag = :etag,
+            updatedAt = :updatedAt,
+            needsSync = 0,
+            messageId = :messageId,
+            subject = :subject,
+            bodyText = :bodyText,
+            bodyHtml = :bodyHtml,
+            preview = :preview
+        WHERE id = :id
+    """)
+    suspend fun updateSyncMeta(
+        id: String,
+        flags: EmailFlags,
+        labels: List<String>,
+        systemLabels: SystemLabels,
+        etag: String,
+        updatedAt: Long,
+        messageId: String,
+        subject: String,
+        bodyText: String?,
+        bodyHtml: String?,
+        preview: String?
+    )
 
     @Query("SELECT * FROM emails WHERE threadId = :threadId ORDER BY receivedAt DESC")
     fun getByThreadId(threadId: String): Flow<List<Email>>
