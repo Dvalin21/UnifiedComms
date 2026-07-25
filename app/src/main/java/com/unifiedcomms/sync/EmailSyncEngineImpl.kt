@@ -466,7 +466,12 @@ class EmailSyncEngineImpl(
             // proper tree where getContent() returns a decoded MimeMultipart and
             // text parts are clean Strings. This is the canonical robust path.
             val parsedMsg = runCatching { MimeMessage(null, msg.getInputStream()) }.getOrElse { msg }
-            val (bodyText, bodyHtml) = runCatching { extractContent(parsedMsg) }.getOrDefault(null to null)
+            val (bodyTextRaw, bodyHtml) = runCatching { extractContent(parsedMsg) }.getOrDefault(null to null)
+            // ponytail: never store a raw MIME blob as the body. If the plain
+            // text came back blank/raw but we have HTML, render it to text. If
+            // both are blank, leave null (UI shows "(no content)" + subject) rather
+            // than leaking MIME headers into the body.
+            val bodyText = if (!bodyTextRaw.isNullOrBlank()) bodyTextRaw else bodyHtml?.let { stripHtml(it) }
             val attachments = mutableListOf<com.unifiedcomms.data.model.Attachment>()
             runCatching { extractAttachments(msg, attachments) }
 
@@ -622,9 +627,41 @@ class EmailSyncEngineImpl(
      */
     private fun parseRawMultipart(raw: String): Pair<String?, String?> {
         val lines = raw.split("\r\n", "\n")
-        val delimiter = lines.firstOrNull { it.startsWith("--") && it.length > 4 } ?: return (null to null)
-        // Segments between delimiter lines are the parts (drop preamble; skip
-        // the closing "--delimiter--" which starts with the delimiter too).
+        // ponytail: the REAL MIME boundary is a "--<token>" line whose NEXT
+        // non-empty line is a part header (Content-Type/MIME-Version/...). A
+        // forwarded-message marker ("-------- Original Message --------") also
+        // starts with "--" but is NOT a boundary — picking it as the delimiter
+        // makes the parser miss every real part. So scan for the true boundary.
+        var delimiter: String? = null
+        for (i in lines.indices) {
+            val ln = lines[i]
+            if (ln.startsWith("--") && ln.length > 4) {
+                val next = lines.drop(i + 1).firstOrNull { it.isNotBlank() }?.lowercase().orEmpty()
+                if (next.startsWith("content-type") || next.startsWith("mime-version") ||
+                    next.startsWith("content-transfer-encoding")
+                ) {
+                    delimiter = ln
+                    break
+                }
+            }
+        }
+        if (delimiter == null) {
+            // No real MIME boundary found (e.g. a forwarded-quote marker with a
+            // plain quoted body). Cut the body at the first leaked boundary line
+            // if present; otherwise return the text as-is.
+            val cut = raw.indexOf("\r\n--")
+            val cut2 = raw.indexOf("\n--")
+            val cutAt = when {
+                cut >= 0 && cut2 >= 0 -> minOf(cut, cut2)
+                cut >= 0 -> cut
+                cut2 >= 0 -> cut2
+                else -> -1
+            }
+            val body = if (cutAt >= 0) raw.substring(0, cutAt).trim() else raw.trim()
+            return (body to null)
+        }
+        // Segments between delimiter lines are the parts (drop the preamble;
+        // skip the closing "--delimiter--" which also starts with the delimiter).
         val segments = raw.split(delimiter).drop(1).filter { !it.startsWith("--") }
         var text: String? = null
         var html: String? = null
@@ -633,21 +670,24 @@ class EmailSyncEngineImpl(
             val sep = if (hb >= 0) hb + 4 else seg.indexOf("\n\n").let { if (it >= 0) it + 2 else -1 }
             if (sep < 0) continue
             val headers = seg.substring(0, sep).lowercase()
-            // ponytail: a part body can itself contain a nested boundary
-            // (e.g. text/plain followed by an attached multipart). Cut the body
-            // at the first subsequent boundary line so we don't leak it.
+            // ponytail: a part with no Content-Type is plain text (e.g. a
+            // forwarded message body before the first boundary).
+            val isPlain = !headers.contains("content-type") || headers.contains("content-type: text/plain")
+            val isHtml = headers.contains("content-type: text/html")
+            // A part body can itself contain a nested boundary; cut at it so we
+            // don't leak trailing MIME into the extracted text.
             val bodyRaw = seg.substring(sep)
-            val boundaryIdx = bodyRaw.indexOf("\n--")
-            val boundaryIdxR = bodyRaw.indexOf("\r\n--")
+            val bIdx = bodyRaw.indexOf("\n--")
+            val bIdxR = bodyRaw.indexOf("\r\n--")
             val cut = when {
-                boundaryIdxR >= 0 && boundaryIdx >= 0 -> minOf(boundaryIdxR, boundaryIdx)
-                boundaryIdxR >= 0 -> boundaryIdxR
-                boundaryIdx >= 0 -> boundaryIdx
+                bIdxR >= 0 && bIdx >= 0 -> minOf(bIdxR, bIdx)
+                bIdxR >= 0 -> bIdxR
+                bIdx >= 0 -> bIdx
                 else -> -1
             }
             val body = if (cut >= 0) bodyRaw.substring(0, cut).trim() else bodyRaw.trim()
-            if (text == null && headers.contains("content-type: text/plain")) text = body
-            else if (html == null && headers.contains("content-type: text/html")) html = body
+            if (text == null && isPlain) text = body
+            else if (html == null && isHtml) html = body
         }
         val plain = text ?: html?.let { stripHtml(it) }
         return (plain to html)
@@ -663,10 +703,21 @@ class EmailSyncEngineImpl(
         return try {
             when {
                 part.isMimeType("text/plain") -> {
-                    readText(part) to null
+                    val t = readText(part)
+                    if (t != null && looksLikeRawMultipart(t)) {
+                        // ponytail: never leak the raw blob. parseRawMultipart may
+                        // return null for oddly-structured parts; fall back to
+                        // stripping the leading MIME header block, then the html
+                        // sibling is handled by parseEmail's bodyText safety net.
+                        val fixed = parseRawMultipart(t).first
+                        (fixed ?: stripMimeHeaders(t)) to null
+                    } else t to null
                 }
                 part.isMimeType("text/html") -> {
-                    null to readText(part)
+                    val h = readText(part)
+                    if (h != null && looksLikeRawMultipart(h)) {
+                        null to (parseRawMultipart(h).second ?: stripMimeHeaders(h))
+                    } else null to h
                 }
                 part.isMimeType("message/rfc822") -> {
                     // ponytail: a forwarded/attached email is itself a Part
