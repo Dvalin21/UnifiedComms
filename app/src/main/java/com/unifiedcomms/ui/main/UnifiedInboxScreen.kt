@@ -22,6 +22,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material3.Icon
@@ -67,6 +72,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.util.Log
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.unifiedcomms.data.model.Account
@@ -117,12 +123,68 @@ fun UnifiedInboxScreen(
         }
     }
 
+    // ponytail: Edison-style left drawer listing every real mail folder (Chat
+    // excluded at the source in EmailSyncEngine.listFolders). Loaded on open.
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    var folderList by remember { mutableStateOf<List<FolderEntry>>(emptyList()) }
+    val primaryAccountId = activeAccounts.firstOrNull()?.id.orEmpty()
+    LaunchedEffect(drawerState.isOpen, primaryAccountId) {
+        if (drawerState.isOpen && primaryAccountId.isNotBlank()) {
+            val names = viewModel.loadFolders(primaryAccountId)
+            folderList = names.map { name ->
+                val unread = runCatching {
+                    viewModel.emailRepository.getUnreadCount(primaryAccountId, name)
+                }.getOrDefault(0)
+                FolderEntry(name, unread)
+            }
+        }
+    }
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet {
+                Text(
+                    "Folders",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(16.dp)
+                )
+                HorizontalDivider()
+                LazyColumn(modifier = Modifier.fillMaxSize().padding(vertical = 8.dp)) {
+                    items(folderList) { entry ->
+                        NavigationDrawerItem(
+                            label = {
+                                Text(
+                                    entry.name,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            },
+                            badge = if (entry.unread > 0) {
+                                { Text(entry.unread.toString()) }
+                            } else null,
+                            selected = false,
+                            onClick = {
+                                coroutineScope.launch { drawerState.close() }
+                                onNavigateToEmail(primaryAccountId, entry.name)
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            }
+        }
+    ) {
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("UnifiedComms", fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = {
-                    IconButton(onClick = { /* Open drawer */ }) {
+                    IconButton(onClick = { coroutineScope.launch { drawerState.open() } }) {
                         Icon(Icons.Default.Menu, contentDescription = "Menu")
                     }
                 },
@@ -198,9 +260,12 @@ fun UnifiedInboxScreen(
             }
         }
     }
+    }
 }
 
 data class NavigationItem(val label: String, val icon: ImageVector, val index: Int)
+
+data class FolderEntry(val name: String, val unread: Int)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

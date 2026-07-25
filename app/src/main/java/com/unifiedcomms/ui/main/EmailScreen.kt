@@ -5,6 +5,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Search
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
@@ -51,6 +53,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import android.webkit.WebView
+import android.content.Intent
+import android.webkit.MimeTypeMap
+import androidx.core.content.FileProvider
+import androidx.compose.ui.platform.LocalContext
 import kotlin.math.abs
 
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -70,11 +78,12 @@ fun EmailScreen(
     onCompose: () -> Unit,
     onEmailClick: (emailId: String) -> Unit
 ) {
-    val resolvedFolder = when (folder) {
-        "Sent" -> "Sent"
-        "Drafts" -> "Drafts"
-        "Trash" -> "Trash"
-        else -> "INBOX"
+    // ponytail: honor the real folder name from the drawer. Only INBOX is
+    // case-insensitive; a custom folder (Archive, Junk, ...) must pass through
+    // verbatim or the list would wrongly show INBOX contents.
+    val resolvedFolder = when {
+        folder.equals("INBOX", ignoreCase = true) -> "INBOX"
+        else -> folder
     }
     val emails by viewModel.emailRepository
         .getByAccountAndFolder(accountId, resolvedFolder, 100, 0)
@@ -325,6 +334,7 @@ fun EmailDetailScreen(
                 Text("Email not found", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
+            val context = LocalContext.current
             LazyColumn(modifier = Modifier.padding(innerPadding).fillMaxSize().padding(16.dp)) {
                 item {
                     Text(e.sender.toString(), fontWeight = FontWeight.Bold)
@@ -340,9 +350,92 @@ fun EmailDetailScreen(
                     Spacer(modifier = Modifier.height(16.dp))
                     HorizontalDivider()
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text(e.bodyText ?: "(no content)", style = MaterialTheme.typography.bodyLarge)
+                    // ponytail: render HTML when available (GMail/Samsung-style),
+                    // fall back to plaintext. WebView is the correct renderer for
+                    // arbitrary email HTML; JS is disabled and no network access.
+                    if (!e.bodyHtml.isNullOrBlank()) {
+                        val html = e.bodyHtml
+                        AndroidView(
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp, max = 600.dp),
+                            factory = { ctx ->
+                                WebView(ctx).apply {
+                                    settings.javaScriptEnabled = false
+                                    settings.blockNetworkImage = false
+                                    settings.blockNetworkLoads = true
+                                    isVerticalScrollBarEnabled = false
+                                    isHorizontalScrollBarEnabled = false
+                                }.also { wv ->
+                                    wv.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
+                                }
+                            },
+                            update = { wv -> wv.loadDataWithBaseURL(null, html, "text/html", "utf-8", null) }
+                        )
+                    } else {
+                        Text(e.bodyText ?: "(no content)", style = MaterialTheme.typography.bodyLarge)
+                    }
+                    if (e.attachments.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text("Attachments", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        e.attachments.forEach { att ->
+                            AttachmentRow(
+                                attachment = att,
+                                onOpen = {
+                                    coroutineScope.launch {
+                                        val path = viewModel.downloadAttachment(e.accountId, e.folder, e.imapUid ?: e.uid, att)
+                                        path?.let { openFile(context, it, att.mimeType) }
+                                    }
+                                }
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AttachmentRow(attachment: com.unifiedcomms.data.model.Attachment, onOpen: () -> Unit) {
+    val sizeLabel = if (attachment.sizeBytes > 0) {
+        "  ·  %.1f KB".format(attachment.sizeBytes / 1024.0)
+    } else ""
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen)
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Filled.AttachFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(attachment.fileName, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium)
+                Text(
+                    attachment.mimeType + sizeLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+private fun openFile(context: android.content.Context, path: String, mimeType: String) {
+    runCatching {
+        val file = java.io.File(path)
+        val uri = FileProvider.getUriForFile(context, context.packageName + ".fileprovider", file)
+        val type = if (mimeType.isNotBlank()) mimeType else MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(file.extension) ?: "*/*"
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, type)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Open attachment"))
+    }.onFailure { e ->
+        android.util.Log.e("EmailScreen", "openFile failed: ${e.message}")
     }
 }

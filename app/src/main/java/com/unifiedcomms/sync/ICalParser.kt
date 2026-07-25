@@ -17,7 +17,7 @@ object ICalParser {
 
     data class ParseResult(val events: List<CalendarEvent>, val tasks: List<Task>)
 
-    fun parse(ical: String, accountId: String, calendarPath: String, etag: String): ParseResult {
+    fun parse(ical: String, accountId: String, calendarPath: String, etag: String, defaultColor: String = ""): ParseResult {
         val tasks = mutableListOf<Task>()
         val lines = unfoldLines(ical)
         val veventBlocks = mutableListOf<List<String>>()
@@ -43,7 +43,7 @@ object ICalParser {
         // ponytail: group sibling VEVENTs by UID so a RECURRENCE-ID override (same UID,
         // no RRULE) is attached to its master as a RecurrenceException instead of being
         // emitted as a phantom standalone event. EXDATEs are folded into the master too.
-        val events = mergeVEvents(veventBlocks, accountId, calendarPath, etag)
+        val events = mergeVEvents(veventBlocks, accountId, calendarPath, etag, defaultColor)
         return ParseResult(events, tasks)
     }
 
@@ -51,9 +51,10 @@ object ICalParser {
         blocks: List<List<String>>,
         accountId: String,
         calendarPath: String,
-        etag: String
+        etag: String,
+        defaultColor: String = ""
     ): List<CalendarEvent> {
-        val parsed = blocks.mapNotNull { parseVEventWithRecurrenceId(it, accountId, calendarPath, etag) }
+        val parsed = blocks.mapNotNull { parseVEventWithRecurrenceId(it, accountId, calendarPath, etag, defaultColor) }
         val byUid = parsed.groupBy { it.event.uid }
         val out = mutableListOf<CalendarEvent>()
         for ((_, group) in byUid) {
@@ -85,9 +86,10 @@ object ICalParser {
         lines: List<String>,
         accountId: String,
         calendarPath: String,
-        etag: String
+        etag: String,
+        defaultColor: String = ""
     ): ParsedVEvent? {
-        val event = parseVEvent(lines, accountId, calendarPath, etag) ?: return null
+        val event = parseVEvent(lines, accountId, calendarPath, etag, defaultColor) ?: return null
         val map = parseProperties(lines)
         // ponytail: RECURRENCE-ID carries params (TZID); look it up by prefix, not exact key.
         val ridEntry = map.entries.firstOrNull { it.key.startsWith("RECURRENCE-ID") }
@@ -95,7 +97,7 @@ object ICalParser {
         return ParsedVEvent(event, rid)
     }
 
-    private fun parseVEvent(lines: List<String>, accountId: String, calendarPath: String, etag: String): CalendarEvent? {
+    private fun parseVEvent(lines: List<String>, accountId: String, calendarPath: String, etag: String, defaultColor: String = ""): CalendarEvent? {
         val map = parseProperties(lines)
         return try {
             val uid = map["UID"] ?: return null
@@ -146,7 +148,9 @@ object ICalParser {
                 timezone = startTzId?.let { com.unifiedcomms.data.model.TimeZoneUtil.normalize(it) } ?: ZoneId.systemDefault().id,
                 recurrenceRule = map["RRULE"]?.let { com.unifiedcomms.data.model.RecurrenceRule.parse(it) },
                 recurrenceExceptions = exdates,
-                color = if (colorHex.isNotBlank()) EventColor(colorHex, if (isLightColor(colorHex)) "#000000" else "#FFFFFF") else EventColor.Default(),
+                color = if (colorHex.isNotBlank()) EventColor(colorHex, if (isLightColor(colorHex)) "#000000" else "#FFFFFF")
+                    else if (defaultColor.isNotBlank()) EventColor(defaultColor, if (isLightColor(defaultColor)) "#000000" else "#FFFFFF")
+                    else EventColor.Default(),
                 organizer = organizerEmail?.let { com.unifiedcomms.data.model.EventAttendee(email = it) },
                 etag = etag,
                 status = status

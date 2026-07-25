@@ -1,6 +1,7 @@
 package com.unifiedcomms.data.repository
 
 import com.unifiedcomms.data.db.dao.EmailDao
+import com.unifiedcomms.data.model.Attachment
 import com.unifiedcomms.data.model.Email
 import com.unifiedcomms.data.model.EmailFlags
 import com.unifiedcomms.data.model.SystemLabels
@@ -46,8 +47,9 @@ class EmailRepositoryImpl(private val dao: EmailDao) : EmailRepository {
         subject: String,
         bodyText: String?,
         bodyHtml: String?,
-        preview: String?
-    ) = dao.updateSyncMeta(id, flags, labels, systemLabels, etag, updatedAt, messageId, subject, bodyText, bodyHtml, preview)
+        preview: String?,
+        attachments: List<Attachment>
+    ) = dao.updateSyncMeta(id, flags, labels, systemLabels, etag, updatedAt, messageId, subject, bodyText, bodyHtml, preview, attachments)
 
     override suspend fun getByFolderAndUidValidity(accountId: String, folder: String, uidValidity: String): List<Email> =
         dao.getByFolderAndUidValidity(accountId, folder, uidValidity)

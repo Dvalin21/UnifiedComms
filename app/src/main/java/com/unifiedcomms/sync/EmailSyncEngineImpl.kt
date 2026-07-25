@@ -2,6 +2,7 @@ package com.unifiedcomms.sync
 
 import android.content.Context
 import android.util.Log
+import com.unifiedcomms.UnifiedCommsApplication
 import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.model.Email
 import com.unifiedcomms.data.model.EmailAddress
@@ -218,7 +219,8 @@ class EmailSyncEngineImpl(
                             subject = email.subject,
                             bodyText = email.bodyText,
                             bodyHtml = email.bodyHtml,
-                            preview = email.bodyText?.take(200)
+                            preview = email.bodyText?.take(200),
+                            attachments = email.attachments
                         )
                         // Bidirectional flag sync: push LOCAL flag changes back to IMAP so the
                         // server agrees with the DB. The DB row was just updated with server
@@ -458,14 +460,12 @@ class EmailSyncEngineImpl(
             val sentAt = parseDateHeader(msg, "Date")
             val receivedAt = parseDateHeader(msg, "Received") ?: sentAt
 
-            // ponytail: extracting body straight from the IMAPMessage's
-            // getContent() is unreliable — JavaMail returns the raw
-            // IMAPInputStream (or leaks MIME headers) for multipart parts,
-            // producing "(no content)" or garbage bodies. Re-parse the raw
-            // RFC822 source into a throwaway MimeMessage; THAT parses into a
-            // proper tree where getContent() returns a decoded MimeMultipart and
-            // text parts are clean Strings. This is the canonical robust path.
-            val parsedMsg = runCatching { MimeMessage(null, msg.getInputStream()) }.getOrElse { msg }
+            // ponytail: capture the raw RFC822 bytes ONCE. extractContent(parsedMsg)
+            // consumes parsedMsg's stream, so attachment extraction must use these
+            // same bytes (re-readable) — not parsedMsg.inputStream, which would be
+            // spent. This is also what makes the boundary-aware PDF fix reliable.
+            val rawBytes = runCatching { msg.getInputStream().readBytes() }.getOrElse { ByteArray(0) }
+            val parsedMsg = runCatching { MimeMessage(null, rawBytes.inputStream()) }.getOrElse { msg }
             val (bodyTextRaw, bodyHtml) = runCatching { extractContent(parsedMsg) }.getOrDefault(null to null)
             // ponytail: never store a raw MIME blob as the body. If the plain
             // text came back blank/raw but we have HTML, render it to text. If
@@ -473,7 +473,11 @@ class EmailSyncEngineImpl(
             // than leaking MIME headers into the body.
             val bodyText = if (!bodyTextRaw.isNullOrBlank()) bodyTextRaw else bodyHtml?.let { stripHtml(it) }
             val attachments = mutableListOf<com.unifiedcomms.data.model.Attachment>()
-            runCatching { extractAttachments(msg, attachments) }
+            // ponytail: use the captured raw bytes (re-readable) so the boundary-aware
+            // parser sees the full MIME tree even after extractContent consumed the
+            // parsed message stream. msg.content returns an IMAPInputStream (not a
+            // MimeMultipart), which is why we never call extractAttachments(msg).
+            runCatching { extractAttachmentsFromBytes(rawBytes, attachments) }
 
             val preview = bodyText?.take(200) ?: subject
             val flags = EmailFlags(
@@ -799,24 +803,94 @@ class EmailSyncEngineImpl(
             .trim()
     }
 
+    /**
+     * Build a [MimeMultipart] from a raw part stream using the REAL outer MIME
+     * boundary, forcing type multipart/mixed. JavaMail's default parser trusts
+     * the part's Content-Type header; for mislabeled messages (real multipart/mixed
+     * whose top header says multipart/alternative) that drops sibling parts like a
+     * PDF attachment. Parsing by the actual boundary — like SOGo/Edison do — finds
+     * them. Returns null if no boundary can be located.
+     */
+    private fun boundaryAwareMultipart(stream: java.io.InputStream): MimeMultipart? {
+        return runCatching {
+            val bytes = stream.readBytes()
+            val text = String(bytes, Charsets.ISO_8859_1)
+            // The outer boundary is the first line beginning with "--".
+            val boundary = text.lineSequence().firstNotNullOfOrNull { line ->
+                val t = line.trim()
+                if (t.startsWith("--") && t.length > 4) t.substring(2).trim().takeIf { it.isNotBlank() } else null
+            } ?: return null
+            val ds = object : javax.activation.DataSource {
+                override fun getInputStream(): java.io.InputStream = bytes.inputStream()
+                override fun getOutputStream() = java.io.ByteArrayOutputStream()
+                override fun getContentType() = "multipart/mixed; boundary=\"$boundary\""
+                override fun getName() = "multipart"
+            }
+            MimeMultipart(ds)
+        }.getOrNull()
+    }
+
+    /**
+     * Entry point for the sync path. Builds the top-level MimeMultipart from the
+     * already-captured raw bytes (re-readable even after extractContent consumed
+     * the parsed message stream) and recurses with [extractAttachments].
+     */
+    private fun extractAttachmentsFromBytes(bytes: ByteArray, attachments: MutableList<com.unifiedcomms.data.model.Attachment>) {
+        if (bytes.isEmpty()) return
+        val mp = boundaryAwareMultipart(bytes.inputStream()) ?: return
+        for (i in 0 until mp.count) {
+            extractAttachments(mp.getBodyPart(i) as Part, attachments)
+        }
+    }
+
     private fun extractAttachments(part: Part, attachments: MutableList<com.unifiedcomms.data.model.Attachment>) {
         try {
             when {
                 part.isMimeType("multipart/*") -> {
-                    val mp = part.content as MimeMultipart
-                    for (i in 0 until mp.count) {
-                        extractAttachments(mp.getBodyPart(i) as Part, attachments)
+                    // ponytail: ROOT CAUSE (confirmed on lghtshine "tax return"): the
+                    // message is really multipart/mixed (outer boundary wraps an
+                    // alternative + a PDF), but the sender MISLABELS the top
+                    // Content-Type as multipart/alternative. JavaMail trusts that
+                    // header and only parses the alternative's leaves, silently
+                    // dropping the sibling PDF — while SOGo/Edison parse by BOUNDARY
+                    // and show it. Fix: build the MimeMultipart from the REAL outer
+                    // boundary as multipart/mixed, ignoring the broken header.
+                    val mp = boundaryAwareMultipart(part.inputStream)
+                    if (mp != null) {
+                        for (i in 0 until mp.count) {
+                            extractAttachments(mp.getBodyPart(i) as Part, attachments)
+                        }
                     }
                 }
-                Part.ATTACHMENT == part.disposition || part.fileName != null -> {
-                    val attachment = com.unifiedcomms.data.model.Attachment(
-                        fileName = part.fileName ?: "attachment",
-                        mimeType = part.contentType,
-                        sizeBytes = part.size.toLong(),
-                        contentId = "",
-                        isInline = Part.INLINE == part.disposition
-                    )
-                    attachments.add(attachment)
+                // ponytail: forwarded/embedded message can wrap an attachment.
+                part.isMimeType("message/rfc822") -> {
+                    val nested = runCatching { part.content as? MimeMessage }.getOrNull()
+                        ?: runCatching { MimeMessage(null, part.inputStream) }.getOrNull()
+                    nested?.let { extractAttachments(it, attachments) }
+                }
+                else -> {
+                    // ponytail: a part is an attachment if it carries an explicit
+                    // attachment disposition, has a filename, OR is a binary payload
+                    // (application/*, image/*, audio/*, video/*) — some senders ship
+                    // PDFs as inline;filename=... or with no disposition at all. The
+                    // old code only matched disposition/filename and silently dropped
+                    // those. text/calendar (meeting replies) is NOT an attachment.
+                    val ct = runCatching { part.contentType }.getOrNull().orEmpty().lowercase()
+                    val isBinary = ct.startsWith("application/") ||
+                        (ct.startsWith("image/") && !ct.contains("cid")) ||
+                        ct.startsWith("audio/") || ct.startsWith("video/")
+                    if (Part.ATTACHMENT == part.disposition || part.fileName != null || isBinary) {
+                        val attachment = com.unifiedcomms.data.model.Attachment(
+                            fileName = part.fileName ?: runCatching { part.contentType.substringAfter("name=").trim('"', '\'') }.getOrNull()
+                                ?: "attachment",
+                            mimeType = part.contentType,
+                            sizeBytes = runCatching { part.size.toLong() }.getOrNull() ?: 0L,
+                            contentId = runCatching { (part as? javax.mail.internet.MimeBodyPart)?.contentID }
+                                .getOrNull()?.trim('<', '>').orEmpty(),
+                            isInline = Part.INLINE == part.disposition
+                        )
+                        attachments.add(attachment)
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -827,6 +901,116 @@ class EmailSyncEngineImpl(
     override suspend fun fetchMessage(account: Account, folder: String, uid: String): Email? {
         // Future: per-message fetch by UID
         return null
+    }
+
+    override suspend fun fetchAttachment(
+        account: Account,
+        folder: String,
+        uid: String,
+        attachment: com.unifiedcomms.data.model.Attachment
+    ): String? = withContext(Dispatchers.IO) {
+        var store: javax.mail.Store? = null
+        var imapFolder: javax.mail.Folder? = null
+        try {
+            val config = account.serverConfig
+            val auth = crypto.decryptAuthConfig(account.authConfig)
+            val props = Properties().apply {
+                put("mail.store.protocol", "imap")
+                put("mail.imap.host", config.imapHost)
+                put("mail.imap.port", config.imapPort.toString())
+                put("mail.imap.ssl.enable", "true")
+                put("mail.imap.auth", "true")
+                put("mail.imap.timeout", "30000")
+                put("mail.imap.connectiontimeout", "30000")
+                put("mail.imap.writetimeout", "30000")
+            }
+            val session = javax.mail.Session.getInstance(props, null)
+            store = session.getStore("imap") as com.sun.mail.imap.IMAPStore
+            connectStoreWithRetry(store, config, auth)
+            imapFolder = store.getFolder(folder)
+            imapFolder.open(javax.mail.Folder.READ_ONLY)
+            val uidFolder = imapFolder as? javax.mail.UIDFolder ?: return@withContext null
+            val msg = uidFolder.getMessageByUID(uid.toLongOrNull() ?: return@withContext null) ?: return@withContext null
+            val parsed = runCatching { javax.mail.internet.MimeMessage(null, msg.getInputStream()) }.getOrElse { msg }
+            val part = findAttachmentPart(parsed, attachment) ?: return@withContext null
+            val dir = java.io.File(UnifiedCommsApplication.getInstance().cacheDir, "attachments")
+            dir.mkdirs()
+            val safeName = attachment.fileName.replace(Regex("[^A-Za-z0-9._-]"), "_")
+            val file = java.io.File(dir, "${attachment.id}_$safeName")
+            runCatching { (part as? javax.mail.internet.MimeBodyPart)?.saveFile(file.absolutePath) }.getOrNull()
+                ?: file.writeBytes(part.inputStream.readBytes())
+            return@withContext if (file.exists() && file.length() > 0) file.absolutePath else null
+        } catch (e: Exception) {
+            Log.e("EmailSyncEngineImpl", "fetchAttachment failed folder=$folder uid=$uid name=${attachment.fileName}: ${e.message}")
+            null
+        } finally {
+            runCatching { imapFolder?.close(false) }
+            runCatching { store?.close() }
+        }
+    }
+
+    override suspend fun listFolders(account: Account): List<String> = withContext(Dispatchers.IO) {
+        var store: javax.mail.Store? = null
+        try {
+            val config = account.serverConfig
+            val auth = crypto.decryptAuthConfig(account.authConfig)
+            val session = openImapSession(config)
+            store = session.getStore("imap") as com.sun.mail.imap.IMAPStore
+            connectStoreWithRetry(store, config, auth)
+            // ponytail: exclude the Chat folder from the mail folder list. The chat
+            // folder name is account-specific (syncConfig.chatFolder), but falls back
+            // to these two well-known names if unresolved.
+            val chatNames = setOf(
+                account.syncConfig.chatFolder,
+                ChatSyncEngineImpl.DEFAULT_CHAT_FOLDER,
+                ChatSyncEngineImpl.FALLBACK_CHAT_FOLDER
+            ).map { it.lowercase() }.filter { it.isNotBlank() }
+            val all = store.defaultFolder.list("*").filter { it.exists() && it.type and javax.mail.Folder.HOLDS_MESSAGES != 0 }
+            val names = all.map { it.fullName }.filter { it.lowercase() !in chatNames }
+            // INBOX first, then alphabetical — Edison-style ordering.
+            names.sortedWith(compareBy({ it.lowercase() != "inbox" }, { it.lowercase() }))
+        } catch (e: Exception) {
+            Log.e("EmailSyncEngineImpl", "listFolders failed: ${e.message}")
+            emptyList()
+        } finally {
+            runCatching { store?.close() }
+        }
+    }
+
+    private fun findAttachmentPart(part: javax.mail.Part, target: com.unifiedcomms.data.model.Attachment): javax.mail.Part? {
+        return try {
+            val ct = runCatching { part.contentType }.getOrNull().orEmpty().lowercase()
+            if (part is javax.mail.internet.MimeMultipart || ct.startsWith("multipart/")) {
+                // ponytail: same root cause as extractAttachments — mislabeled
+                // multipart/alternative drops the sibling PDF when trusting the
+                // header. Use the boundary-aware parser (multipart/mixed) so the
+                // on-demand fetch finds the real attachment part.
+                val mp = boundaryAwareMultipart(part.inputStream)
+                    ?: (part as? javax.mail.internet.MimeMultipart)
+                if (mp != null) {
+                    for (i in 0 until mp.count) {
+                        findAttachmentPart(mp.getBodyPart(i) as javax.mail.Part, target)?.let { return it }
+                    }
+                }
+                null
+            } else if (ct.startsWith("message/rfc822")) {
+                // ponytail: forwarded/embedded message can wrap the target attachment.
+                val nested = runCatching { part.content as? javax.mail.internet.MimeMessage }.getOrNull()
+                    ?: runCatching { javax.mail.internet.MimeMessage(null, part.inputStream) }.getOrNull()
+                nested?.let { findAttachmentPart(it, target) } ?: null
+            } else {
+                val fileName = runCatching { part.fileName }.getOrNull()
+                val cid = runCatching {
+                    (part as? javax.mail.internet.MimeBodyPart)?.contentID
+                }.getOrNull()?.trim('<', '>')
+                val matches = (fileName != null && fileName == target.fileName) ||
+                    (target.contentId != null && !target.contentId.isBlank() && cid == target.contentId.trim('<', '>')) ||
+                    (fileName != null && target.fileName != null && fileName.equals(target.fileName, true))
+                if (matches) part else null
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     override suspend fun sendEmail(account: Account, email: Email): SendResult {
