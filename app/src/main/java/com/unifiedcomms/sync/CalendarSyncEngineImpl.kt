@@ -71,7 +71,14 @@ class CalendarSyncEngineImpl(
                     masterServerPaths.addAll(etagEntries.map { localEt -> pathOf(localEt.href) })
                     val toFetch = etagEntries.filter { entry ->
                         val local = localEventByPath[pathOf(entry.href)]
-                        local == null || local.etag != entry.etag
+                        // ponytail: re-fetch when (a) the event is new, (b) the server
+                        // etag changed, OR (c) the local copy is still on the default
+                        // blue but the calendar has a real color — the first sync
+                        // stored default-blue because the collection color wasn't
+                        // captured yet. This one-time recolor pass repaints
+                        // existing events to their creation color.
+                        local == null || local.etag != entry.etag ||
+                            (local.color == com.unifiedcomms.data.model.EventColor.Default() && cal.color.isNotBlank())
                     }.map { it.href }
 
                     coroutineScope {
@@ -79,9 +86,28 @@ class CalendarSyncEngineImpl(
                             val fetched = batch.map { href -> async { calDav.fetchItem(account.id, href) } }.awaitAll()
                             for (res in fetched) {
                                 if (res == null) continue
-                                val parsed = ICalParser.parse(res.ical, account.id, cal.path, res.href)
+                                val parsed = ICalParser.parse(res.ical, account.id, cal.path, res.href, defaultColor = cal.color)
                                 for (event in parsed.events) {
                                     val existing = calendarRepo.getEventByUid(event.uid, account.id)
+                                    // ponytail: server/database is the source of truth for the
+                                    // creation color. Prefer the event's own COLOR, then the
+                                    // calendar collection color (SOGo/mailcow store it there),
+                                    // then whatever we already had locally. Never keep a stale
+                                    // default-blue when the server now sends a real color.
+                                    val resolvedColor = when {
+                                        event.color != com.unifiedcomms.data.model.EventColor.Default() -> event.color
+                                        cal.color.isNotBlank() -> {
+                                            val fg = runCatching {
+                                                val rgb = cal.color.removePrefix("#").toLongOrNull(16) ?: 0L
+                                                val lum = 0.299 * ((rgb shr 16) and 0xFF) +
+                                                        0.587 * ((rgb shr 8) and 0xFF) +
+                                                        0.114 * (rgb and 0xFF)
+                                                if (lum > 150) "#000000" else "#FFFFFF"
+                                            }.getOrElse { "#FFFFFF" }
+                                            com.unifiedcomms.data.model.EventColor(cal.color, fg)
+                                        }
+                                        else -> existing?.color ?: event.color
+                                    }
                                     val updated = event.copy(
                                         id = existing?.id ?: event.id,
                                         // ponytail: calendarId = the collection path (cal.path),
@@ -91,7 +117,7 @@ class CalendarSyncEngineImpl(
                                         // server href set and got deleted on the next down-sync.
                                         calendarId = cal.path,
                                         etag = res.etag,
-                                        color = existing?.color ?: event.color,
+                                        color = resolvedColor,
                                         attendees = existing?.let { if (it.attendees.isNotEmpty()) it.attendees else event.attendees } ?: event.attendees
                                     )
                                     if (existing == null) {

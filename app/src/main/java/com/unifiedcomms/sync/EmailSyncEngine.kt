@@ -1,6 +1,7 @@
 package com.unifiedcomms.sync
 
 import com.unifiedcomms.data.model.Account
+import com.unifiedcomms.data.model.Attachment
 import com.unifiedcomms.data.model.Email
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
@@ -10,6 +11,12 @@ interface EmailSyncEngine {
     suspend fun syncAccount(account: Account): SyncResult
     suspend fun syncFolder(account: Account, folder: String): SyncResult
     suspend fun fetchMessage(account: Account, folder: String, uid: String): Email?
+    // ponytail: download a single attachment's bytes from IMAP and return the
+    // local file path (cached) so the UI can open it.
+    suspend fun fetchAttachment(account: Account, folder: String, uid: String, attachment: Attachment): String?
+    // ponytail: list the account's real IMAP folders for an Edison-style drawer.
+    // The Chat folder is excluded so it never appears in the mail folder list.
+    suspend fun listFolders(account: Account): List<String>
     suspend fun sendEmail(account: Account, email: Email): SendResult
     suspend fun moveToFolder(account: Account, uids: List<String>, fromFolder: String, toFolder: String): SyncResult
     suspend fun deleteMessages(account: Account, folder: String, uids: List<String>): SyncResult
