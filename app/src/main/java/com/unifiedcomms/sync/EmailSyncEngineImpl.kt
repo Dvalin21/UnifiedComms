@@ -775,7 +775,7 @@ class EmailSyncEngineImpl(
                 store.close()
                 ConnectionTestResult(true, System.currentTimeMillis() - start, listOf("IMAP"))
             } catch (e: Exception) {
-                ConnectionTestResult(false, 0, emptyList(), e.message)
+                ConnectionTestResult(false, 0, emptyList(), classifyImapError(e))
             }
         }
     }

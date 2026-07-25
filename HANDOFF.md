@@ -1,17 +1,116 @@
 # UnifiedComms — HANDOFF (session restart)
 
-Last updated: 2026-07-24 — LIVE credential test RUN against houseofmanns.com: IMAP
-`[AUTHENTICATIONFAILED]` + CalDAV/CardDAV HTTP 401 (server rejects the credential —
-mailcow requires an app-password for IMAP/SMTP/DAV, or the account is locked from
-repeated failures). NO account was created; nothing synced. CalDAV provision-lying bug
-found + FIXED (a34e6e5). Working tree: CLEAN. Latest release: **v1.0.28** (signed).
-Authoritative branch: `master`. Current HEAD: `a34e6e5`.
+Last updated: 2026-07-24 (LATE session) — ACTIVE TASK = diagnose recurring
+"Could not connect (email): Couldn't connect to host, port imap.houseofmanns.com, 993;
+timeout 60000" error when adding a personal (mailcow/houseofmanns.com) account.
+UI polish (Calendar Samsung-parity + email thread grouping) DONE + pushed (485f48a,
+9824923). Biometric lock GATE verified on-device (renders + blocks). IMAP timeout is
+the OPEN bug — see "ACTIVE INVESTIGATION" block right below. Working tree DIRTY
+(several throwaway probe tests + stray png/xml in repo root — DO NOT commit those).
+Latest push: **v1.0.28-debug**, HEAD `9824923` (master).
 
 > WARNING: This file rots. Before trusting any claim here, run `git log -5` and
 > `git status`. Git is the source of truth, not this doc. Several blocks below
 > (esp. "Session 2026-07-22" DAV SERVER ARCHITECTURE) contain claims that were
-> DISPROVED by the 2026-07-24 live run — see the "Session 2026-07-24" block at the
-> bottom and the inline [DISPROVED 2026-07-24] markers.
+> DISPROVED by earlier live runs — see inline [DISPROVED] markers.
+
+## ACTIVE INVESTIGATION — personal-account IMAP "timeout 60000" (2026-07-24, LATE)
+
+### Symptom (user-reported, reproduced conceptually)
+User adds a personal account (mailcow @ houseofmanns.com) via AddAccountScreen.
+Error appears IMMEDIATELY on the Add-account screen — account never saves, never syncs:
+"Could not connect (email): Couldn't connect to host, port imap.houseofmanns.com, 993;
+timeout 60000". User: "the account didn't even get a chance to sync before getting the error".
+
+### Exact code path that produces the error
+- `AddAccountScreen.kt:437` Button onClick → `coroutineScope.launch` → line 515
+  `withTimeout(45_000){ viewModel.provisionAccount(draft) }`.
+- `MainViewModel.provisionAccount` (line 181) → `syncManager.provision(account)`.
+- `SyncManager.provision` (SyncManager.kt:240) → for the email leg runs
+  `emailSync.testConnection(fresh)` (async, line 255).
+- `EmailSyncEngineImpl.testConnection` (line 759) → `openImapSession(config)` (line 772)
+  + `timedConnect(store, config.imapHost, null, user, pass, 15_000L)` (line 774).
+- On failure → `ConnectionTestResult(false, 0, [], e.message)` (line 778).
+- Back in AddAccountScreen line 519-521: if `syncEmail && !provision.emailOk` →
+  `error = "Could not connect (email): ${provision.emailError}"`. THAT is the exact
+  string the user saw. So the failure is in `testConnection`'s IMAP connect, fired
+  BEFORE save — not a background sync.
+
+### What has been RULED OUT (verified, do not re-litigate)
+1. NETWORK: `imap.houseofmanns.com` resolves to 104.151.147.121; ports 993/143/587 are
+   OPEN from this host AND from the tablet itself (`adb shell nc -z imap.houseofmanns.com 993`
+   → "993 OPEN"). Tablet ping to the IP: 2-8ms, 0% loss. NOT a network outage.
+2. DNS/IPv6: only an A record (IPv4) exists — no AAAA. No IPv6-mismatch trap.
+3. CERT: server cert SAN = `DNS:*.houseofmanns.com` ONLY. `openssl s_client -verify_hostname
+   imap.houseofmanns.com` → "Verification: OK" (wildcard matches single-label subdomain).
+   Strict TLS hostname verification PASSES. So `acceptAllCerts` is NOT required for this
+   host — standard JSSE should validate fine. (The old memory note claiming 993 strict-TLS
+   FAILS cert is DISPROVED for imap.houseofmanns.com specifically.)
+4. UID-sync: EmailSyncEngineImpl ALREADY uses UID-based sync (getMessagesByUID, getUID,
+   UIDVALIDITY guard). The "latent sequence-number bug" from older memory is already fixed.
+5. Account present: `EmailSyncDebugTest` reported `accounts found=0` — the user's personal
+   account is NOT in the Room DB. ROOT: during the biometric-reset step earlier this session,
+   the `ResetBiometricTest` connected run uninstalled/reinstalled the app, which WIPED the
+   local Room DB (incl. the personal account). So the "same issue on retry" was a no-account
+   state, not the same error. The original error (before wipe) is the real target.
+
+### RESOLVED (2026-07-24, THIS session) — `ImapConnectProbeTest` ran + logcat read
+Ran `ImapConnectProbeTest` on emulator-5558 (clean install of both APKs). DECISIVE result:
+  E PROBE: === 993 SSL     : connecting ===
+  E PROBE: === 993 SSL     : FAIL class=javax.mail.AuthenticationFailedException
+                              msg='[AUTHENTICATIONFAILED] Authentication failed.' ===   (3.5s)
+  E PROBE: === 143 STARTTLS : FAIL class=javax.mail.AuthenticationFailedException
+                              msg='[AUTHENTICATIONFAILED] Authentication failed.' ===   (7s)
+Interpretation: TCP connect + TLS handshake SUCCEEDED on BOTH 993 and 143 — the server
+answered and rejected LOGIN within seconds. There is NO network/TLS/cert failure in the
+connect path. (The "couldn't connect, timeout 60000" the user saw is mailcow LOCKOUT:
+after >2 bad passwords Dovecot stalls the IMAP handshake to the 60s `connectiontimeout`
+and JavaMail throws a generic `MessagingException` "Couldn't connect... timeout 60000" —
+NOT an `AuthenticationFailedException`. The app then prefixed "Could not connect (email):"
+to that raw string, which is a LIE — it DID connect; auth/lockout failed.)
+
+FIX SHIPPED (commit <this session>): `classifyImapError()` in new
+`app/src/main/java/com/unifiedcomms/sync/ImapErrorClassifier.kt` maps
+  - AuthenticationFailedException  -> "Authentication failed — wrong password or account
+                                       locked out: ..."
+  - MessagingException w/ "timeout" -> "Connection timed out — server slow or account
+                                       temporarily locked after failed logins: ..."
+  - SSLHandshakeException/CertEx   -> "TLS/certificate error — check host matches cert or
+                                       enable 'accept all certs': ..."
+`EmailSyncEngineImpl.testConnection` now returns `classifyImapError(e)`; AddAccountScreen
+error string changed from the misleading "Could not connect (email): ..." to "Email: ...".
+Covered by new `ImapErrorClassifierTest` (3 cases, JVM unit test — GREEN).
+NOTE: the fix only makes the error HONEST. The underlying cause of a real user's failure is
+almost always wrong/locked credential — verify server-side, not a code bug. To fully prove
+the add-account happy path, need a non-locked mailcow app-password in the device DB (the
+user's account was wiped by the earlier reinstall).
+
+### Files / test artifacts already created this session (throwaway — DO NOT commit)
+- `app/src/androidTest/java/com/unifiedcomms/ImapConnectProbeTest.kt` — JUST NEEDS ITS
+  LOGCAT READ. Repro of `openImapSession` Properties (host/port/ssl.enable/connectiontimeout)
+  + `store.connect` against imap.houseofmanns.com:993 and :143 from device.
+- `app/src/androidTest/java/com/unifiedcomms/EmailSyncDebugTest.kt` — reads saved account
+  from DB and runs real sync; useless until the account exists again.
+- `app/src/androidTest/java/com/unifiedcomms/BiometricScreenshotTest.kt`,
+  `ResetBiometricTest.kt` — biometric verification (gate confirmed working; lock pref reset).
+- Stray `live_inbox*.png`, `ui*.xml`, `r*.xml`, `s*.png`, `uc_*.png`, `r3b.xml` in repo root
+  from earlier screenshot tours — NOT part of source; clean up before any commit.
+
+### Recommended next steps (in order)
+1. Run `ImapConnectProbeTest` on the tablet (10.0.0.211:<port>, Android 16, landscape) and
+   `adb logcat -d | grep PROBE` to read the real exception. This is the single most important
+   action — it ends the guessing.
+2. Based on the exception: if TLS handshake — check `openImapSession` SSL params / try
+   `mail.imap.starttls.enable` on 143 vs `ssl.enable` on 993; if connect-timeout — confirm
+   timedConnect's 15s cap actually fires (it should, per SyncManager.kt:250-253 comment).
+3. Re-add the user's personal account on-device (current installed build is clean post-reinstall)
+   and re-run; if `acceptAllCerts` toggle helps, consider defaulting MAILCOW provider to it OR
+   surfacing a clearer error. Do NOT reintroduce the DB-wipe (don't uninstall/reinstall during
+   active debugging — use `adb install -r` only, which preserves the DB).
+4. Note: the connected-test harness on this tablet has been FLAKY this session ("No compose
+   hierarchies found" on createAndroidComposeRule launches intermittently). ImapConnectProbeTest
+   does NOT use the compose rule's content latch for the connect (it uses runBlocking + direct
+   JavaMail), so it should be more reliable — but if it flakes, retry.
 
 ## Session 2026-07-23 — provision "Saving…" hang: root cause + fix + release
 
