@@ -10,6 +10,7 @@ import androidx.room.Transaction
 import androidx.room.RawQuery
 import androidx.sqlite.db.SupportSQLiteQuery
 import kotlinx.coroutines.flow.Flow
+import com.unifiedcomms.data.model.Attachment
 import com.unifiedcomms.data.model.Email
 import com.unifiedcomms.data.model.EmailFlags
 import com.unifiedcomms.data.model.SystemLabels
@@ -93,7 +94,8 @@ interface EmailDao {
             subject = :subject,
             bodyText = :bodyText,
             bodyHtml = :bodyHtml,
-            preview = :preview
+            preview = :preview,
+            attachments = :attachments
         WHERE id = :id
     """)
     suspend fun updateSyncMeta(
@@ -107,7 +109,8 @@ interface EmailDao {
         subject: String,
         bodyText: String?,
         bodyHtml: String?,
-        preview: String?
+        preview: String?,
+        attachments: List<Attachment>
     )
 
     @Query("SELECT * FROM emails WHERE threadId = :threadId ORDER BY receivedAt DESC")

@@ -1,5 +1,6 @@
 package com.unifiedcomms.data.repository
 
+import com.unifiedcomms.data.model.Attachment
 import com.unifiedcomms.data.model.Email
 import com.unifiedcomms.data.model.EmailFlags
 import com.unifiedcomms.data.model.SystemLabels
@@ -31,7 +32,8 @@ interface EmailRepository {
         subject: String,
         bodyText: String?,
         bodyHtml: String?,
-        preview: String?
+        preview: String?,
+        attachments: List<Attachment>
     )
     suspend fun getByFolderAndUidValidity(accountId: String, folder: String, uidValidity: String): List<Email>
     // ponytail: exists-check only (no bodyText) to avoid CursorWindow overflow.

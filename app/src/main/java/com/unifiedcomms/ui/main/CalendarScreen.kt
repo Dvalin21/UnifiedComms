@@ -133,7 +133,12 @@ fun CalendarScreen(
     // calendar sync (non-cancellable ViewModel scope) whenever the screen opens or
     // the active-account set changes, so events surface immediately.
     LaunchedEffect(activeAccountIds) {
-        if (activeAccountIds.isNotEmpty()) {
+        // ponytail: only fetch on open when the cache is empty. A background
+        // WorkManager sync already keeps the DB fresh; re-syncing on every
+        // open re-fetches from the server and briefly blanks the list (the
+        // delete-then-insert emits empty mid-sync), which reads as "takes a
+        // second before events show". If we already have events, leave them.
+        if (activeAccountIds.isNotEmpty() && allEvents.isEmpty()) {
             viewModel.syncCalendarForAccounts(activeAccountIds)
         }
     }
@@ -575,6 +580,7 @@ fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onDayCl
                                                     color = Color.White,
                                                     fontSize = 10.sp,
                                                     fontWeight = FontWeight.Medium,
+                                                    modifier = Modifier.fillMaxWidth(),
                                                     maxLines = 1,
                                                     softWrap = false,
                                                     overflow = TextOverflow.Ellipsis

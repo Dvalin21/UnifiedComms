@@ -126,6 +126,19 @@
             android:multiprocess="true"
             android:syncable="true" />
 
+        <!-- ponytail: exposes cached attachment files to external viewers via
+             ACTION_VIEW (grantUriPermissions). Authority must match the one
+             used in EmailScreen.openFile (packageName + ".fileprovider"). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.unifiedcomms.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <!-- Phase 15: background sync moved to WorkManager (BackgroundSyncWorker).
              The old SyncAdapter <service> referenced a non-existent class
              (UnifiedCommsSyncService) -> removed. res/xml/syncadapter.xml deleted. -->

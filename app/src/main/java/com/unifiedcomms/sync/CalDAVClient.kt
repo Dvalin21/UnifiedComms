@@ -46,7 +46,16 @@ class CalDAVClient(
         }
         .build()
 
-    data class CalendarInfo(val path: String, val displayName: String, val ctag: String = "", val supportsVTODO: Boolean = false)
+    data class CalendarInfo(
+        val path: String,
+        val displayName: String,
+        val ctag: String = "",
+        val supportsVTODO: Boolean = false,
+        // ponytail: per-calendar collection color (SOGo/mailcow store color on the
+        // collection, not per-event). Applied to every event in the calendar so the
+        // UI matches the color the event was created with (Samsung Calendar style).
+        val color: String = ""
+    )
 
     data class ETagEntry(val href: String, val etag: String)
 
@@ -280,12 +289,15 @@ class CalDAVClient(
 
         val xml = """
             <?xml version="1.0" encoding="utf-8"?>
-            <D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav" xmlns:CS="http://calendarserver.org/ns/">
+            <D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav" xmlns:CS="http://calendarserver.org/ns/" xmlns:IC="http://apple.com/ns/ical/" xmlns:A="http://apple.com/ns/ical/">
               <D:prop>
                 <D:displayname/>
                 <D:resourcetype/>
                 <CS:getctag/>
                 <C:supported-calendar-component-set/>
+                <IC:calendar-color/>
+                <A:calendar-color/>
+                <C:calendar-color/>
               </D:prop>
             </D:propfind>
         """.trimIndent()
@@ -314,7 +326,8 @@ class CalDAVClient(
                     val name = nameNode?.textContent?.trim().orEmpty().ifBlank { href.split("/").lastOrNull { it.isNotBlank() }.orEmpty() }
                     val ctagNode = byLocalName(resp, "getctag").item(0)
                     val ctag = ctagNode?.textContent?.trim().orEmpty()
-                    result += CalendarInfo(path = subUrl, displayName = name, ctag = ctag, supportsVTODO = false)
+                    val color = extractCalendarColor(resp)
+                    result += CalendarInfo(path = subUrl, displayName = name, ctag = ctag, supportsVTODO = false, color = color)
                 } else if (!isSelf && types.contains("collection")) {
                     // ponytail: only recurse into real sub-collections. A calendar
                     // collection's depth=1 PROPFIND also returns its child event
@@ -327,6 +340,19 @@ class CalDAVClient(
         } catch (e: Exception) {
             Log.w(TAG, "calendar scan failed", e)
         }
+    }
+
+    // ponytail: pull the collection color from the calendar-color property
+    // (urn:ietf caldav / Apple IC: — byLocalName matches on localName only, so
+    // the namespace prefix doesn't matter). Returns "" when absent.
+    private fun extractCalendarColor(resp: Element): String {
+        val node = byLocalName(resp, "calendar-color").item(0)
+        val v = node?.textContent?.trim().orEmpty()
+        if (v.isNotBlank()) {
+            val hex = if (v.startsWith("#")) v else "#$v"
+            if (hex.matches(Regex("#[0-9A-Fa-f]{6}"))) return hex
+        }
+        return ""
     }
 
     suspend fun listCalendarItems(calendarPath: String): List<String> = withContext(Dispatchers.IO) {

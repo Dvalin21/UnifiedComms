@@ -56,8 +56,9 @@ class MainViewModel(
     )
     private val contactRepo: ContactRepository = ContactRepositoryImpl(app.database.contactDao())
     private val crypto = com.unifiedcomms.security.CryptoManagerImpl(app)
+    private val emailSyncEngine = EmailSyncEngineImpl(emailRepo, accountRepo, crypto, viewModelScope)
     private val syncManager: SyncManager = SyncManager(
-        EmailSyncEngineImpl(emailRepo, accountRepo, crypto, viewModelScope),
+        emailSyncEngine,
         CalendarSyncEngineImpl(calendarRepo, accountRepo, crypto, viewModelScope),
         TaskSyncEngineImpl(taskRepo, accountRepo, crypto, viewModelScope),
         ContactSyncEngineImpl(contactRepo, accountRepo, crypto, viewModelScope),
@@ -281,6 +282,23 @@ class MainViewModel(
     val contactRepository: ContactRepository = contactRepo
     val contactSyncEngine: ContactSyncEngine = ContactSyncEngineImpl(contactRepo, accountRepo, crypto, viewModelScope)
     val syncManagerInstance: SyncManager = syncManager
+
+    /** Download an attachment's bytes from IMAP and return the cached local path. */
+    suspend fun downloadAttachment(
+        accountId: String,
+        folder: String,
+        uid: String,
+        attachment: com.unifiedcomms.data.model.Attachment
+    ): String? {
+        val account = getAccountById(accountId) ?: return null
+        return emailSyncEngine.fetchAttachment(account, folder, uid, attachment)
+    }
+
+    /** List the account's real mail folders (Chat folder excluded) for the drawer. */
+    suspend fun loadFolders(accountId: String): List<String> {
+        val account = getAccountById(accountId) ?: return emptyList()
+        return runCatching { emailSyncEngine.listFolders(account) }.getOrDefault(emptyList())
+    }
 
     /** All contacts across accounts (for the Contacts tab). */
     fun getAllContacts() = contactRepo.getUnifiedCommsContacts()
