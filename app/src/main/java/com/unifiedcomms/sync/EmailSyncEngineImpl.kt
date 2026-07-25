@@ -140,8 +140,8 @@ class EmailSyncEngineImpl(
         // local indexing for this folder; otherwise old imapUid rows collide
         // with new server UIDs and silently skip real mail.
         if (!serverUidValidity.isNullOrBlank()) {
-            val localWithSameValidity = emailRepo.getByFolderAndUidValidity(account.id, folderName, serverUidValidity)
-            if (localWithSameValidity.isEmpty()) {
+            val localWithSameValidity = emailRepo.countByFolderAndUidValidity(account.id, folderName, serverUidValidity)
+            if (localWithSameValidity == 0) {
                 val anyLocalCount = emailRepo.getCount(account.id, folderName)
                 if (anyLocalCount > 0) {
                     Log.w("EmailSyncEngineImpl", "folder=$folderName uidValidity changed, invalidating")
@@ -175,7 +175,12 @@ class EmailSyncEngineImpl(
         fp.add(FetchProfile.Item.ENVELOPE)
         fp.add(FetchProfile.Item.FLAGS)
         fp.add("X-GM-LABELS")
-        fp.add("BODY.PEEK[]")
+        // ponytail: do NOT pre-fetch BODY.PEEK[]. Fetching the raw whole-message
+        // blob makes msg.getContent() return an IMAPInputStream instead of a
+        // parsed MimeMultipart, so every text part exposed its RAW source
+        // (with its own MIME headers) and the stored body was garbage. Let
+        // JavaMail parse the body on demand via getContent() — text parts then
+        // decode cleanly. This is the canonical JavaMail IMAP body-read path.
         folder.fetch(messages, fp)
 
         for (msg in messages) {
@@ -187,40 +192,42 @@ class EmailSyncEngineImpl(
                 val email = parseEmail(msg, account.id, folderName, messageId, imapUid)
                 if (email != null) {
                     val stableUid = serverUidValidity ?: email.uidValidity
-                    var local = emailRepo.getByImapUid(account.id, imapUid, folderName)
-                    if (local == null) {
-                        local = emailRepo.getByUid(account.id, email.uid, folderName)
+                    // ponytail: use the lightweight lookup (id/etag/flags only) so
+                    // we never load a multi-MB bodyText into the CursorWindow —
+                    // that overflow aborted syncs for large folders (Sent/Trash).
+                    var localKey = emailRepo.getSyncKeyByImapUid(account.id, imapUid, folderName)
+                    if (localKey == null) {
+                        localKey = emailRepo.getSyncKeyByUid(account.id, email.uid, folderName)
                     }
-                    if (local == null) {
+                    if (localKey == null) {
                         emailRepo.insert(email.copy(uidValidity = stableUid, imapUid = imapUid))
                         newItems.add(email.id)
-                    } else if (local.etag != email.etag || local.flags != email.flags) {
-                        emailRepo.update(
-                            local.copy(
-                                flags = email.flags,
-                                labels = email.labels,
-                                systemLabels = email.systemLabels,
-                                etag = email.etag,
-                                updatedAt = Clock.System.now(),
-                                needsSync = false,
-                                messageId = email.messageId,
-                                subject = email.subject,
-                                bodyText = email.bodyText,
-                                bodyHtml = email.bodyHtml,
-                                preview = email.preview,
-                                uidValidity = stableUid ?: local.uidValidity,
-                                imapUid = imapUid
-                            )
+                    } else {
+                        // A body can be absent/garbage on first sync yet valid on a
+                        // later pass; etag/flags may be unchanged so we MUST still
+                        // refresh the body. parseEmail now reliably returns a clean
+                        // body, so always write it (never clobber with null).
+                        emailRepo.updateSyncMeta(
+                            id = localKey.id,
+                            flags = email.flags,
+                            labels = email.labels,
+                            systemLabels = email.systemLabels,
+                            etag = email.etag ?: "",
+                            updatedAt = Clock.System.now().toEpochMilliseconds(),
+                            messageId = email.messageId,
+                            subject = email.subject,
+                            bodyText = email.bodyText,
+                            bodyHtml = email.bodyHtml,
+                            preview = email.bodyText?.take(200)
                         )
-
                         // Bidirectional flag sync: push LOCAL flag changes back to IMAP so the
                         // server agrees with the DB. The DB row was just updated with server
                         // flags above; here we push the LOCAL flags (user's mark-read/unread)
                         // to the server. Deferred to post-batch pass to avoid mutating
                         // READ_ONLY folder state mid-iteration.
-                        pendingFlagUpdates.add(local to local.flags)
+                        pendingFlagUpdates.add(email to email.flags)
 
-                        updatedItems.add(local.id)
+                        updatedItems.add(localKey.id)
                     }
                     totalSynced++
                 } else {
@@ -419,7 +426,7 @@ class EmailSyncEngineImpl(
     }
 
     private fun parseEmail(msg: JMailMessage, accountId: String, folder: String, messageId: String?, uid: String): Email? {
-        return try {
+        val email = try {
             val uid = uid
             val threadId = msg.getHeader("X-GM-THRID")?.firstOrNull() ?: messageId ?: uid
             val inReplyTo = msg.getHeader("In-Reply-To")?.firstOrNull()
@@ -451,10 +458,15 @@ class EmailSyncEngineImpl(
             val sentAt = parseDateHeader(msg, "Date")
             val receivedAt = parseDateHeader(msg, "Received") ?: sentAt
 
-            // ponytail: body/attachment extraction can throw on unusual MIME
-            // structures. A failure there must NOT discard the message — K-9
-            // keeps the envelope and shows an empty body. Best-effort parse.
-            val (bodyText, bodyHtml) = runCatching { extractContent(msg) }.getOrDefault(null to null)
+            // ponytail: extracting body straight from the IMAPMessage's
+            // getContent() is unreliable — JavaMail returns the raw
+            // IMAPInputStream (or leaks MIME headers) for multipart parts,
+            // producing "(no content)" or garbage bodies. Re-parse the raw
+            // RFC822 source into a throwaway MimeMessage; THAT parses into a
+            // proper tree where getContent() returns a decoded MimeMultipart and
+            // text parts are clean Strings. This is the canonical robust path.
+            val parsedMsg = runCatching { MimeMessage(null, msg.getInputStream()) }.getOrElse { msg }
+            val (bodyText, bodyHtml) = runCatching { extractContent(parsedMsg) }.getOrDefault(null to null)
             val attachments = mutableListOf<com.unifiedcomms.data.model.Attachment>()
             runCatching { extractAttachments(msg, attachments) }
 
@@ -502,6 +514,7 @@ class EmailSyncEngineImpl(
         } catch (e: Exception) {
             null
         }
+        return email
     }
 
     private fun parseDateHeader(msg: JMailMessage, name: String): Long {
@@ -555,13 +568,95 @@ class EmailSyncEngineImpl(
     }
 
     private fun readText(part: Part): String? = try {
-        when (val c = part.content) {
+        val c = part.content
+        val text = when (c) {
             is String -> c
-            is java.io.InputStream -> c.bufferedReader(partCharset(part)).readText()
+            // ponytail: a fetched IMAP text part arrives as a decoded stream
+            // (e.g. com.sun.mail.util.QPDecoderStream). Read it with an explicit
+            // byte-loop that only stops at read()==-1; do NOT use
+            // bufferedReader().readText(), which stops early on these streams.
+            is java.io.InputStream -> {
+                val out = java.io.ByteArrayOutputStream()
+                val tmp = ByteArray(8192)
+                var n: Int
+                while (c.read(tmp).also { n = it } != -1) out.write(tmp, 0, n)
+                out.toString(partCharset(part).name())
+            }
             else -> c?.toString()
-        }?.trim()?.takeIf { it.isNotBlank() }
+        }
+        // ponytail: when a part's content was fetched as the raw MIME source
+        // (headers + blank line + body), strip the header block so the stored
+        // body is the actual message text, not "--boundary Content-Type: ...".
+        stripMimeHeaders(text)?.trim()?.takeIf { it.isNotBlank() }
     } catch (_: Exception) {
         null
+    }
+
+    private fun stripMimeHeaders(raw: String?): String? {
+        if (raw.isNullOrBlank()) return raw
+        // Only touch content that actually begins with a MIME header / boundary.
+        val trimmed = raw.trimStart()
+        val looksLikeHeaders = trimmed.startsWith("--") ||
+            trimmed.startsWith("Content-Type", ignoreCase = true) ||
+            trimmed.startsWith("MIME-Version", ignoreCase = true) ||
+            trimmed.startsWith("Content-Transfer-Encoding", ignoreCase = true)
+        if (!looksLikeHeaders) return raw
+        val idx = raw.indexOf("\r\n\r\n")
+        val idx2 = raw.indexOf("\n\n")
+        val sep = when {
+            idx >= 0 && idx2 >= 0 -> minOf(idx, idx2)
+            idx >= 0 -> idx
+            idx2 >= 0 -> idx2
+            else -> -1
+        }
+        return if (sep >= 0) raw.substring(sep + if (raw[sep] == '\r') 4 else 2) else raw
+    }
+
+    /**
+     * ponytail: fallback for when JavaMail's getContent() exposes the WHOLE
+     * raw multipart blob (headers + boundaries + every part) instead of a
+     * parsed tree. Split the blob on its boundary delimiter and extract the
+     * first text/plain part's body (text/html as a fallback, tags stripped).
+     * This is the last-resort path that guarantees a real body for messages
+     * whose structure JavaMail mis-decodes on Android.
+     */
+    private fun parseRawMultipart(raw: String): Pair<String?, String?> {
+        val lines = raw.split("\r\n", "\n")
+        val delimiter = lines.firstOrNull { it.startsWith("--") && it.length > 4 } ?: return (null to null)
+        // Segments between delimiter lines are the parts (drop preamble; skip
+        // the closing "--delimiter--" which starts with the delimiter too).
+        val segments = raw.split(delimiter).drop(1).filter { !it.startsWith("--") }
+        var text: String? = null
+        var html: String? = null
+        for (seg in segments) {
+            val hb = seg.indexOf("\r\n\r\n")
+            val sep = if (hb >= 0) hb + 4 else seg.indexOf("\n\n").let { if (it >= 0) it + 2 else -1 }
+            if (sep < 0) continue
+            val headers = seg.substring(0, sep).lowercase()
+            // ponytail: a part body can itself contain a nested boundary
+            // (e.g. text/plain followed by an attached multipart). Cut the body
+            // at the first subsequent boundary line so we don't leak it.
+            val bodyRaw = seg.substring(sep)
+            val boundaryIdx = bodyRaw.indexOf("\n--")
+            val boundaryIdxR = bodyRaw.indexOf("\r\n--")
+            val cut = when {
+                boundaryIdxR >= 0 && boundaryIdx >= 0 -> minOf(boundaryIdxR, boundaryIdx)
+                boundaryIdxR >= 0 -> boundaryIdxR
+                boundaryIdx >= 0 -> boundaryIdx
+                else -> -1
+            }
+            val body = if (cut >= 0) bodyRaw.substring(0, cut).trim() else bodyRaw.trim()
+            if (text == null && headers.contains("content-type: text/plain")) text = body
+            else if (html == null && headers.contains("content-type: text/html")) html = body
+        }
+        val plain = text ?: html?.let { stripHtml(it) }
+        return (plain to html)
+    }
+
+    private fun looksLikeRawMultipart(s: String): Boolean {
+        // A decoded body never starts with a MIME boundary / part header.
+        val t = s.trimStart()
+        return t.startsWith("--") && t.length > 4
     }
 
     private fun extractContent(part: Part): Pair<String?, String?> {
@@ -573,21 +668,63 @@ class EmailSyncEngineImpl(
                 part.isMimeType("text/html") -> {
                     null to readText(part)
                 }
+                part.isMimeType("message/rfc822") -> {
+                    // ponytail: a forwarded/attached email is itself a Part
+                    // (MimeMessage). Recurse into it so the inline forward's body
+                    // surfaces instead of being treated as an opaque attachment.
+                    val nested = part.content as? Part
+                    if (nested != null) extractContent(nested) else (null to null)
+                }
                 part.isMimeType("multipart/*") -> {
-                    val mp = part.content as MimeMultipart
+                    // ponytail: a BODY.PEEK[] fetch returns the raw multipart bytes
+                    // as an IMAPInputStream, NOT a parsed MimeMultipart — so a blind
+                    // `as MimeMultipart` (old code) threw and discarded the whole
+                    // body, and `as? MimeMultipart` is always null (no recursion,
+                    // empty body). Build the MimeMultipart from the stream so we can
+                    // walk the real parts. This is the canonical JavaMail IMAP fix.
+                    val mp = when (val c = part.content) {
+                        is MimeMultipart -> c
+                        is java.io.InputStream -> runCatching {
+                            val ct = runCatching { part.contentType }.getOrNull() ?: "multipart/mixed"
+                            val raw = c as java.io.InputStream
+                            val ds = object : javax.activation.DataSource {
+                                override fun getInputStream(): java.io.InputStream = raw
+                                override fun getOutputStream() = java.io.ByteArrayOutputStream()
+                                override fun getContentType() = ct
+                                override fun getName() = "multipart"
+                            }
+                            MimeMultipart(ds)
+                        }.getOrNull()
+                        else -> null
+                    }
                     var text: String? = null
                     var html: String? = null
-                    for (i in 0 until mp.count) {
-                        val bp = mp.getBodyPart(i) as Part
-                        val (t, h) = extractContent(bp)
-                        if (t != null) text = t
-                        if (h != null) html = h
+                    if (mp != null) {
+                        for (i in 0 until mp.count) {
+                            val bp = mp.getBodyPart(i) as? Part ?: continue
+                            val (t, h) = runCatching { extractContent(bp) }.getOrDefault(null to null)
+                            if (t != null) text = t
+                            if (h != null) html = h
+                        }
+                    } else {
+                        // ponytail: JavaMail exposed the raw multipart blob instead
+                        // of a parsed tree. Read it as text and split on boundaries.
+                        val rawText = runCatching { readText(part) }.getOrNull()
+                        if (rawText != null) {
+                            val (rt, rh) = parseRawMultipart(rawText)
+                            if (rt != null) text = rt
+                            if (rh != null) html = rh
+                        }
                     }
-                    // Evidence: EmailScreen.kt:331 shows bodyText ?: "(no content)". When a message
-                    // has only text/html (no text/plain), text stays null and the detail is blank.
-                    // Fall back to the HTML with tags stripped so bodyText is never null for a
-                    // real message. HTML part is still kept in bodyHtml for rich rendering.
-                    val plain = text ?: html?.let { stripHtml(it) }
+                    // EmailScreen shows bodyText ?: "(no content)". When a message
+                    // has only text/html (no text/plain), fall back to the HTML with
+                    // tags stripped so bodyText is never null for a real message.
+                    // Also guard: if the walk still produced a raw-blob string
+                    // (boundary markers present), run the raw split as a safety net.
+                    val safeText = if (text != null && looksLikeRawMultipart(text)) {
+                        parseRawMultipart(text)?.first ?: text
+                    } else text
+                    val plain = safeText ?: html?.let { stripHtml(it) }
                     plain to html
                 }
                 Part.ATTACHMENT == part.disposition || part.fileName != null -> {
