@@ -79,8 +79,29 @@ class CalendarRepositoryImpl(
         }
 
     // ponytail: expand recurring masters into occurrences within [start,end]; non-recurring pass through.
+    // ponytail: the server CalDAV collection accumulated duplicate recurring
+    // masters across yearly re-imports (e.g. "Bible study at home" x6, two
+    // "Guitar Practice" masters on different weekdays). Each expands to its own
+    // occurrences, flooding views with old / discontinued / wrong-weekday copies.
+    // The expander is correct (verified); the pollution is duplicate masters.
+    // Keep only the NEWEST master per (title+account) and drop the older masters
+    // (and their instances). Display dedup only — never deletes server-side.
+    private fun dedupMastersByTitle(events: List<CalendarEvent>): List<CalendarEvent> {
+        val masters = events.filter { it.recurrenceId == null && it.recurrenceRule != null }
+        val byTitle = masters.groupBy { "${it.title.trim().lowercase()}|${it.accountId}" }
+        val dropUids = mutableSetOf<String>()
+        for ((_, ms) in byTitle) {
+            if (ms.size <= 1) continue
+            val newest = ms.maxByOrNull {
+                it.startAt.toInstant(kotlinx.datetime.TimeZone.of(it.startAt.timeZone)).toEpochMilliseconds()
+            } ?: ms.first()
+            ms.filter { it.uid != newest.uid }.forEach { dropUids.add(it.uid) }
+        }
+        return events.filter { it.uid !in dropUids }
+    }
+
     private fun expandInWindow(events: List<CalendarEvent>, start: Long, end: Long): List<CalendarEvent> =
-        events.flatMap { e ->
+        dedupMastersByTitle(events).flatMap { e ->
             if (e.isMaster()) RecurrenceExpander.expand(e, start, end) else listOf(e)
         }.filter { it.startAt.toInstant().toEpochMilliseconds() in start..end }
 
