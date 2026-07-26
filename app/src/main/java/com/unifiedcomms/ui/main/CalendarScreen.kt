@@ -288,72 +288,87 @@ val TriangleEdgeShape = GenericShape { size, _ ->
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DayView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick: (String) -> Unit, onDateSelected: (java.time.LocalDate) -> Unit) {
+    val HOUR_H = 56.dp
     val dayEvents = events.filter { isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), date) }
-    val eventsByHour = (0..23).map { h ->
-        h to dayEvents.filter { ev ->
-            val ktz = com.unifiedcomms.data.model.TimeZoneUtil.toKtxZone(ev.startAt.timeZone)
-            val ldt = ev.startAt.toInstant(ktz).toLocalDateTime(ktz)
-            ldt.hour == h
-        }
-    }
+    val allDay = dayEvents.filter { it.isAllDay() }
+    val timed = dayEvents.filter { !it.isAllDay() }
     val now = java.time.LocalDateTime.now()
     val isToday = date == java.time.LocalDate.now()
-    val nowOffsetDp = if (isToday) (8 + now.hour * 56 + (now.minute / 60f * 56)).dp else 0.dp
+    val vscroll = rememberScrollState()
     val density = androidx.compose.ui.platform.LocalDensity.current
-    val scrollState = rememberScrollState()
     LaunchedEffect(isToday) {
-        if (isToday) scrollState.scrollTo(((nowOffsetDp - 120.dp).value * density.density).toInt().coerceAtLeast(0))
+        if (isToday) {
+            val yDp = (now.hour * 60 + now.minute) / 60f * HOUR_H.value
+            vscroll.scrollTo(((yDp - 120f) * density.density).toInt().coerceAtLeast(0))
+        }
     }
     Column(modifier = Modifier.fillMaxSize()) {
         Text(
-            text = "Day View: ${date.dayOfWeek}, ${date.month} ${date.dayOfMonth}",
+            text = "${date.dayOfWeek}, ${date.month} ${date.dayOfMonth}",
             fontSize = 18.sp, fontWeight = FontWeight.Bold,
             maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         WeekStripRow(date = date, events = events, onDateSelected = onDateSelected)
-        Box(modifier = Modifier.fillMaxSize()) {
-            Column(
-                modifier = Modifier.fillMaxSize().verticalScroll(scrollState).padding(horizontal = 8.dp, vertical = 8.dp)
+        if (allDay.isNotEmpty()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 64.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                eventsByHour.forEach { (hour, hourEvents) ->
-                    Row(modifier = Modifier.fillMaxWidth().height(56.dp)) {
+                allDay.forEach { ev ->
+                    EventChip(event = ev.toMockEvent(), onClick = { onEventClick(ev.id) },
+                        modifier = Modifier.width(150.dp))
+                }
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+        }
+        Box(modifier = Modifier.fillMaxSize().verticalScroll(vscroll)) {
+            // hour grid background (time labels + lines)
+            Column {
+                for (h in 0..23) {
+                    Row(modifier = Modifier.fillMaxWidth().height(HOUR_H)) {
                         Text(
-                            text = java.time.LocalTime.of(hour, 0).format(java.time.format.DateTimeFormatter.ofPattern("h a")),
+                            text = java.time.LocalTime.of(h, 0).format(java.time.format.DateTimeFormatter.ofPattern("h a")),
                             fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.width(56.dp).padding(top = 2.dp), textAlign = TextAlign.End
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f), modifier = Modifier.weight(1f).align(Alignment.Top))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            hourEvents.forEach { ev ->
-                                EventChip(
-                                    event = ev.toMockEvent(),
-                                    onClick = { onEventClick(ev.id) },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                            }
-                        }
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f),
+                            modifier = Modifier.weight(1f).align(Alignment.Top)
+                        )
                     }
                 }
             }
-            if (isToday) {
-                val lineY = nowOffsetDp - (scrollState.value / density.density).dp
+            // events positioned by absolute start/duration (Etar model)
+            timed.forEach { ev ->
+                val sMin = eventStartMinutes(ev)
+                val eMin = eventEndMinutes(ev, sMin)
+                val top = (sMin / 60f) * HOUR_H.value
+                val hgt = ((eMin - sMin).coerceAtLeast(30) / 60f) * HOUR_H.value
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .offset(y = lineY)
-                        .padding(start = 64.dp)
-                        .height(2.dp)
-                        .background(Color(0xFFE53935))
+                    modifier = Modifier.offset(y = top.dp).padding(start = 64.dp, end = 8.dp)
+                        .fillMaxWidth().height(hgt.dp)
+                ) {
+                    EventChip(
+                        event = ev.toMockEvent(),
+                        onClick = { onEventClick(ev.id) },
+                        modifier = Modifier.fillMaxWidth().height(hgt.dp)
+                    )
+                }
+            }
+            // current-time line
+            if (isToday) {
+                val nowMin = now.hour * 60 + now.minute
+                val lineY = (nowMin / 60f) * HOUR_H.value
+                Box(
+                    modifier = Modifier.offset(y = lineY.dp).padding(start = 64.dp)
+                        .fillMaxWidth().height(2.dp).background(Color(0xFFE53935))
                 )
                 Box(
-                    modifier = Modifier
-                        .offset(y = lineY - 5.dp)
-                        .size(12.dp)
+                    modifier = Modifier.offset(y = (lineY - 5f).dp).size(12.dp)
                         .background(Color(0xFFE53935), TriangleEdgeShape)
                 )
             }
@@ -422,54 +437,100 @@ private fun WeekStripRow(date: java.time.LocalDate, events: List<CalendarEvent>,
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WeekView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick: (String) -> Unit, onDateSelected: (java.time.LocalDate) -> Unit) {
+    val HOUR_H = 56.dp
     val weekStart = date.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.SUNDAY))
-
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+    val days = (0..6).map { weekStart.plusDays(it.toLong()) }
+    val now = java.time.LocalDateTime.now()
+    val isToday = date == java.time.LocalDate.now()
+    val vscroll = rememberScrollState()
+    val hscroll = rememberScrollState()
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    LaunchedEffect(isToday) {
+        if (isToday) {
+            val yDp = (now.hour * 60 + now.minute) / 60f * HOUR_H.value
+            vscroll.scrollTo(((yDp - 120f) * density.density).toInt().coerceAtLeast(0))
+        }
+    }
+    Column(modifier = Modifier.fillMaxSize()) {
         WeekStripRow(date = date, events = events, onDateSelected = onDateSelected)
-        Spacer(modifier = Modifier.height(8.dp))
-        // Samsung-style week timeline: time labels on the left, 7 day columns with hourly slots.
-        Row(modifier = Modifier.fillMaxSize().horizontalScroll(rememberScrollState())) {
-            // Time-label column
-            Column(modifier = Modifier.width(48.dp).verticalScroll(rememberScrollState())) {
-                Spacer(modifier = Modifier.height(28.dp)) // aligns with day-column header row
-                (0..23).forEach { hour ->
-                    Box(modifier = Modifier.height(56.dp), contentAlignment = Alignment.TopEnd) {
+        // all-day strip across the week
+        val allDayByDay = days.map { d -> events.filter { it.isAllDay() && isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), d) } }
+        if (allDayByDay.any { it.isNotEmpty() }) {
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                    .padding(start = 64.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                days.forEachIndexed { i, d ->
+                    Column(modifier = Modifier.width(110.dp)) {
+                        allDayByDay[i].take(2).forEach { ev ->
+                            EventChip(event = ev.toMockEvent(), onClick = { onEventClick(ev.id) }, modifier = Modifier.fillMaxWidth())
+                        }
+                        if (allDayByDay[i].size > 2) Text("+${allDayByDay[i].size - 2}", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+        }
+        // shared-scroll time grid: time column (fixed left) + 7 day columns (horizontal scroll)
+        Row(modifier = Modifier.fillMaxSize()) {
+            // time labels — vertical scroll SHARED with the day grid (Etar model)
+            Column(modifier = Modifier.width(56.dp).verticalScroll(vscroll)) {
+                Spacer(modifier = Modifier.height(8.dp))
+                for (h in 0..23) {
+                    Box(modifier = Modifier.height(HOUR_H), contentAlignment = Alignment.TopEnd) {
                         Text(
-                            text = java.time.LocalTime.of(hour, 0).format(java.time.format.DateTimeFormatter.ofPattern("h a")),
+                            text = java.time.LocalTime.of(h, 0).format(java.time.format.DateTimeFormatter.ofPattern("h a")),
                             fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(end = 4.dp, top = 2.dp)
                         )
                     }
                 }
             }
-            Spacer(modifier = Modifier.width(4.dp))
-            (0..6).forEach { dayOffset ->
-                val day = weekStart.plusDays(dayOffset.toLong())
-                val selected = day == date
-                Column(
-                    modifier = Modifier.width(110.dp)
-                        .then(if (selected) Modifier.background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f), RoundedCornerShape(12.dp)) else Modifier)
-                        .padding(4.dp)
-                        .verticalScroll(rememberScrollState()),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(text = day.dayOfWeek.name.take(3), fontWeight = FontWeight.Bold, fontSize = 12.sp,
-                        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    val dayEvents = events.filter { isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), day) }
-                    val byHour = (0..23).map { h -> h to dayEvents.filter { ev ->
-                        val ktz = com.unifiedcomms.data.model.TimeZoneUtil.toKtxZone(ev.startAt.timeZone)
-                        ev.startAt.toInstant(ktz).toLocalDateTime(ktz).hour == h
-                    } }
-                    byHour.forEach { (hour, hourEvents) ->
-                        Column(modifier = Modifier.fillMaxWidth().height(56.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            hourEvents.take(2).forEach { ev ->
-                                EventChip(event = ev.toMockEvent(), onClick = { onEventClick(ev.id) },
-                                    modifier = Modifier.fillMaxWidth())
+            Spacer(modifier = Modifier.width(8.dp))
+            // day grid — same vscroll, horizontal scroll for 7 columns
+            Row(modifier = Modifier.fillMaxSize().horizontalScroll(hscroll).verticalScroll(vscroll)) {
+                days.forEach { d ->
+                    val selected = d == date
+                    val dayEvents = events.filter { !it.isAllDay() && isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), d) }
+                    Column(
+                        modifier = Modifier.width(110.dp)
+                            .then(if (selected) Modifier.background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f), RoundedCornerShape(12.dp)) else Modifier)
+                            .padding(4.dp)
+                    ) {
+                        // hour grid lines
+                        Column {
+                            for (h in 0..23) {
+                                HorizontalDivider(
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.18f),
+                                    modifier = Modifier.height(HOUR_H)
+                                )
                             }
-                            if (hourEvents.size > 2) {
-                                Text(text = "+${hourEvents.size - 2}", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        // events positioned absolutely by start/duration
+                        dayEvents.forEach { ev ->
+                            val sMin = eventStartMinutes(ev)
+                            val eMin = eventEndMinutes(ev, sMin)
+                            val top = (sMin / 60f) * HOUR_H.value
+                            val hgt = ((eMin - sMin).coerceAtLeast(30) / 60f) * HOUR_H.value
+                            Box(
+                                modifier = Modifier.offset(y = top.dp).padding(horizontal = 2.dp)
+                                    .fillMaxWidth().height(hgt.dp)
+                            ) {
+                                EventChip(
+                                    event = ev.toMockEvent(),
+                                    onClick = { onEventClick(ev.id) },
+                                    modifier = Modifier.fillMaxWidth().height(hgt.dp)
+                                )
                             }
+                        }
+                        if (isToday && d == date) {
+                            val nowMin = now.hour * 60 + now.minute
+                            val lineY = (nowMin / 60f) * HOUR_H.value
+                            Box(
+                                modifier = Modifier.offset(y = lineY.dp).fillMaxWidth().height(2.dp)
+                                    .background(Color(0xFFE53935))
+                            )
                         }
                     }
                 }
@@ -725,6 +786,23 @@ private fun isSameDay(instant: kotlinx.datetime.Instant, date: java.time.LocalDa
 // filter only — never delete server-side.
 private fun isLegacyImported(event: com.unifiedcomms.data.model.CalendarEvent): Boolean {
     return event.uid.endsWith("@google.com", ignoreCase = true)
+}
+
+// ponytail: minutes from local midnight for an event's start, used to position
+// timed events absolutely in the Day/Week grid (Etar model: one grid, events
+// placed by duration, not bucketed per hour).
+private fun eventStartMinutes(event: com.unifiedcomms.data.model.CalendarEvent): Int {
+    val z = com.unifiedcomms.data.model.TimeZoneUtil.toKtxZone(event.startAt.timeZone)
+    val ldt = event.startAt.toInstant(z).toLocalDateTime(z)
+    return ldt.hour * 60 + ldt.minute
+}
+
+private fun eventEndMinutes(event: com.unifiedcomms.data.model.CalendarEvent, startMin: Int): Int {
+    val z = com.unifiedcomms.data.model.TimeZoneUtil.toKtxZone(event.endAt.timeZone)
+    val ldt = event.endAt.toInstant(z).toLocalDateTime(z)
+    val raw = ldt.hour * 60 + ldt.minute
+    // events that cross midnight (end < start) clamp to 24:00
+    return if (raw <= startMin) 24 * 60 else raw
 }
 
 // ponytail: server TZIDs can be malformed (#2). Guard ZoneId.of with runCatching
