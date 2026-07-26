@@ -345,12 +345,13 @@ class CalDAVClient(
     // ponytail: pull the collection color from the calendar-color property
     // (urn:ietf caldav / Apple IC: — byLocalName matches on localName only, so
     // the namespace prefix doesn't matter). Returns "" when absent.
+    // SOGo emits 8-digit ARGB (#FF0000FF) — accept 3/4/6/8-digit hex, not just 6.
     private fun extractCalendarColor(resp: Element): String {
         val node = byLocalName(resp, "calendar-color").item(0)
         val v = node?.textContent?.trim().orEmpty()
         if (v.isNotBlank()) {
             val hex = if (v.startsWith("#")) v else "#$v"
-            if (hex.matches(Regex("#[0-9A-Fa-f]{6}"))) return hex
+            if (hex.matches(Regex("#[0-9A-Fa-f]{3,8}"))) return hex
         }
         return ""
     }
