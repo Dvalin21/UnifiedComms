@@ -289,7 +289,7 @@ val TriangleEdgeShape = GenericShape { size, _ ->
 @Composable
 fun DayView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick: (String) -> Unit, onDateSelected: (java.time.LocalDate) -> Unit) {
     val HOUR_H = 56.dp
-    val dayEvents = events.filter { isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), date) }
+    val dayEvents = events.filter { !isLegacyImported(it) && !isCancelled(it) && isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), date) }
     val allDay = dayEvents.filter { it.isAllDay() }
     val timed = dayEvents.filter { !it.isAllDay() }
     val now = java.time.LocalDateTime.now()
@@ -348,7 +348,7 @@ fun DayView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick
                 val top = (sMin / 60f) * HOUR_H.value
                 val hgt = ((eMin - sMin).coerceAtLeast(30) / 60f) * HOUR_H.value
                 Box(
-                    modifier = Modifier.offset(y = top.dp).padding(start = 64.dp, end = 8.dp)
+                    modifier = Modifier.offset(y = top.dp).padding(start = 66.dp, end = 16.dp)
                         .fillMaxWidth().height(hgt.dp)
                 ) {
                     EventChip(
@@ -388,8 +388,8 @@ private fun WeekStripRow(date: java.time.LocalDate, events: List<CalendarEvent>,
     ) {
         days.forEachIndexed { i, day ->
             val selected = day == date
-            val hasEvents = events.any { isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), day) }
-            val dotColor = events.firstOrNull { isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), day) }
+            val hasEvents = events.any { !isLegacyImported(it) && !isCancelled(it) && isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), day) }
+            val dotColor = events.firstOrNull { !isLegacyImported(it) && !isCancelled(it) && isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), day) }
                 ?.let { runCatching { Color(android.graphics.Color.parseColor(com.unifiedcomms.ui.theme.ColorNormalizer.normalize(it.color.background))) }.getOrNull() }
                 ?: MaterialTheme.colorScheme.primary
             Column(
@@ -453,7 +453,7 @@ fun WeekView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClic
     Column(modifier = Modifier.fillMaxSize()) {
         WeekStripRow(date = date, events = events, onDateSelected = onDateSelected)
         // all-day strip across the week
-        val allDayByDay = days.map { d -> events.filter { it.isAllDay() && isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), d) } }
+        val allDayByDay = days.map { d -> events.filter { !isLegacyImported(it) && !isCancelled(it) && it.isAllDay() && isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), d) } }
         if (allDayByDay.any { it.isNotEmpty() }) {
             Row(
                 modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
@@ -491,7 +491,7 @@ fun WeekView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClic
             Row(modifier = Modifier.fillMaxSize().horizontalScroll(hscroll).verticalScroll(vscroll)) {
                 days.forEach { d ->
                     val selected = d == date
-                    val dayEvents = events.filter { !it.isAllDay() && isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), d) }
+                    val dayEvents = events.filter { !isLegacyImported(it) && !isCancelled(it) && !it.isAllDay() && isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), d) }
                     // Box (not Column) so the grid + events overlay at absolute time positions
                     Box(
                         modifier = Modifier.width(110.dp)
@@ -588,7 +588,7 @@ fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onDayCl
                                     ev.startAt.toInstant(com.unifiedcomms.data.model.TimeZoneUtil.toKtxZone(ev.startAt.timeZone)),
                                     cd,
                                     evZone
-                                )
+                                ) && !isLegacyImported(ev) && !isCancelled(ev)
                             }
                         } ?: emptyList()
                         val isToday = cellDate == today
@@ -707,7 +707,7 @@ private fun rememberCurrentDateTime(): java.time.LocalDateTime {
 fun CurrentTimePanel(events: List<CalendarEvent>) {
     val now = rememberCurrentDateTime()
     val today = java.time.LocalDate.now()
-    val todayCount = events.count { isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), today) }
+    val todayCount = events.count { !isLegacyImported(it) && !isCancelled(it) && isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), today) }
     val dateFmt = DateTimeFormatter.ofPattern("EEE, MMM d yyyy")
     val timeFmt = DateTimeFormatter.ofPattern("HH:mm")
     Surface(
@@ -788,6 +788,21 @@ private fun isLegacyImported(event: com.unifiedcomms.data.model.CalendarEvent): 
     return event.uid.endsWith("@google.com", ignoreCase = true)
 }
 
+// ponytail: cancelled events (STATUS:CANCELLED) must not render. Display filter
+// only — never delete server-side. Discontinued/old duplicates are a separate
+// server-hygiene problem.
+private fun isCancelled(event: com.unifiedcomms.data.model.CalendarEvent): Boolean {
+    return event.status == com.unifiedcomms.data.model.EventStatus.CANCELLED
+}
+
+// 12-hour clock (e.g. 6 PM, not 18:00) for event chips and labels.
+private fun format12h(hour: Int): String {
+    val h = ((hour % 24) + 24) % 24
+    val ampm = if (h < 12) "AM" else "PM"
+    val h12 = if (h % 12 == 0) 12 else h % 12
+    return "$h12 $ampm"
+}
+
 // ponytail: minutes from local midnight for an event's start, used to position
 // timed events absolutely in the Day/Week grid (Etar model: one grid, events
 // placed by duration, not bucketed per hour).
@@ -833,17 +848,24 @@ fun EventChip(event: MockEvent, compact: Boolean = false, modifier: Modifier = M
         contentColor = Color.White,
         onClick = onClick
     ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = if (compact) 3.dp else 8.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = if (compact) 3.dp else 6.dp)) {
+            if (!compact) {
+                Text(
+                    text = "${format12h(event.startHour)} – ${format12h(event.endHour)}",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 1
+                )
+            }
             Text(
-                text = if (!compact) "${String.format("%02d:00", event.startHour)}-${String.format("%02d:00", event.endHour)} ${event.title}" else event.title,
+                text = event.title,
                 fontSize = if (compact) 11.sp else 13.sp,
+                fontWeight = FontWeight.Medium,
                 color = Color.White,
-                maxLines = 1,
+                maxLines = if (compact) 1 else 2,
                 overflow = TextOverflow.Ellipsis
             )
-            if (!compact) {
-                Text(text = event.calendarName, fontSize = 10.sp, color = Color.White.copy(alpha = 0.8f))
-            }
         }
     }
 }
