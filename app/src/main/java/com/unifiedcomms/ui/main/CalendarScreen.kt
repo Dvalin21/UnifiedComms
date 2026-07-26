@@ -133,7 +133,7 @@ fun CalendarScreen(
     // of 1587 server hrefs are @google.com), but they are not part of the
     // user's current calendar and must not render. Display-only filter — we
     // do NOT delete them server-side (don't mess up the calendar).
-    val allEvents = remember(rawEvents) { rawEvents.filter { !isLegacyImported(it) } }
+    val allEvents = remember(rawEvents) { dedupEvents(rawEvents.filter { !isLegacyImported(it) && !isCancelled(it) }) }
 
     // ponytail: Room already holds every synced event persistently — the user
     // wants calendar STORAGE, not re-streaming on every tab open. The previous
@@ -793,6 +793,25 @@ private fun isLegacyImported(event: com.unifiedcomms.data.model.CalendarEvent): 
 // server-hygiene problem.
 private fun isCancelled(event: com.unifiedcomms.data.model.CalendarEvent): Boolean {
     return event.status == com.unifiedcomms.data.model.EventStatus.CANCELLED
+}
+
+// ponytail: the server CalDAV collection accumulated duplicate recurring
+// masters across yearly re-imports (e.g. "Bible study at home" x6 from 2019-2024).
+// Each expands to identical occurrences, flooding the views. Collapse identical
+// occurrences (same normalized title + start + end) so only one renders. Display
+// dedup only — never delete server-side. Etar shows just the current calendar's
+// own events; this is the equivalent for our polluted collection.
+private fun dedupEvents(events: List<com.unifiedcomms.data.model.CalendarEvent>): List<com.unifiedcomms.data.model.CalendarEvent> {
+    val seen = mutableSetOf<String>()
+    val out = mutableListOf<com.unifiedcomms.data.model.CalendarEvent>()
+    for (ev in events) {
+        val z = com.unifiedcomms.data.model.TimeZoneUtil.toKtxZone(ev.startAt.timeZone)
+        val s = ev.startAt.toInstant(z).toEpochMilliseconds()
+        val e = ev.endAt.toInstant(z).toEpochMilliseconds()
+        val key = "${ev.title.trim().lowercase()}|$s|$e"
+        if (seen.add(key)) out.add(ev)
+    }
+    return out
 }
 
 // 12-hour clock (e.g. 6 PM, not 18:00) for event chips and labels.
