@@ -310,11 +310,10 @@ fun DayView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-        WeekStripRow(date = date, events = events, onDateSelected = onDateSelected)
         if (allDay.isNotEmpty()) {
             Row(
                 modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 64.dp, vertical = 6.dp),
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 allDay.forEach { ev ->
@@ -493,7 +492,8 @@ fun WeekView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClic
                 days.forEach { d ->
                     val selected = d == date
                     val dayEvents = events.filter { !it.isAllDay() && isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), d) }
-                    Column(
+                    // Box (not Column) so the grid + events overlay at absolute time positions
+                    Box(
                         modifier = Modifier.width(110.dp)
                             .then(if (selected) Modifier.background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f), RoundedCornerShape(12.dp)) else Modifier)
                             .padding(4.dp)
