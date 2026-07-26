@@ -141,10 +141,20 @@ data class EventColor(
     val foreground: String, // Hex color
     val calendarId: String? = null // Original calendar color reference
 ) {
-    // ponytail: parseColor throws on a malformed hex; fall back to a safe default
-    // rather than crashing the calendar/reminder UI on a bad server color.
-    fun toColorInt(): Int = runCatching { android.graphics.Color.parseColor(background) }.getOrElse { 0xFF2196F3.toInt() }
-    fun toForegroundInt(): Int = runCatching { android.graphics.Color.parseColor(foreground) }.getOrElse { 0xFFFFFFFF.toInt() }
+    // ponytail: servers send CSS named colors (dodgerblue, gold...) and 8-digit
+    // ARGB (#FF0000FF) that Color.parseColor rejects -> it threw -> UI fell back to
+    // default blue for EVERY colored event. Normalize first (handles names +
+    // ARGB), then parse. Only fall back to blue on a truly unparseable string.
+    fun toColorInt(): Int {
+        val hex = com.unifiedcomms.ui.theme.ColorNormalizer.normalize(background)
+        return if (hex.isNotEmpty()) android.graphics.Color.parseColor(hex)
+        else 0xFF2196F3.toInt()
+    }
+    fun toForegroundInt(): Int {
+        val hex = com.unifiedcomms.ui.theme.ColorNormalizer.normalize(foreground)
+        return if (hex.isNotEmpty()) android.graphics.Color.parseColor(hex)
+        else 0xFFFFFFFF.toInt()
+    }
 
     companion object {
         fun Default(): EventColor = EventColor("#2196F3", "#FFFFFF")

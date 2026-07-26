@@ -127,18 +127,18 @@ fun CalendarScreen(
     else viewModel.calendarRepository.getEventsInRangeUnified(activeAccountIds, eventWindow.first, eventWindow.second))
         .collectAsStateWithLifecycle(initialValue = emptyList())
 
-    // ponytail: the unified-inbox has its own periodic/observer sync, but the
-    // Calendar tab was never given a trigger, so a freshly added account's events
-    // only appeared after some other screen happened to sync. Kick a foreground
-    // calendar sync (non-cancellable ViewModel scope) whenever the screen opens or
-    // the active-account set changes, so events surface immediately.
-    LaunchedEffect(activeAccountIds) {
-        // ponytail: only fetch on open when the cache is empty. A background
-        // WorkManager sync already keeps the DB fresh; re-syncing on every
-        // open re-fetches from the server and briefly blanks the list (the
-        // delete-then-insert emits empty mid-sync), which reads as "takes a
-        // second before events show". If we already have events, leave them.
-        if (activeAccountIds.isNotEmpty() && allEvents.isEmpty()) {
+    // ponytail: Room already holds every synced event persistently — the user
+    // complained the tab re-streams (blanks, then re-fetches) every time it opens.
+    // Root cause: LaunchedEffect(activeAccountIds) keyed on a freshly-allocated
+    // List each recomposition, so it re-fired on every recompose AND the
+    // allEvents.isEmpty() gate is true at first composition -> a full
+    // delete-then-insert sync on every open. Fix: key the effect on a STABLE
+    // account-set signature (joined ids) so it runs once per real account change,
+    // and only ever refresh when the local DB is genuinely empty (first launch /
+    // freshly-added account). Never re-stream over already-populated data.
+    val accountKey = remember(activeAccountIds) { activeAccountIds.sorted().joinToString(",") }
+    LaunchedEffect(accountKey) {
+        if (accountKey.isNotEmpty() && allEvents.isEmpty()) {
             viewModel.syncCalendarForAccounts(activeAccountIds)
         }
     }
@@ -362,7 +362,7 @@ private fun WeekStripRow(date: java.time.LocalDate, events: List<CalendarEvent>,
             val selected = day == date
             val hasEvents = events.any { isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), day) }
             val dotColor = events.firstOrNull { isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), day) }
-                ?.let { runCatching { Color(android.graphics.Color.parseColor(it.color.background)) }.getOrNull() }
+                ?.let { runCatching { Color(android.graphics.Color.parseColor(com.unifiedcomms.ui.theme.ColorNormalizer.normalize(it.color.background))) }.getOrNull() }
                 ?: MaterialTheme.colorScheme.primary
             Column(
                 modifier = Modifier
@@ -777,7 +777,7 @@ fun CreateEventScreen(
                 description = ev.description ?: ""
                 location = ev.location ?: ""
                 isAllDay = ev.startAt.isAllDay
-                selectedColor = runCatching { android.graphics.Color.parseColor(ev.color.background) }.getOrNull()?.toLong() ?: selectedColor
+                selectedColor = runCatching { android.graphics.Color.parseColor(com.unifiedcomms.ui.theme.ColorNormalizer.normalize(ev.color.background)) }.getOrNull()?.toLong() ?: selectedColor
                 selectedDate = ev.startAt.date?.let { java.time.LocalDate.of(it.year, it.monthNumber, it.dayOfMonth) }
                     ?: ev.startAt.dateTime?.date?.let { java.time.LocalDate.of(it.year, it.monthNumber, it.dayOfMonth) }
                     ?: selectedDate
