@@ -80,6 +80,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.foundation.shape.GenericShape
 import kotlin.math.abs
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import kotlinx.datetime.Clock
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
@@ -123,23 +124,36 @@ fun CalendarScreen(
         val end = now.withDayOfYear(1).plusYears(1).atStartOfDay(z).toInstant().toEpochMilli()
         start to end
     }
-    val allEvents by (if (activeAccountIds.isEmpty()) kotlinx.coroutines.flow.flowOf(emptyList())
-    else viewModel.calendarRepository.getEventsInRangeUnified(activeAccountIds, eventWindow.first, eventWindow.second))
-        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val baseFlow: kotlinx.coroutines.flow.Flow<List<com.unifiedcomms.data.model.CalendarEvent>> =
+        if (activeAccountIds.isEmpty()) kotlinx.coroutines.flow.flowOf<List<com.unifiedcomms.data.model.CalendarEvent>>(emptyList())
+        else viewModel.calendarRepository.getEventsInRangeUnified(activeAccountIds, eventWindow.first, eventWindow.second)
+    val rawEvents by baseFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+    // ponytail: hide legacy imported events (Google/creator UIDs ending in
+    // @google.com). The CalDAV collection still serves them (confirmed: 1224
+    // of 1587 server hrefs are @google.com), but they are not part of the
+    // user's current calendar and must not render. Display-only filter — we
+    // do NOT delete them server-side (don't mess up the calendar).
+    val allEvents = remember(rawEvents) { rawEvents.filter { !isLegacyImported(it) } }
 
     // ponytail: Room already holds every synced event persistently — the user
-    // complained the tab re-streams (blanks, then re-fetches) every time it opens.
-    // Root cause: LaunchedEffect(activeAccountIds) keyed on a freshly-allocated
-    // List each recomposition, so it re-fired on every recompose AND the
-    // allEvents.isEmpty() gate is true at first composition -> a full
-    // delete-then-insert sync on every open. Fix: key the effect on a STABLE
-    // account-set signature (joined ids) so it runs once per real account change,
-    // and only ever refresh when the local DB is genuinely empty (first launch /
-    // freshly-added account). Never re-stream over already-populated data.
+    // wants calendar STORAGE, not re-streaming on every tab open. The previous
+    // LaunchedEffect keyed on a fresh List each recomposition and gated on
+    // allEvents.isEmpty(), but collectAsStateWithLifecycle's INITIAL value is
+    // emptyList(), so it fired a full delete-then-insert re-sync on every open
+    // (~35s of blue flash while the old rows were deleted and re-inserted).
+    // Fix: read the DB DIRECTLY (suspend) to decide if a sync is truly needed.
+    // If Room already has events for these accounts, never re-stream — just
+    // display what's stored. Background WorkManager keeps it fresh.
     val accountKey = remember(activeAccountIds) { activeAccountIds.sorted().joinToString(",") }
     LaunchedEffect(accountKey) {
-        if (accountKey.isNotEmpty() && allEvents.isEmpty()) {
-            viewModel.syncCalendarForAccounts(activeAccountIds)
+        if (accountKey.isNotEmpty()) {
+            val firstId = activeAccountIds.firstOrNull()
+            val stored: List<CalendarEvent> = if (firstId != null) {
+                runCatching { viewModel.calendarRepository.getAllEventsForAccount(firstId).first() }.getOrElse { emptyList() }
+            } else emptyList()
+            if (stored.isEmpty()) {
+                viewModel.syncCalendarForAccounts(activeAccountIds)
+            }
         }
     }
 
@@ -703,6 +717,14 @@ private fun isSameDay(instant: kotlinx.datetime.Instant, date: java.time.LocalDa
     return java.time.Instant.ofEpochMilli(instant.toEpochMilliseconds())
         .atZone(zoneId)
         .toLocalDate() == date
+}
+
+// ponytail: legacy imported events carry UIDs like "...@google.com" (Google
+// Calendar exports / the original creator's shared calendar). They are not part
+// of the user's current calendar and must be hidden from every view. Display
+// filter only — never delete server-side.
+private fun isLegacyImported(event: com.unifiedcomms.data.model.CalendarEvent): Boolean {
+    return event.uid.endsWith("@google.com", ignoreCase = true)
 }
 
 // ponytail: server TZIDs can be malformed (#2). Guard ZoneId.of with runCatching
