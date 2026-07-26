@@ -253,8 +253,29 @@ class CalendarDupeDebugTest {
             val zid = java.time.ZoneId.of(com.unifiedcomms.data.model.TimeZoneUtil.normalize(ev.startAt.timeZone) ?: "UTC")
             java.time.Instant.ofEpochMilli(ev.startAt.toInstant(com.unifiedcomms.data.model.TimeZoneUtil.toKtxZone(ev.startAt.timeZone)).toEpochMilliseconds()).atZone(zid).toLocalDateTime().dayOfWeek.name
         }.distinct().sorted()
-        Log.e("DIAG", "DEDUP_TOTAL before=${filt.size} after=${deduped.size}")
-        Log.e("DIAG", "DEDUP_GUITAR_DAYS=$guitarDays")
+        // Post-dedup July weekdays for ALL recurring titles (proves wrong-day fixed)
+        val recurUids = deduped.mapNotNull { if (it.recurrenceId != null) it.uid else null }.toSet()
+        val titled = deduped.groupBy { it.title.trim() }
+        for ((title, evs) in titled) {
+            val days = evs.map { ev ->
+                val zid = java.time.ZoneId.of(com.unifiedcomms.data.model.TimeZoneUtil.normalize(ev.startAt.timeZone) ?: "UTC")
+                java.time.Instant.ofEpochMilli(ev.startAt.toInstant(com.unifiedcomms.data.model.TimeZoneUtil.toKtxZone(ev.startAt.timeZone)).toEpochMilliseconds()).atZone(zid).toLocalDateTime().dayOfWeek.name
+            }.distinct().sorted()
+            Log.e("DIAG", "POSTDEDUP title='${title.take(34)}' days=$days n=${evs.size}")
+        }
+        Log.e("DIAG", "ALLDAYS_CHECK_DONE")
+        // Full per-master truth: for each key recurring title, dump all masters + their rendered days.
+        val probeTitles = listOf("guitar practice w/bob g4v", "enn  class", "church bible study", "keith praise and worship practice", "men's bible study", "video production  class", "choir zoom with ms andrea", "private ice skating lesson")
+        for (pt in probeTitles) {
+            val ms = all.filter { it.isMaster() && it.title.trim().lowercase() == pt }
+            for (m in ms) {
+                val occ = deduped.filter { it.uid == m.uid }.map { ev ->
+                    val zid = java.time.ZoneId.of(com.unifiedcomms.data.model.TimeZoneUtil.normalize(ev.startAt.timeZone) ?: "UTC")
+                    java.time.Instant.ofEpochMilli(ev.startAt.toInstant(com.unifiedcomms.data.model.TimeZoneUtil.toKtxZone(ev.startAt.timeZone)).toEpochMilliseconds()).atZone(zid).toLocalDateTime().dayOfWeek.name
+                }.distinct().sorted()
+                Log.e("DIAG", "PROBE title='$pt' uid=${m.uid.take(10)} acct=${m.accountId.take(10)} byDay=${m.recurrenceRule?.byDay} start=${m.startAt.dateTime} tz=${m.startAt.timeZone} rendered=$occ")
+            }
+        }
         // Debug: print surviving Guitar Practice events' uid + day
         deduped.filter { it.title.contains("Guitar Practice") }.forEach { ev ->
             val zid = java.time.ZoneId.of(com.unifiedcomms.data.model.TimeZoneUtil.normalize(ev.startAt.timeZone) ?: "UTC")
