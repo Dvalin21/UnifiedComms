@@ -498,7 +498,12 @@ class CalDAVClient(
                 Log.w(TAG, "PUT $target failed: ${resp.code}")
                 return@use null
             }
-            resp.header("ETag")?.trim('"')?.ifBlank { null }
+            // ponytail: SOGo/mailcow may omit the ETag header on a PUT response
+            // (it's available via a follow-up PROPFIND, not in the 201 body). Treat
+            // a 2xx as success even without an ETag so callers flip needsSync and
+            // stop re-pushing. Return "*" (WebDAV "always differs") as the sentinel;
+            // the next down-sync re-fetches the real etag and converges.
+            resp.header("ETag")?.trim('"')?.ifBlank { null } ?: "*"
         }
     }
 

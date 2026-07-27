@@ -360,7 +360,7 @@ class MainViewModel(
         val calendars: List<com.unifiedcomms.data.model.Calendar> =
             calendarRepo.getCalendarsByAccount(accountId).first()
         val calendar = calendars.firstOrNull() ?: return null
-        val event = InviteMapper.toCalendarEvent(invite, account.id, calendar.id)
+        val event = InviteMapper.toCalendarEvent(invite, account.id, calendar.serverId)
         val id = calendarRepo.insertEvent(event)
         return if (id > 0) event.copy(id = id.toString()) else null
     }
