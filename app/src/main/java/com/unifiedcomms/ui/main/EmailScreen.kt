@@ -501,29 +501,24 @@ private fun InviteCard(invite: CalendarInviteMessage, viewModel: MainViewModel) 
                     enabled = !busy,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Filled.Check, contentDescription = null)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Accept")
+                    Text("Accept", maxLines = 1, style = MaterialTheme.typography.labelSmall)
                 }
                 OutlinedButton(
                     onClick = { scope.launch { busy = true; viewModel.respondToInvite(invite, AttendeeStatus.DECLINED); busy = false } },
                     enabled = !busy,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Filled.Close, contentDescription = null)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Decline")
+                    Text("Decline", maxLines = 1, style = MaterialTheme.typography.labelSmall)
                 }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            FilledTonalButton(
-                onClick = { scope.launch { busy = true; viewModel.addInviteToCalendar(invite); busy = false } },
-                enabled = !busy,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = null)
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Add to Calendar")
+                Button(
+                    onClick = { scope.launch { busy = true; viewModel.addInviteToCalendar(invite); busy = false } },
+                    enabled = !busy,
+                    // ponytail: +Just Add is two words; give it a bit more width so it fits on
+                    // one line without clipping (Accept/Decline stay at 1f).
+                    modifier = Modifier.weight(1.3f)
+                ) {
+                    Text("+Just Add", maxLines = 1, style = MaterialTheme.typography.labelSmall)
+                }
             }
         }
     }
