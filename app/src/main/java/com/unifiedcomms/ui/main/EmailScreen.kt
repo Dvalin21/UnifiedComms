@@ -6,8 +6,11 @@ import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Search
 
 import androidx.compose.foundation.background
@@ -66,7 +69,16 @@ import androidx.compose.runtime.LaunchedEffect
 import com.unifiedcomms.data.model.Email
 import com.unifiedcomms.data.model.EmailAddress
 import com.unifiedcomms.data.model.EmailRecipients
+import com.unifiedcomms.data.model.AttendeeStatus
+import com.unifiedcomms.data.model.CalendarInviteMessage
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.OutlinedButton
 import kotlinx.coroutines.launch
+import java.time.format.DateTimeFormatter
+import java.time.LocalDateTime
+import java.time.ZoneId
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -334,6 +346,8 @@ fun EmailDetailScreen(
                 Text("Email not found", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
+            android.util.Log.e("INVITEUI", "INVITE_NULL=${e.invite == null} subject='${e.subject.take(40)}' hasHtml=${!e.bodyHtml.isNullOrBlank()} hasText=${!e.bodyText.isNullOrBlank()}")
+            if (e.invite != null) android.util.Log.e("INVITEUI", "INVITE_PARSED title='${e.invite.eventTitle.take(30)}' start=${e.invite.startAt} tz='${e.invite.timezone}'")
             val context = LocalContext.current
             LazyColumn(modifier = Modifier.padding(innerPadding).fillMaxSize().padding(16.dp)) {
                 item {
@@ -350,6 +364,12 @@ fun EmailDetailScreen(
                     Spacer(modifier = Modifier.height(16.dp))
                     HorizontalDivider()
                     Spacer(modifier = Modifier.height(16.dp))
+                    // ponytail: render a clean invite card when the email carries a parsed
+                    // text/calendar invite. This is the actionable surface — Accept/Decline/Add.
+                    e.invite?.let { inv ->
+                        InviteCard(invite = inv, viewModel = viewModel)
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
                     // ponytail: render HTML when available (GMail/Samsung-style),
                     // fall back to plaintext. WebView is the correct renderer for
                     // arbitrary email HTML; JS is disabled and no network access.
@@ -419,6 +439,85 @@ private fun AttachmentRow(attachment: com.unifiedcomms.data.model.Attachment, on
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun InviteCard(invite: CalendarInviteMessage, viewModel: MainViewModel) {
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    val tz = if (invite.timezone.isBlank()) ZoneId.systemDefault() else runCatching { ZoneId.of(invite.timezone) }.getOrDefault(ZoneId.systemDefault())
+    val start = runCatching { LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(invite.startAt.toEpochMilliseconds()), tz) }.getOrDefault(LocalDateTime.now())
+    val end = runCatching { LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(invite.endAt.toEpochMilliseconds()), tz) }.getOrDefault(LocalDateTime.now())
+    val dateFmt = DateTimeFormatter.ofPattern("EEE, MMM d, yyyy")
+    val timeFmt = DateTimeFormatter.ofPattern("h:mm a")
+
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp).fillMaxWidth()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Event, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    invite.eventTitle,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            Text("${start.format(dateFmt)}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+            Text(
+                "${start.format(timeFmt)} – ${end.format(timeFmt)} (${invite.timezone.takeIf { it.isNotBlank() } ?: "local"})",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+            invite.location?.takeIf { it.isNotBlank() }?.let {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(it.replace("\n", ", "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+            }
+            invite.organizerName?.takeIf { it.isNotBlank() }?.let {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text("Organizer: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = { scope.launch { busy = true; viewModel.respondToInvite(invite, AttendeeStatus.ACCEPTED); busy = false } },
+                    enabled = !busy,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Filled.Check, contentDescription = null)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Accept")
+                }
+                OutlinedButton(
+                    onClick = { scope.launch { busy = true; viewModel.respondToInvite(invite, AttendeeStatus.DECLINED); busy = false } },
+                    enabled = !busy,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Filled.Close, contentDescription = null)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Decline")
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            FilledTonalButton(
+                onClick = { scope.launch { busy = true; viewModel.addInviteToCalendar(invite); busy = false } },
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = null)
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Add to Calendar")
             }
         }
     }
