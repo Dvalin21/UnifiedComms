@@ -44,12 +44,37 @@ object Migrations {
     }
 
     /**
-     * Example shape for a real bump when schema changes:
-     *
-     * val MIGRATION_3_4 = object : Migration(3, 4) {
-     *     override fun migrate(db: SupportSQLiteDatabase) {
-     *         db.execSQL("ALTER TABLE emails ADD COLUMN newField TEXT")
-     *     }
-     * }
+     * Adds the parsed calendar invite (TEXT/JSON via InviteMessageConverter) to emails
+     * so invites can be rendered as a card with Accept/Decline/Add actions.
+     * Idempotent: guards every ALTER so a partially-applied migration can re-run.
      */
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            if (!db.columnExists("emails", "invite")) {
+                db.execSQL("ALTER TABLE emails ADD COLUMN invite TEXT")
+            }
+            // ponytail: drop the legacy idx_emails_thread left by an older migration;
+            // the current Email @Entity no longer defines it, so Room's schema
+            // validation rejects the migrated DB otherwise.
+            db.execSQL("DROP INDEX IF EXISTS idx_emails_thread")
+            // ponytail: CalendarEvent gained isCancelled without a prior migration, so
+            // older DBs may lack the column. Add only if missing (device may already have it).
+            if (!db.columnExists("calendar_events", "isCancelled")) {
+                db.execSQL("ALTER TABLE calendar_events ADD COLUMN isCancelled INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+    }
+}
+
+/** True if [table] already has a column named [column]. Used to make migrations idempotent. */
+private fun SupportSQLiteDatabase.columnExists(table: String, column: String): Boolean {
+    return runCatching {
+        query("PRAGMA table_info($table)", emptyArray()).use { cursor ->
+            val nameIdx = cursor.getColumnIndexOrThrow("name")
+            while (cursor.moveToNext()) {
+                if (cursor.getString(nameIdx).equals(column, ignoreCase = true)) return@use true
+            }
+            false
+        }
+    }.getOrDefault(false)
 }

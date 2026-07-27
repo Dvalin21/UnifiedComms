@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.unifiedcomms.UnifiedCommsApplication
 import com.unifiedcomms.data.db.UnifiedCommsDatabase
 import com.unifiedcomms.data.model.Account
+import com.unifiedcomms.data.model.Calendar
 import com.unifiedcomms.data.model.CalendarEvent
 import com.unifiedcomms.data.model.Message
 import com.unifiedcomms.data.model.Task
@@ -25,14 +26,18 @@ import com.unifiedcomms.sync.CalendarSyncEngineImpl
 import com.unifiedcomms.sync.ContactSyncEngine
 import com.unifiedcomms.sync.ContactSyncEngineImpl
 import com.unifiedcomms.sync.EmailSyncEngineImpl
+import com.unifiedcomms.sync.InviteMapper
 import com.unifiedcomms.sync.SendResult
 import com.unifiedcomms.sync.SyncManager
 import com.unifiedcomms.sync.SyncResult
 import com.unifiedcomms.sync.TaskSyncEngineImpl
 import com.unifiedcomms.sync.ChatSyncEngineImpl
+import com.unifiedcomms.data.model.CalendarInviteMessage
+import com.unifiedcomms.data.model.AttendeeStatus
 import com.unifiedcomms.data.model.UnifiedContact
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -338,6 +343,63 @@ class MainViewModel(
             contactRepo.deleteById(contact.id)
             SyncResult.success()
         }
+    }
+
+    // ── Calendar invite actions (email-embedded text/calendar) ──────────────
+
+    /**
+     * Build a CalendarEvent from the invite and insert it into the user's calendar.
+     * Returns the inserted event (so callers can chain a response), or null on failure.
+     */
+    private suspend fun insertInviteEvent(invite: CalendarInviteMessage): CalendarEvent? {
+        val attendeeEmail = invite.attendees.firstOrNull()?.email
+        val accountId = attendeeEmail
+            ?.let { email -> _accounts.value.firstOrNull { it.email.equals(email, ignoreCase = true) }?.id }
+            ?: getDefaultAccount()?.id ?: return null
+        val account = getAccountById(accountId) ?: return null
+        val calendars: List<com.unifiedcomms.data.model.Calendar> =
+            calendarRepo.getCalendarsByAccount(accountId).first()
+        val calendar = calendars.firstOrNull() ?: return null
+        val event = InviteMapper.toCalendarEvent(invite, account.id, calendar.id)
+        val id = calendarRepo.insertEvent(event)
+        return if (id > 0) event.copy(id = id.toString()) else null
+    }
+
+    /** Add the invite to the calendar without changing RSVP status. */
+    suspend fun addInviteToCalendar(invite: CalendarInviteMessage): Boolean {
+        return runCatching { insertInviteEvent(invite) != null }.getOrDefault(false)
+    }
+
+    /**
+     * Accept/Decline the invite: ensure the event exists in the calendar, stamp the
+     * current user's attendee status, then push to the server. Mirrors InviteActionReceiver.
+     */
+    suspend fun respondToInvite(invite: CalendarInviteMessage, status: AttendeeStatus): Boolean {
+        return runCatching {
+            val account = getDefaultAccount() ?: return@runCatching false
+            val myEmail = account.email.lowercase()
+            val sync = CalendarSyncEngineImpl(calendarRepo, accountRepo, crypto, viewModelScope)
+            val existing = calendarRepo.getEventByUid(invite.eventUid, account.id)
+            val event = existing ?: insertInviteEvent(invite) ?: return@runCatching false
+            val updatedAttendees = event.attendees.map { att ->
+                if (att.email.equals(myEmail, ignoreCase = true)) {
+                    att.copy(status = status, respondedAt = kotlinx.datetime.Clock.System.now())
+                } else att
+            }
+            val updated = event.copy(
+                attendees = updatedAttendees,
+                status = when (status) {
+                    AttendeeStatus.ACCEPTED -> com.unifiedcomms.data.model.EventStatus.CONFIRMED
+                    AttendeeStatus.DECLINED -> com.unifiedcomms.data.model.EventStatus.CANCELLED
+                    else -> com.unifiedcomms.data.model.EventStatus.CONFIRMED
+                },
+                needsSync = true,
+                updatedAt = kotlinx.datetime.Clock.System.now()
+            )
+            calendarRepo.updateEvent(updated)
+            sync.updateEvent(account, updated)
+            true
+        }.getOrDefault(false)
     }
 }
 

@@ -76,7 +76,11 @@ data class Email(
     // uidValidity protects against sequence number drift; imapUid is the
     // stable per-message server identifier independent of reconnect order.
     val uidValidity: String? = null,
-    val imapUid: String? = null
+    val imapUid: String? = null,
+    // ponytail: parsed calendar invitation (text/calendar) extracted at sync time.
+    // Null for normal emails. Rendered as an InviteCard in EmailDetailScreen.
+    // (Converter registered at the database level in UnifiedCommsDatabase.)
+    val invite: CalendarInviteMessage? = null
 ) {
     fun isUnread(): Boolean = !flags.isRead
     fun isStarred(): Boolean = flags.isFlagged
