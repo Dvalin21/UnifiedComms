@@ -4,6 +4,7 @@ import android.util.Log
 import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.model.Calendar
 import com.unifiedcomms.data.model.CalendarEvent
+import com.unifiedcomms.data.model.EventColor
 import com.unifiedcomms.data.model.EventStatus
 import com.unifiedcomms.data.repository.AccountRepository
 import com.unifiedcomms.data.repository.CalendarRepository
@@ -47,6 +48,30 @@ class CalendarSyncEngineImpl(
                 if (allCalendars.isEmpty()) {
                     Log.w("CalendarSyncEngineImpl", "No calendars discovered for ${account.email}")
                     return@withContext SyncResult.success(0, emptyList(), emptyList())
+                }
+
+                // ponytail: persist discovered calendars into the local `calendars`
+                // table. Without this the table stays EMPTY, and any code path that
+                // needs a calendar row (e.g. invite Accept/Add-to-Calendar, which
+                // calls getCalendarsByAccount().first()) silently no-ops because
+                // firstOrNull() returns null. Discovered calendars are the source
+                // of truth for the local cache; upsert idempotently by serverId
+                // (the collection path) so re-syncs don't duplicate.
+                for (cal in allCalendars) {
+                    val existing = calendarRepo.getCalendarByServerId(account.id, cal.path)
+                    if (existing == null) {
+                        calendarRepo.insertCalendar(
+                            Calendar(
+                                accountId = account.id,
+                                serverId = cal.path,
+                                name = cal.displayName.ifBlank { "Calendar" },
+                                color = if (cal.color.isNotBlank()) EventColor(cal.color, "#FFFFFF") else EventColor.Default(),
+                                isPrimary = allCalendars.indexOf(cal) == 0,
+                                isSelected = true,
+                                timeZone = java.time.ZoneId.systemDefault().id
+                            )
+                        )
+                    }
                 }
 
                 val localEvents = calendarRepo.getAllEventsForAccount(account.id).first()
