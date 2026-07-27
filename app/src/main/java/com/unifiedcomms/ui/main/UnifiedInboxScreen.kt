@@ -217,13 +217,19 @@ fun UnifiedInboxScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 12.dp, end = 12.dp, bottom = 18.dp)
+                    .padding(start = 12.dp, end = 12.dp, bottom = 8.dp)
             ) {
                 NavigationBar(
                     tonalElevation = 6.dp,
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    // ponytail: default NavigationBar is 80.dp (labels shown) and adds its own
+                    // window inset on top, eating ~25% of a tablet's short side. Fix the height
+                    // at 56.dp (Material3 icon-only standard, with labels still legible) and zero
+                    // the insets so the bar is exactly 56.dp + the 8.dp gap below — not taller.
+                    windowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
                     modifier = Modifier
                         .fillMaxWidth()
+                        .height(56.dp)
                         .clip(RoundedCornerShape(28.dp))
                 ) {
                     val items = listOf(
@@ -237,8 +243,8 @@ fun UnifiedInboxScreen(
                         NavigationBarItem(
                             selected = selectedTab == item.index,
                             onClick = { selectedTab = item.index },
-                            icon = { Icon(item.icon, contentDescription = item.label) },
-                            label = { Text(item.label, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) },
+                            icon = { Icon(item.icon, contentDescription = item.label, modifier = Modifier.size(24.dp)) },
+                            label = { Text(item.label, fontSize = 11.sp, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) },
                             colors = NavigationBarItemDefaults.colors(
                                 selectedIconColor = MaterialTheme.colorScheme.primary,
                                 selectedTextColor = MaterialTheme.colorScheme.primary,
