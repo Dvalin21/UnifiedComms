@@ -85,7 +85,32 @@ data class Email(
     fun isUnread(): Boolean = !flags.isRead
     fun isStarred(): Boolean = flags.isFlagged
     fun hasAttachments(): Boolean = attachments.isNotEmpty()
-    fun getSnippet(maxLen: Int = 100): String = preview.take(maxLen)
+    // ponytail: strip HTML/CSS at display time so previews stored unstripped (e.g. by an
+    // older sync) still render as plain text, not raw CSS like `th, td { font-family...`.
+    fun getSnippet(maxLen: Int = 100): String = preview.stripHtml().take(maxLen)
+}
+
+/** Strip HTML tags AND bare CSS (SOGo invites send bodies that are essentially just a
+ *  <style> block or raw CSS) down to readable plain text. */
+fun String.stripHtml(): String {
+    return this
+        .replace(Regex("(?is)<style[^>]*>.*?</style>"), " ")
+        .replace(Regex("(?is)<script[^>]*>.*?</script>"), " ")
+        .replace(Regex("(?is)<!--.*?-->"), " ")
+        // ponytail: full CSS rule (selector + braces) — e.g. `th, td { font-family: ... }`.
+        // Must run before the tag/declaration passes so no dangling selector is left behind.
+        .replace(Regex("(?is)[.#]?\\w[\\w-]*(?:\\s*,\\s*[.#]?\\w[\\w-]*)*\\s*\\{[^}]*\\}"), " ")
+        .replace(Regex("(?is)<[^>]+>"), " ")
+        .replace(Regex("(?is)\\{[^}]*\\}"), " ") // any stray CSS blocks
+        .replace(Regex("(?i)\\b[a-z-]+\\s*:\\s*[^;{}\n]+;"), " ") // CSS declarations
+        .replace(Regex("&nbsp;"), " ")
+        .replace(Regex("&amp;"), "&")
+        .replace(Regex("&lt;"), "<")
+        .replace(Regex("&gt;"), ">")
+        .replace(Regex("&quot;"), "\"")
+        .replace(Regex("&[a-z]+;"), " ")
+        .replace(Regex("[ \\t\\r\\n]+"), " ")
+        .trim()
 }
 
 @Serializable

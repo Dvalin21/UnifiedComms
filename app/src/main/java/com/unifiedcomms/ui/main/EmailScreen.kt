@@ -67,6 +67,7 @@ import kotlin.math.abs
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.LaunchedEffect
 import com.unifiedcomms.data.model.Email
+import com.unifiedcomms.data.model.stripHtml
 import com.unifiedcomms.data.model.EmailAddress
 import com.unifiedcomms.data.model.EmailRecipients
 import com.unifiedcomms.data.model.AttendeeStatus
@@ -303,7 +304,7 @@ private fun Email.toEmailMessage(): EmailMessage {
         id = id,
         from = sender.name ?: sender.email,
         subject = subject,
-        body = bodyText.orEmpty().take(120),
+        body = bodyText.orEmpty().stripHtml().take(120),
         time = formatter.format(ldt),
         isUnread = isUnread(),
         accountColor = Color.Unspecified
