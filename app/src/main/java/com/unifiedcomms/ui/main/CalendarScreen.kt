@@ -235,37 +235,15 @@ fun CalendarScreen(
                     CalendarView.MONTH -> MonthView(date = currentDate.value, allEvents = allEvents, onDayClick = { date -> currentDate.value = date; selectedView = CalendarView.DAY })
                 }
             }
-            // Samsung-style bottom quick-add: outlined "Add event on <date>" pill + compact FAB.
-            Row(
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
+            // Samsung-style quick-add: a single FAB (the persistent text pill was
+            // redundant clutter — both opened the same new-event flow).
+            androidx.compose.material3.FloatingActionButton(
+                onClick = onCreateEvent,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 16.dp).size(56.dp)
             ) {
-                Surface(
-                    modifier = Modifier.weight(1f).height(48.dp).clickable { onCreateEvent() },
-                    shape = RoundedCornerShape(24.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Add event on ${currentDate.value.format(java.time.format.DateTimeFormatter.ofPattern("MMM d"))}",
-                            fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.width(12.dp))
-                androidx.compose.material3.FloatingActionButton(
-                    onClick = onCreateEvent,
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Create event")
-                }
+                Icon(Icons.Default.Add, contentDescription = "Create event")
             }
         }
     }
