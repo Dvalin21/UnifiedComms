@@ -112,6 +112,19 @@ NEXT STEP (in progress): ADD testbox ACCOUNT, VERIFY INVITE
    account attendee status stamped ACCEPTED. Tap Add to Calendar explicitly too.
 7. Screenshot proof. Only THEN claim the feature works.
 
+STATUS (2026-07-26, done): testbox@houseofmanns.com ADDED + SYNCING OK.
+- Added via UI: Mailcow chip + Advanced (imap.houseofmanns.com:993 SSL,
+  smtp.houseofmanns.com:587 STARTTLS, Accept-all-certificates ON), master pw
+  from ~/.hermes/uc_main_pw (single-quoted input text).
+- SyncManager log: performFullSync email=testbox@houseofmanns.com ->
+  imapHost=imap.houseofmanns.com:993 ssl=true -> email leg success=true,
+  calendar leg success=true. IMAP + CalDAV both connect; sync completes clean.
+- INBOX currently empty (no invite sent yet). Awaiting Keith's invite from
+  keith.manns@houseofmanns.com -> testbox to exercise the InviteCard path.
+- NOTE: the live-credential-e2e ref mentions ~/.hermes/uc_testbox_pw but that
+  file does NOT exist; testbox uses the MASTER pw at ~/.hermes/uc_main_pw
+  (matches seed_chat.py which logs in with it). Do not use uc_test_pw.
+
 ================================================================================
 KEY FACTS (cross-checked, current)
 ================================================================================
