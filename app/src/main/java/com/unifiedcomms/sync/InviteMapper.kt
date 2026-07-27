@@ -66,6 +66,11 @@ object InviteMapper {
             },
             recurrenceRule = invite.recurrenceRule,
             sequence = invite.sequence,
+            // ponytail: an event created from an email invite is local-first. Mark it
+            // isLocalOnly so the CalDAV down-sync delete-pass (which prunes local
+            // rows with no server counterpart) does not immediately delete it before
+            // the server PUT succeeds. A successful push flips isLocalOnly=false.
+            isLocalOnly = true,
             needsSync = true
         )
     }
