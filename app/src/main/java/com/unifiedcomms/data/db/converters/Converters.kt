@@ -151,6 +151,18 @@ class EmailAddressConverter {
         decodeOr(com.unifiedcomms.data.model.EmailAddress(email = "")) { value?.let { json.decodeFromString(value) } ?: com.unifiedcomms.data.model.EmailAddress(email = "") }
 }
 
+class InviteMessageConverter {
+    private val json = Json { ignoreUnknownKeys = true }
+
+    @TypeConverter
+    fun fromInvite(value: com.unifiedcomms.data.model.CalendarInviteMessage?): String? =
+        value?.let { runCatching { json.encodeToString(it) }.getOrNull() }
+
+    @TypeConverter
+    fun toInvite(value: String?): com.unifiedcomms.data.model.CalendarInviteMessage? =
+        decodeOr(null) { value?.let { json.decodeFromString(it) } }
+}
+
 class SystemLabelsConverter {
     private val json = Json { ignoreUnknownKeys = true }
 

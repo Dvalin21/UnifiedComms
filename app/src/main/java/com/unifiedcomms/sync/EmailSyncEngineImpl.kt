@@ -479,6 +479,26 @@ class EmailSyncEngineImpl(
             // MimeMultipart), which is why we never call extractAttachments(msg).
             runCatching { extractAttachmentsFromBytes(rawBytes, attachments) }
 
+            // ponytail: extract an embedded calendar invite (text/calendar). SOGo/Edison-style
+            // invites inline the VCALENDAR inside the HTML body, so scan bodyText+bodyHtml for
+            // BEGIN:VCALENDAR rather than relying on a separate MIME part (line 877 notes
+            // text/calendar is not treated as an attachment). Parse the first VEVENT and store
+            // it on the email; EmailDetailScreen renders it as an InviteCard.
+            val invite = runCatching {
+                val haystack = "${bodyText ?: ""}\n${bodyHtml ?: ""}"
+                val start = haystack.indexOf("BEGIN:VCALENDAR", ignoreCase = true)
+                if (start >= 0) {
+                    val end = haystack.indexOf("END:VCALENDAR", ignoreCase = true)
+                    val ics = if (end > start) haystack.substring(start, end + "END:VCALENDAR".length) else null
+                    ics?.let {
+                        ICalParser.parse(it, accountId, "", "invite-${uid}").events
+                            .firstOrNull()
+                            ?.let { ev -> InviteMapper.toInviteMessage(ev) }
+                    }
+                } else null
+            }.getOrNull()
+            if (invite != null) android.util.Log.d("INVITE", "extracted invite uid=${invite.eventUid} title='${invite.eventTitle}' start=${invite.startAt}")
+
             val preview = bodyText?.take(200) ?: subject
             val flags = EmailFlags(
                 isRead = runCatching { msg.isSet(Flags.Flag.SEEN) }.getOrDefault(false),
@@ -518,7 +538,8 @@ class EmailSyncEngineImpl(
                 sizeBytes = msg.getHeader("Content-Length")?.firstOrNull()?.toLongOrNull()
                     ?: runCatching { msg.size.toLong() }.getOrDefault(0L),
                 mimeType = msg.getHeader("Content-Type")?.firstOrNull() ?: "text/plain",
-                etag = msg.getHeader("Content-MD5")?.firstOrNull() ?: messageId
+                etag = msg.getHeader("Content-MD5")?.firstOrNull() ?: messageId,
+                invite = invite
             )
         } catch (e: Exception) {
             null
