@@ -5,6 +5,7 @@ import android.util.Log
 import com.unifiedcomms.UnifiedCommsApplication
 import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.model.Email
+import com.unifiedcomms.data.model.stripHtml
 import com.unifiedcomms.data.model.EmailAddress
 import com.unifiedcomms.data.model.EmailFlags
 import com.unifiedcomms.data.model.EmailRecipients
@@ -219,7 +220,7 @@ class EmailSyncEngineImpl(
                             subject = email.subject,
                             bodyText = email.bodyText,
                             bodyHtml = email.bodyHtml,
-                            preview = email.bodyText?.take(200),
+                            preview = email.bodyText?.stripHtml()?.take(200),
                             attachments = email.attachments
                         )
                         // Bidirectional flag sync: push LOCAL flag changes back to IMAP so the
