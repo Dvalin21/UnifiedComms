@@ -81,6 +81,7 @@ fun MessagesScreen(
     onNewMessage: () -> Unit
 ) {
     val currentUserId = com.unifiedcomms.data.model.getCurrentUserId()
+    val context = LocalContext.current
     // ponytail: chat is local + scoped to the primary account only (no per-account
     // chat switching). Show the primary account's display NAME, not the raw email.
     // If the account name is itself email-shaped, use the local part (testbox) so we
@@ -88,7 +89,7 @@ fun MessagesScreen(
     val accountName = viewModel.getDefaultAccount()?.name?.let { if (it.contains("@")) it.substringBefore("@") else it } ?: "Chat"
     val conversations by viewModel.messagingRepository.getAllConversationsForUser(currentUserId)
         .collectAsStateWithLifecycle(initialValue = emptyList())
-    val displayConversations = remember(conversations, accountName) { conversations.map { it.toMockConversation(accountName) } }
+    val displayConversations = remember(conversations, accountName) { conversations.map { it.toMockConversation(accountName, context) } }
 
     Scaffold(
         topBar = {
@@ -155,6 +156,7 @@ fun ConversationScreen(
 ) {
     var conversation by remember { mutableStateOf<Conversation?>(null) }
     val currentUserId = com.unifiedcomms.data.model.getCurrentUserId()
+    val context = LocalContext.current
     val accountName = viewModel.getDefaultAccount()?.name?.let { if (it.contains("@")) it.substringBefore("@") else it } ?: "Chat"
     LaunchedEffect(conversationId) {
         conversation = viewModel.messagingRepository.getConversationById(conversationId)
@@ -162,9 +164,9 @@ fun ConversationScreen(
     }
     val messages by viewModel.messagingRepository.getMessagesByConversation(conversationId, 100, 0)
         .collectAsStateWithLifecycle(initialValue = emptyList())
-    val displayMessages = remember(messages) { messages.map { it.toMockMessage() } }
+    val displayMessages = remember(messages) { messages.map { it.toMockMessage(context) } }
     val displayConversation = remember(conversationId, conversation, accountName) {
-        conversation?.toMockConversation(accountName, messages)
+        conversation?.toMockConversation(accountName, context, messages)
             ?: MockConversation(conversationId, "Unknown", "", "No conversation", "", false, 0, ConversationType.DIRECT)
     }
     DisposableEffect(conversationId) {
@@ -493,37 +495,39 @@ fun ComposeMessageScreen(
     }
 }
 
-private fun Conversation.toMockConversation(accountName: String, messages: List<Message> = emptyList()): MockConversation = MockConversation(
+private fun Conversation.toMockConversation(accountName: String, context: android.content.Context, messages: List<Message> = emptyList()): MockConversation = MockConversation(
     id = id,
     // ponytail: a direct chat is scoped to the primary account, so show the
     // account display name rather than the raw peer email address.
     name = accountName,
     email = getOtherParticipantNames(getCurrentUserId()).firstOrNull().orEmpty(),
     lastMessage = messages.lastOrNull()?.content.orEmpty(),
-    time = formatChatTime(lastActivityAt),
+    time = formatChatTime(context, lastActivityAt),
     isUnread = unreadCount > 0,
     unreadCount = unreadCount,
     type = type
 )
 
-private fun Message.toMockMessage(): MockMessage = MockMessage(
+private fun Message.toMockMessage(context: android.content.Context): MockMessage = MockMessage(
     id = id,
     conversationId = conversationId,
     senderId = senderId,
     content = content,
     isOutgoing = isOutgoing(),
-    timestamp = formatChatTime(sentAt)
+    timestamp = formatChatTime(context, sentAt)
 )
 
-// ponytail: chat timestamps must read like a chat (13:13), not ISO-with-millis
-// (13:13:44.282). Today -> HH:mm, yesterday -> "Yesterday", else short date.
-private fun formatChatTime(instant: kotlinx.datetime.Instant): String {
+// ponytail: chat timestamps must read like a chat (1:43 PM), not ISO-with-millis
+// (13:13:44.282). Today -> h:mm a (respects the device 12/24h setting),
+// yesterday -> "Yesterday", else short date.
+private fun formatChatTime(context: android.content.Context, instant: kotlinx.datetime.Instant): String {
     val zdt = java.time.Instant.ofEpochMilli(instant.toEpochMilliseconds())
         .atZone(java.time.ZoneId.systemDefault())
     val now = java.time.LocalDate.now()
     val date = zdt.toLocalDate()
+    val pattern = if (android.text.format.DateFormat.is24HourFormat(context)) "HH:mm" else "h:mm a"
     return when {
-        date == now -> zdt.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+        date == now -> zdt.format(java.time.format.DateTimeFormatter.ofPattern(pattern))
         date == now.minusDays(1) -> "Yesterday"
         else -> date.format(java.time.format.DateTimeFormatter.ofPattern("MMM d"))
     }
