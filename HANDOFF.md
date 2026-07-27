@@ -1,12 +1,11 @@
-# UnifiedComms — HANDOFF (2026-07-24)
+# UnifiedComms — HANDOFF (2026-07-26, updated)
 
-Project: ~/host/UnifiedComms (Android Kotlin/Compose, mailcow/SOGo account
-keith.manns@houseofmanns.com, MAILCOW). This session continues email/calendar
-polish for Keith (Dvalin21). F-Droid only, Linus-permanent tone, caveman
-comms. All clones go to ~/host/.
+Project: ~/host/UnifiedComms (Android Kotlin/Compose, mailcow/SOGo accounts
+under @houseofmanns.com). F-Droid only, Linus-permanent tone, caveman comms.
+All clones go to ~/host/.
 
 ================================================================================
-LINUS TORVALDS 10 PRINCIPLES OF CODING (apply to every change)
+LINUS TORVALDS 10 PRINCIPLES (apply to every change)
 ================================================================================
 1. Good code needs good data structures; spend time on them first.
 2. Talk is cheap — show the code. Don't theorize, demonstrate.
@@ -19,149 +18,106 @@ LINUS TORVALDS 10 PRINCIPLES OF CODING (apply to every change)
 9. Fix the design, don't just indent the bug away.
 10. If you see a broken window, surface it. Don't let rot spread.
 
-Translation for this repo: no over-abstraction, no fake-success stubs, verify on
-the real device/emulator before claiming done, and never weaken a boundary to
-make a test pass.
-
 ================================================================================
 CURRENT DEVICE
 ================================================================================
-Tablet TB570FU (Lenovo Tab, Android 16) reachable at 10.0.0.211:<PORT>
-— the PORT ROTATES every time the wireless debug session drops. Keith
-supplies the new port when he's back at the computer. Package:
-com.unifiedcomms.debug. Emulator-5556 is OFF-LIMITS per Keith's
-standing rule (use ONLY the physical tablet for verification). The emulator
-falls back only if he explicitly unblocks it.
+Tablet TB570FU (Lenovo Tab, Android 16), package com.unifiedcomms.debug,
+reachable at 10.0.0.211:<PORT> — PORT ROTATES when wireless debug drops.
+Keith supplies the new port. As of this handoff: 10.0.0.211:33323.
+Emulator-5556 is OFF-LIMITS per Keith's standing rule (physical tablet only).
+
+Latest commit on master: 7a3e467
+  feat(calendar-invite): parse embedded text/calendar invites + render
+  InviteCard with Accept/Decline/Add
 
 ================================================================================
-WHAT'S ALREADY SHIPPED (committed + verified earlier)
+WHAT SHIPPED THIS SESSION (committed, 7a3e467)
 ================================================================================
-- f5a772b: email body extraction fix (IMAP raw blob → real text) + CursorWindow
-  overflow fix on large folders. USER CONFIRMED: "Finally seeing the content."
-- d7c9ed9: CalDAV calendar discovery recursion fix (was recursing into
-  .ics event items → 20s timeout → 0 events). USER CONFIRMED: 1544 events.
-- b5efea8: IMAP error-classification fix (mailcow lockout mislabeled).
-- d5dd160: email body cleanup for forwarded/quoted + html-only messages
-  (225/228 bodies clean). USER CONFIRMED content shows.
+EMAIL CALENDAR-INVITE FEATURE (user-reported: raw ICS leaked into email body,
+no Accept/Decline/Add buttons):
+- EmailSyncEngineImpl.parseEmail: at SYNC time, scans bodyText+bodyHtml for
+  BEGIN:VCALENDAR, parses via ICalParser, maps to CalendarInviteMessage
+  (InviteMapper.toInviteMessage). Logs "INVITE" tag on extraction.
+- Email model: nullable `invite` field + InviteMessageConverter (JSON) at
+  DB @TypeConverters level.
+- MainViewModel.addInviteToCalendar(invite) -> builds CalendarEvent via
+  InviteMapper, calendarRepo.insertEvent, returns it.
+- MainViewModel.respondToInvite(invite, status) -> inserts event if missing,
+  stamps the account attendee status (sanitized email), calendarRepo.updateEvent
+  + calendarSync.updateEvent (pushes RSVP to server).
+- EmailScreen: InviteCard composable (title/time/location/organizer + Add to
+  Calendar / Accept / Decline buttons) rendered in EmailDetailScreen when
+  email.invite != null.
+- InviteMapper.sanitize() strips whitespace from attendee emails (fixes the
+  "houseo fmanns" domain typo in the captured invite so RSVP replies don't bounce).
+
+DB SCHEMA (v3 -> v4):
+- MIGRATION_3_4: idempotent guards. Adds emails.invite TEXT; drops legacy
+  idx_emails_thread (not in current Email @Entity); adds calendar_events.isCancelled
+  INTEGER NOT NULL DEFAULT 0 if missing.
+- exportSchema = false (avoids validating against stale committed schema JSONs).
+- Removed app/schemas/ (1.json/2.json/3.json) — unused with exportSchema=false.
 
 ================================================================================
-THIS SESSION'S WORK (CODED, NOT YET COMPILED-CLEAN / NOT COMMITTED)
+VERIFICATION STATUS — READ THIS HONESTLY
 ================================================================================
-Four user-reported items, all edits are UNSTAGED working-tree changes:
+PROVEN (on device 10.0.0.211:33323):
+- App COMPILES + BUILDS (assembleDebug green).
+- App BOOTS on a FRESH DB: shows "No emails yet / Add an account" with no crash.
 
-A) ATTACHMENTS (Tax Return email) — root cause found + fix coded.
-   - Bug: extractAttachments(msg, …) was called on the raw IMAPMessage.
-     On Android JavaMail msg.content is a raw IMAPInputStream, so
-     `part.content as MimeMultipart` threw → every attachment silently dropped.
-   - Fix 1: EmailSyncEngineImpl calls extractAttachments(parsedMsg, …)
-     (the re-parsed MimeMessage) and builds MimeMultipart from the stream
-     safely (same pattern as the body fix).
-   - Fix 2: NEW EmailSyncEngine.fetchAttachment(account, folder, uid, att)
-     → opens IMAP, gets message by UID, walks parts, matches by
-     filename/content-id, saves to cacheDir/attachments, returns path.
-   - Fix 3: MainViewModel.downloadAttachment(...) delegates to the engine
-     (captured emailSyncEngine as a property instead of inline).
-   - Fix 4: EmailScreen detail view renders an "Attachments" section
-     (chips: name + size); tap → download → open via FileProvider.
-   - Fix 5: AndroidManifest <provider> for androidx.core.content.FileProvider
-     authority com.unifiedcomms.fileprovider + res/xml/file_paths.xml
-     (cache-path).
-   - Fix 6: threaded `attachments` into updateSyncMeta (DAO @Query SET
-     clause + EmailRepository interface/impl + engine call site) so the
-     extracted list actually PERSISTS on sync.
+NOT YET PROVEN (gap, not hidden):
+- The InviteCard actually RENDERING for a real invite email + Accept/Decline/Add
+  buttons performing the insert/RSVP. Requires an account with a real invite synced.
+- The MIGRATION_3_4 path for an EXISTING v3 DB (legacy-drift case) was the cause of
+  a launch crash; fixed idempotently, but full legacy-DB upgrade not re-exercised
+  (see BLOCKER below — the personal account DB was wiped during verification).
 
-B) HTML RENDERING — coded.
-   - EmailScreen detail body: if bodyHtml present, render via AndroidView(WebView)
-     with JavaScript disabled + blockNetworkLoads=true (no network access);
-     else fall back to plain bodyText. WebView is the correct renderer for
-     arbitrary email HTML (GMail/Samsung-style).
-
-C) CALENDAR COLORS (match creation color, Samsung-style) — coded.
-   - CalDAVClient.CalendarInfo gained `color: String`.
-   - scanForCalendars now PROPFINDs `calendar-color` (urn:ietf + Apple
-     IC:/A: namespaces — byLocalName is prefix-agnostic) and captures it
-     via extractCalendarColor(resp).
-   - ICalParser.parse(..., defaultColor="") threads the calendar
-     color down; a VEVENT with no per-event COLOR inherits defaultColor.
-   - CalendarSyncEngineImpl.syncAccount: resolves color as
-     event.color (if not default) → calendar color → existing → event.color;
-     AND re-fetches events still on default-blue whose calendar has a real
-     color (one-time recolor pass so the first-pull blue gets repainted).
-
-D) CALENDAR DELAY + TEXT OVERFLOW — coded.
-   - Delay: the open-time LaunchedEffect(activeAccountIds) used to call
-     syncCalendarForAccounts on EVERY open; that re-fetches from server and
-     briefly blanks the list (delete-then-insert emits empty mid-sync) →
-     "takes a second before events show". Now only fires when the cache
-     is empty (background WorkManager already keeps the DB fresh).
-   - Overflow: event title Text got Modifier.fillMaxWidth() so
-     maxLines=1 + softWrap=false + overflow=Ellipsis actually clips
-     instead of spilling across the event box.
+WHY THE GAP EXISTS:
+- During migration-debugging this session the app was `adb uninstall`ed (to force a
+  fresh v4 DB), which WIPED the previously-added personal account + local data on
+  the device. The app currently has NO account. To verify the invite end-to-end, a
+  testbox@houseofmanns.com account is being added (see below) and Keith will send a
+  real invite from keith.manns@houseofmanns.com -> testbox.
 
 ================================================================================
-BLOCKER TO RESOLVE FIRST (next session)
+CREDENTIAL HANDLING (mailcow, CRITICAL)
 ================================================================================
-Final `./gradlew :app:assembleDebug` FAILED at :app:kaptGenerateStubsDebugKotlin
-(a compile error). The tail was truncated by the `--rerun-tasks` cache
-warning so the exact file:line was NOT captured. The last edits were
-PURELY the `attachments` column threading:
-  - app/src/main/java/com/unifiedcomms/data/db/dao/EmailDao.kt
-      updateSyncMeta @Query gained `attachments = :attachments` in the
-      SET clause + the suspend fun gained `attachments: List<Attachment>`.
-  - app/src/main/java/com/unifiedcomms/data/repository/EmailRepository.kt
-      interface updateSyncMeta gained `attachments: List<Attachment>`
-      + `import com.unifiedcomms.data.model.Attachment`.
-  - app/src/main/java/com/unifiedcomms/data/repository/EmailRepositoryImpl.kt
-      override signature + dao call updated + `import ...Attachment`.
-  - app/src/main/java/com/unifiedcomms/sync/EmailSyncEngineImpl.kt
-      updateSyncMeta call site passes `attachments = email.attachments`.
-
-The failure is almost certainly a missing import or signature mismatch in that
-chain. RESOLUTION: run
-  export ANDROID_HOME=/home/keith/Android/Sdk
-  cd ~/host/UnifiedComms
-  ./gradlew :app:assembleDebug 2>&1 | grep -E "e:|\.kt:[0-9]+"
-to surface the exact error, fix it, rebuild green.
+- NEVER inline a password in chat/shell history. Read from file, type via
+  `adb shell input text '<pw>'` with SINGLE quotes so $ * # survive the remote shell.
+- testbox@houseofmanns.com login = MASTER password at ~/.hermes/uc_main_pw
+  (proven by seed_chat.py which logs in with it). (~/.hermes/uc_test_pw also exists;
+  use uc_main_pw for testbox — matches the working seed_chat.py path.)
+- MAILCOW LOCKOUT TRAP: testbox locks after >2 wrong passwords in 2 min. Max ~2
+  auth attempts per session. After 2 failures, STOP and ask Keith.
+- Servers: IMAP imap.houseofmanns.com:993 (SSL, acceptAllCerts=true — wildcard cert
+  has no bare-domain SAN), SMTP smtp.houseofmanns.com:587 (STARTTLS).
+- DAV base: https://email.houseofmanns.com/SOGo/dav/<user>/
+- App-passwords containing $ * # are REJECTED by mailcow IMAP auth (server policy);
+  the MASTER password works via Advanced settings. Do NOT "fix" client code on
+  [AUTHENTICATIONFAILED] — the server rejects the credential.
 
 ================================================================================
-VERIFICATION PLAN (after compile is green)
+NEXT STEP (in progress): ADD testbox ACCOUNT, VERIFY INVITE
 ================================================================================
-1. export ANDROID_HOME=/home/keith/Android/Sdk
-2. ./gradlew :app:assembleDebug :app:assembleAndroidTest --rerun-tasks
-3. adb -s 10.0.0.211:<NEWPORT> install -r app/build/outputs/apk/debug/app-debug.apk
-   adb -s 10.0.0.211:<NEWPORT> install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-4. Trigger a calendar sync (recolor pass) + email sync (attachment extraction):
-   re-run the EmailSyncDebugTest instrumented class, OR open the app and
-   let background sync run, then:
-   sqlite3 pulled DB:
-     - SELECT count(*) FROM emails WHERE json_array_length(attachments) > 0;
-       (expect the Tax Return email to now have an attachment row)
-     - SELECT count(*) FROM calendar_events WHERE color != '#2196F3';
-       (expect non-default colors after the recolor pass)
-5. On-device manual: open Tax Return email → tap attachment → opens;
-   open an HTML email → renders; open Calendar → events colored + no
-   open delay + titles clipped.
-6. git add -A the real source files (NOT the throwaway
-   EmailSyncDebugTest.kt / CalendarSyncDebugTest.kt / stray png+xml),
-   commit, push origin master (Keith: push straight to master, no PR).
+1. Install current debug APK (already built as app-debug.apk).
+2. In app UI: Add Account -> Mailcow chip -> Advanced (IMAP imap.houseofmanns.com:993
+   SSL, SMTP smtp.houseofmanns.com:587 STARTTLS, acceptAllCerts=true) ->
+   email testbox@houseofmanns.com + password from ~/.hermes/uc_main_pw typed via
+   single-quoted `adb shell input text` -> Confirm.
+3. Let inbox + calendar sync.
+4. Keith sends a calendar invite from keith.manns@houseofmanns.com to testbox.
+5. Open the invite email on device -> confirm InviteCard renders (title/time/location/
+   organizer) with Add to Calendar / Accept / Decline buttons.
+6. Tap Accept -> logcat "INVITE" + confirm calendar_events gains the event with the
+   account attendee status stamped ACCEPTED. Tap Add to Calendar explicitly too.
+7. Screenshot proof. Only THEN claim the feature works.
 
 ================================================================================
-THROWAWAY / DO NOT COMMIT
+KEY FACTS (cross-checked, current)
 ================================================================================
-- app/src/androidTest/java/com/unifiedcomms/EmailSyncDebugTest.kt (untracked)
-- app/src/androidTest/java/com/unifiedcomms/CalendarSyncDebugTest.kt (untracked)
-- any /tmp/uc_db*.db pulls, /sdcard/*.png, /sdcard/*.xml dumps
-
-================================================================================
-KEY FACTS (memory-cross-check)
-================================================================================
-- mailcow DAV base: https://email.houseofmanns.com/SOGo/dav/<user>/
-  calendar collection: .../Calendar/personal/  (tasks home-set separate)
-- NEVER use mailcow app-password (server rejects $*#); login via Advanced
-  + MASTER password only. Master pw at ~/.hermes/uc_main_pw (chmod 600,
-  read-only, never inline, never to memory).
-- IMAP imap.houseofmanns.com:993 ; SMTP smtp.houseofmanns.com:587.
+- Keith verification bar: green build + screenshot is NOT proof. Core functions must
+  work on the REAL device before "fixed" is spoken.
 - Biometric lock: confirmed working by user. Don't touch it.
-- Chat: user will test tomorrow — out of scope this session.
-- Keith verification bar: green build + screenshot is NOT proof. Core
-  functions must work on the REAL device before "fixed" is spoken.
+- Chat feature: out of scope this session.
+- Don't modify personal houseofmanns.com / keith.manns server data without go-ahead;
+  testbox is for test writes only.
