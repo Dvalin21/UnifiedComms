@@ -104,6 +104,10 @@ fun CalendarScreen(
 ) {
     var selectedView by remember { mutableStateOf(CalendarView.MONTH) }
     val currentDate = remember { mutableStateOf(java.time.LocalDate.now()) }
+    // ponytail: month view shows a selected-day agenda below the grid (Samsung
+    // pattern). Keep a separate selected day so tapping a cell updates the agenda
+    // without forcing a view switch.
+    var selectedMonthDay by remember { mutableStateOf(java.time.LocalDate.now()) }
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
     val activeAccountIds = accounts.filter { it.isActive }.map { it.id }
     // ponytail: Room's `accountId IN ()` with an empty list throws; guard it so the
@@ -228,11 +232,17 @@ fun CalendarScreen(
         floatingActionButton = { }
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
-            Column(modifier = Modifier.fillMaxSize().padding(bottom = 88.dp)) {
+            Column(modifier = Modifier.fillMaxSize().padding(bottom = 72.dp)) {
                 when (selectedView) {
                     CalendarView.DAY -> DayView(date = currentDate.value, events = allEvents, onEventClick = onEventClick, onDateSelected = { currentDate.value = it })
                     CalendarView.WEEK -> WeekView(date = currentDate.value, events = allEvents, onEventClick = onEventClick, onDateSelected = { currentDate.value = it; selectedView = CalendarView.DAY })
-                    CalendarView.MONTH -> MonthView(date = currentDate.value, allEvents = allEvents, onDayClick = { date -> currentDate.value = date; selectedView = CalendarView.DAY })
+                    CalendarView.MONTH -> MonthView(
+                        date = currentDate.value,
+                        allEvents = allEvents,
+                        selectedDay = selectedMonthDay,
+                        onDayClick = { date -> selectedMonthDay = date },
+                        onEventClick = onEventClick
+                    )
                 }
             }
             // Samsung-style quick-add: a single FAB (the persistent text pill was
@@ -519,13 +529,19 @@ fun WeekView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClic
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onDayClick: (java.time.LocalDate) -> Unit) {
+fun MonthView(
+    date: java.time.LocalDate,
+    allEvents: List<CalendarEvent>,
+    selectedDay: java.time.LocalDate,
+    onDayClick: (java.time.LocalDate) -> Unit,
+    onEventClick: (String) -> Unit
+) {
     val firstOfMonth = date.withDayOfMonth(1)
     val dayOfWeekOffset = firstOfMonth.dayOfWeek.value - 1 // Monday = 0
     val daysInMonth = firstOfMonth.lengthOfMonth()
     val today = java.time.LocalDate.now()
 
-    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp)) {
+    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp).verticalScroll(rememberScrollState())) {
         // Weekday header strip (Mon..Sun), evenly weighted, no wrap/clip.
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun").forEach { d ->
@@ -553,7 +569,7 @@ fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onDayCl
         Column(modifier = Modifier.fillMaxWidth()) {
             cells.chunked(7).forEach { week ->
                 Row(
-                    modifier = Modifier.fillMaxWidth().height(96.dp),
+                    modifier = Modifier.fillMaxWidth().height(72.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     week.forEach { cellDate ->
@@ -570,37 +586,35 @@ fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onDayCl
                             }
                         } ?: emptyList()
                         val isToday = cellDate == today
+                        val isSelected = cellDate == selectedDay
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .clip(RoundedCornerShape(12.dp))
+                                .clip(RoundedCornerShape(10.dp))
                                 .then(if (cellDate != null) Modifier.clickable { onDayClick(cellDate) } else Modifier)
                                 .background(
-                                    Color.Transparent,
-                                    RoundedCornerShape(12.dp)
+                                    if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+                                    else Color.Transparent,
+                                    RoundedCornerShape(10.dp)
                                 )
-                                .padding(6.dp)
+                                .padding(5.dp)
                         ) {
                             if (cellDate != null) {
-                                // ponytail: this Box was stacking the day number and the
-                                // events Column as OVERLAPPING children (Box default), so the
-                                // event bars painted on top of the date number. Wrap them in a
-                                // Column so they flow vertically: number, then events below.
                                 Column(modifier = Modifier.fillMaxSize()) {
                                     // Day number: today gets a SOLID filled circle badge
-                                    // (Samsung One UI style).
+                                    // (Samsung One UI style); selected gets a outlined circle.
                                     if (isToday) {
                                         Box(
                                             modifier = Modifier
-                                                .size(30.dp)
+                                                .size(26.dp)
                                                 .background(Color.White, RoundedCornerShape(8.dp)),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Text(
                                                 text = cellDate.dayOfMonth.toString(),
                                                 color = Color.Black,
-                                                fontSize = 14.sp,
+                                                fontSize = 13.sp,
                                                 fontWeight = FontWeight.Bold
                                             )
                                         }
@@ -608,12 +622,12 @@ fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onDayCl
                                         Text(
                                             text = cellDate.dayOfMonth.toString(),
                                             fontSize = 13.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = MaterialTheme.colorScheme.onSurface
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                         )
                                     }
                                     if (events.isNotEmpty()) {
-                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Spacer(modifier = Modifier.height(3.dp))
                                         Column(
                                             modifier = Modifier.fillMaxWidth(),
                                             verticalArrangement = Arrangement.spacedBy(2.dp)
@@ -621,34 +635,24 @@ fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onDayCl
                                             val shown = events.take(3)
                                             shown.forEach { ev ->
                                                 val barColor = Color(ev.color.toColorInt())
+                                                // ponytail: bars-only in the grid (Samsung pattern) —
+                                                // titles live in the agenda list below, so cells never
+                                                // look cramped no matter how many events a day has.
                                                 Box(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
-                                                        .height(18.dp)
-                                                        .clip(RoundedCornerShape(4.dp))
+                                                        .height(5.dp)
+                                                        .clip(RoundedCornerShape(3.dp))
                                                         .background(barColor)
-                                                        .padding(horizontal = 6.dp),
-                                                    contentAlignment = Alignment.CenterStart
-                                                ) {
-                                                    Text(
-                                                        text = ev.title ?: "",
-                                                        color = Color.White,
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.Medium,
-                                                        textAlign = TextAlign.Start,
-                                                        maxLines = 1,
-                                                        softWrap = false,
-                                                        overflow = TextOverflow.Ellipsis
-                                                    )
-                                                }
+                                                ) {}
                                             }
                                             if (events.size > shown.size) {
                                                 Text(
-                                                    text = "+${events.size - shown.size} more",
+                                                    text = "+${events.size - shown.size}",
                                                     fontSize = 10.sp,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                     fontWeight = FontWeight.Medium,
-                                                    modifier = Modifier.padding(start = 4.dp, top = 1.dp)
+                                                    modifier = Modifier.padding(start = 2.dp, top = 1.dp)
                                                 )
                                             }
                                         }
@@ -660,7 +664,106 @@ fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onDayCl
                 }
             }
         }
-        Spacer(modifier = Modifier.weight(1f))
+
+        Spacer(modifier = Modifier.height(8.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Selected-day agenda (Samsung split-view): timeline of that day's events.
+        val dayEvents = allEvents.filter { ev ->
+            val evZone = java.time.ZoneId.of(
+                com.unifiedcomms.data.model.TimeZoneUtil.normalize(ev.startAt.timeZone) ?: "UTC"
+            )
+            isSameDay(
+                ev.startAt.toInstant(com.unifiedcomms.data.model.TimeZoneUtil.toKtxZone(ev.startAt.timeZone)),
+                selectedDay,
+                evZone
+            ) && !isLegacyImported(ev) && !isCancelled(ev)
+        }.sortedBy { ev ->
+            ev.startAt.toInstant(com.unifiedcomms.data.model.TimeZoneUtil.toKtxZone(ev.startAt.timeZone)).toEpochMilliseconds()
+        }
+
+        // Agenda header: "27 MON"
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = selectedDay.dayOfMonth.toString(),
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = selectedDay.dayOfWeek.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.getDefault()),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                text = if (dayEvents.isEmpty()) "No events" else "${dayEvents.size} event${if (dayEvents.size == 1) "" else "s"}",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+
+        if (dayEvents.isEmpty()) {
+            Text(
+                text = "Nothing scheduled for this day.",
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
+            )
+        } else {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                dayEvents.forEach { ev ->
+                    val barColor = Color(ev.color.toColorInt())
+                    val sz = com.unifiedcomms.data.model.TimeZoneUtil.toKtxZone(ev.startAt.timeZone)
+                    val ez = com.unifiedcomms.data.model.TimeZoneUtil.toKtxZone(ev.endAt.timeZone)
+                    val startLdt = java.time.Instant.ofEpochMilli(ev.startAt.toInstant(sz).toEpochMilliseconds())
+                        .atZone(safeZoneId(ev.startAt.timeZone)).toLocalDateTime()
+                    val endLdt = java.time.Instant.ofEpochMilli(ev.endAt.toInstant(ez).toEpochMilliseconds())
+                        .atZone(safeZoneId(ev.endAt.timeZone)).toLocalDateTime()
+                    val startStr = startLdt.format(java.time.format.DateTimeFormatter.ofPattern("h:mm a"))
+                    val endStr = endLdt.format(java.time.format.DateTimeFormatter.ofPattern("h:mm a"))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onEventClick(ev.id) }
+                            .padding(horizontal = 4.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // time column
+                        Column(modifier = Modifier.width(64.dp)) {
+                            Text(text = startStr, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
+                            Text(text = endStr, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        // colored bar + title
+                        Box(
+                            modifier = Modifier
+                                .width(4.dp)
+                                .height(36.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(barColor)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = ev.title ?: "",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                }
+            }
+        }
     }
 }
 
@@ -891,12 +994,23 @@ fun CreateEventScreen(
                     IconButton(onClick = {
                         if (title.isNotBlank()) {
                             coroutineScope.launch {
+                                // ponytail: resolve a REAL account + calendar before insert.
+                                // The passed accountId can be "" (accounts flow not yet emitted
+                                // at navigation time), which violates the accountId FK and crashes.
+                                // Fall back to default/active account; abort safely if none exist.
+                                val acct = viewModel.getAccountById(accountId)
+                                    ?: viewModel.getDefaultAccount()
+                                    ?: viewModel.getActiveAccounts().firstOrNull()
+                                    ?: return@launch
+                                val calId = runCatching {
+                                    viewModel.calendarRepository.getCalendarsByAccount(acct.id).first().firstOrNull()?.id
+                                }.getOrNull() ?: acct.id
                                 val base = existingEvent
                                 val (sh, sm) = if (base?.startAt?.dateTime != null) base.startAt.dateTime!!.hour to base.startAt.dateTime!!.minute else 9 to 0
                                 val (eh, em) = if (base?.endAt?.dateTime != null) base.endAt.dateTime!!.hour to base.endAt.dateTime!!.minute else 10 to 0
                                 val event = com.unifiedcomms.data.model.CalendarEvent(
-                                    accountId = base?.accountId ?: accountId,
-                                    calendarId = base?.calendarId ?: accountId,
+                                    accountId = acct.id,
+                                    calendarId = calId,
                                     uid = base?.uid ?: java.util.UUID.randomUUID().toString(),
                                     title = title,
                                     description = description.takeIf { it.isNotBlank() },
