@@ -231,6 +231,9 @@ fun AddAccountScreen(
             else -> null
         }
         if (known == null) { runDiscovery(); return }
+        // ponytail: Mailcow/SOGo often serves a self-signed/internal-CA cert the client
+        // rejects, which breaks auth. Auto-accept certs for Mailcow ONLY (not others).
+        if (p.type == AccountType.MAILCOW) acceptAllCerts = true
         imapHost = known.imapHost ?: ""
         imapPort = known.imapPort
         imapUseSsl = known.imapUseSsl
