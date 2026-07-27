@@ -371,28 +371,33 @@ fun EmailDetailScreen(
                         InviteCard(invite = inv, viewModel = viewModel)
                         Spacer(modifier = Modifier.height(16.dp))
                     }
-                    // ponytail: render HTML when available (GMail/Samsung-style),
-                    // fall back to plaintext. WebView is the correct renderer for
-                    // arbitrary email HTML; JS is disabled and no network access.
-                    if (!e.bodyHtml.isNullOrBlank()) {
-                        val html = e.bodyHtml
-                        AndroidView(
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp, max = 600.dp),
-                            factory = { ctx ->
-                                WebView(ctx).apply {
-                                    settings.javaScriptEnabled = false
-                                    settings.blockNetworkImage = false
-                                    settings.blockNetworkLoads = true
-                                    isVerticalScrollBarEnabled = false
-                                    isHorizontalScrollBarEnabled = false
-                                }.also { wv ->
-                                    wv.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
-                                }
-                            },
-                            update = { wv -> wv.loadDataWithBaseURL(null, html, "text/html", "utf-8", null) }
-                        )
-                    } else {
-                        Text(e.bodyText ?: "(no content)", style = MaterialTheme.typography.bodyLarge)
+                    // ponytail: when the email carries a parsed invite, the InviteCard above
+                    // is the actionable surface. The raw body (HTML/ICS blob starting with
+                    // "OpenGroupware_org" / BEGIN:VCALENDAR) is noise — don't render it.
+                    if (e.invite == null) {
+                        // ponytail: render HTML when available (GMail/Samsung-style),
+                        // fall back to plaintext. WebView is the correct renderer for
+                        // arbitrary email HTML; JS is disabled and no network access.
+                        if (!e.bodyHtml.isNullOrBlank()) {
+                            val html = e.bodyHtml
+                            AndroidView(
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp, max = 600.dp),
+                                factory = { ctx ->
+                                    WebView(ctx).apply {
+                                        settings.javaScriptEnabled = false
+                                        settings.blockNetworkImage = false
+                                        settings.blockNetworkLoads = true
+                                        isVerticalScrollBarEnabled = false
+                                        isHorizontalScrollBarEnabled = false
+                                    }.also { wv ->
+                                        wv.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
+                                    }
+                                },
+                                update = { wv -> wv.loadDataWithBaseURL(null, html, "text/html", "utf-8", null) }
+                            )
+                        } else {
+                            Text(e.bodyText ?: "(no content)", style = MaterialTheme.typography.bodyLarge)
+                        }
                     }
                     if (e.attachments.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(16.dp))
