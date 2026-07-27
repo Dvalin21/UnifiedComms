@@ -553,9 +553,9 @@ fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onDayCl
             listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun").forEach { d ->
                 Text(
                     text = d,
-                    fontWeight = FontWeight.Medium,
+                    fontWeight = FontWeight.SemiBold,
                     fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f),
                     textAlign = TextAlign.Center,
                     maxLines = 1,
@@ -605,71 +605,74 @@ fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onDayCl
                                 .padding(6.dp)
                         ) {
                             if (cellDate != null) {
-                                // Day number: today gets a SOLID filled circle badge (Samsung One UI style).
-                                // Events flow top-to-bottom immediately below the number (Google
-                                // Calendar / Etar / Samsung style): a small colored bar with the
-                                // title left-aligned inside, not centered and not crammed at the
-                                // cell bottom.
-                                if (isToday) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(30.dp)
-                                            .background(Color.White, RoundedCornerShape(8.dp)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
+                                // ponytail: this Box was stacking the day number and the
+                                // events Column as OVERLAPPING children (Box default), so the
+                                // event bars painted on top of the date number. Wrap them in a
+                                // Column so they flow vertically: number, then events below.
+                                Column(modifier = Modifier.fillMaxSize()) {
+                                    // Day number: today gets a SOLID filled circle badge
+                                    // (Samsung One UI style).
+                                    if (isToday) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(30.dp)
+                                                .background(Color.White, RoundedCornerShape(8.dp)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = cellDate.dayOfMonth.toString(),
+                                                color = Color.Black,
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    } else {
                                         Text(
                                             text = cellDate.dayOfMonth.toString(),
-                                            color = Color.Black,
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.Bold
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.onSurface
                                         )
                                     }
-                                } else {
-                                    Text(
-                                        text = cellDate.dayOfMonth.toString(),
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                                if (events.isNotEmpty()) {
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Column(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                                    ) {
-                                        val shown = events.take(3)
-                                        shown.forEach { ev ->
-                                            val barColor = Color(ev.color.toColorInt())
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .height(18.dp)
-                                                    .clip(RoundedCornerShape(4.dp))
-                                                    .background(barColor)
-                                                    .padding(horizontal = 6.dp),
-                                                contentAlignment = Alignment.CenterStart
-                                            ) {
+                                    if (events.isNotEmpty()) {
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                                        ) {
+                                            val shown = events.take(3)
+                                            shown.forEach { ev ->
+                                                val barColor = Color(ev.color.toColorInt())
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .height(18.dp)
+                                                        .clip(RoundedCornerShape(4.dp))
+                                                        .background(barColor)
+                                                        .padding(horizontal = 6.dp),
+                                                    contentAlignment = Alignment.CenterStart
+                                                ) {
+                                                    Text(
+                                                        text = ev.title ?: "",
+                                                        color = Color.White,
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        textAlign = TextAlign.Start,
+                                                        maxLines = 1,
+                                                        softWrap = false,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                            }
+                                            if (events.size > shown.size) {
                                                 Text(
-                                                    text = ev.title ?: "",
-                                                    color = Color.White,
-                                                    fontSize = 11.sp,
+                                                    text = "+${events.size - shown.size} more",
+                                                    fontSize = 10.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                     fontWeight = FontWeight.Medium,
-                                                    textAlign = TextAlign.Start,
-                                                    maxLines = 1,
-                                                    softWrap = false,
-                                                    overflow = TextOverflow.Ellipsis
+                                                    modifier = Modifier.padding(start = 4.dp, top = 1.dp)
                                                 )
                                             }
-                                        }
-                                        if (events.size > shown.size) {
-                                            Text(
-                                                text = "+${events.size - shown.size} more",
-                                                fontSize = 10.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                fontWeight = FontWeight.Medium,
-                                                modifier = Modifier.padding(start = 4.dp, top = 1.dp)
-                                            )
                                         }
                                     }
                                 }
