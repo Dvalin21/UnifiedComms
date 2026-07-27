@@ -606,77 +606,70 @@ fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onDayCl
                         ) {
                             if (cellDate != null) {
                                 // Day number: today gets a SOLID filled circle badge (Samsung One UI style).
-                                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopStart) {
-                                    if (isToday) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(30.dp)
-                                                .background(Color.White, RoundedCornerShape(8.dp)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = cellDate.dayOfMonth.toString(),
-                                                color = Color.Black,
-                                                fontSize = 14.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                    } else {
+                                // Events flow top-to-bottom immediately below the number (Google
+                                // Calendar / Etar / Samsung style): a small colored bar with the
+                                // title left-aligned inside, not centered and not crammed at the
+                                // cell bottom.
+                                if (isToday) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(30.dp)
+                                            .background(Color.White, RoundedCornerShape(8.dp)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
                                         Text(
                                             text = cellDate.dayOfMonth.toString(),
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = MaterialTheme.colorScheme.onSurface
+                                            color = Color.Black,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold
                                         )
                                     }
+                                } else {
+                                    Text(
+                                        text = cellDate.dayOfMonth.toString(),
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
                                 }
-                                // Event summary: Samsung-style colored rounded BARS with the title
-                                // text inside (stacked). Overflow beyond 3 collapses to small dots.
-                                Column(
-                                    modifier = Modifier.fillMaxSize().padding(top = 2.dp),
-                                    verticalArrangement = Arrangement.Bottom,
-                                    horizontalAlignment = Alignment.Start
-                                ) {
-                                    if (events.isNotEmpty()) {
+                                if (events.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                                    ) {
                                         val shown = events.take(3)
                                         shown.forEach { ev ->
                                             val barColor = Color(ev.color.toColorInt())
                                             Box(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .height(16.dp)
+                                                    .height(18.dp)
                                                     .clip(RoundedCornerShape(4.dp))
                                                     .background(barColor)
-                                                    .padding(horizontal = 4.dp),
+                                                    .padding(horizontal = 6.dp),
                                                 contentAlignment = Alignment.CenterStart
                                             ) {
                                                 Text(
                                                     text = ev.title ?: "",
                                                     color = Color.White,
-                                                    fontSize = 10.sp,
+                                                    fontSize = 11.sp,
                                                     fontWeight = FontWeight.Medium,
-                                                    modifier = Modifier.fillMaxWidth(),
+                                                    textAlign = TextAlign.Start,
                                                     maxLines = 1,
                                                     softWrap = false,
                                                     overflow = TextOverflow.Ellipsis
                                                 )
                                             }
-                                            Spacer(modifier = Modifier.height(2.dp))
                                         }
                                         if (events.size > shown.size) {
-                                            Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                                                repeat(minOf(events.size - shown.size, 3)) {
-                                                    Box(modifier = Modifier.size(5.dp).background(MaterialTheme.colorScheme.onSurfaceVariant, CircleShape))
-                                                }
-                                                if (events.size - shown.size > 3) {
-                                                    Text(
-                                                        text = "+${events.size - shown.size - 3}",
-                                                        fontSize = 9.sp,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                        maxLines = 1
-                                                    )
-                                                }
-                                            }
+                                            Text(
+                                                text = "+${events.size - shown.size} more",
+                                                fontSize = 10.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                fontWeight = FontWeight.Medium,
+                                                modifier = Modifier.padding(start = 4.dp, top = 1.dp)
+                                            )
                                         }
                                     }
                                 }
@@ -687,7 +680,6 @@ fun MonthView(date: java.time.LocalDate, allEvents: List<CalendarEvent>, onDayCl
             }
         }
         Spacer(modifier = Modifier.weight(1f))
-        CurrentTimePanel(events = allEvents)
     }
 }
 
