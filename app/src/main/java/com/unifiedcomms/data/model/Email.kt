@@ -87,7 +87,23 @@ data class Email(
     fun hasAttachments(): Boolean = attachments.isNotEmpty()
     // ponytail: strip HTML/CSS at display time so previews stored unstripped (e.g. by an
     // older sync) still render as plain text, not raw CSS like `th, td { font-family...`.
-    fun getSnippet(maxLen: Int = 100): String = preview.stripHtml().take(maxLen)
+    // Also strip an embedded VCALENDAR block, and show a friendly token for invite emails
+    // instead of the raw "Please accept the calendar invite below..." preamble.
+    fun getSnippet(maxLen: Int = 100): String {
+        if (invite != null) return "Calendar invitation"
+        return preview.stripCalendar().stripHtml().take(maxLen)
+    }
+}
+
+/** Drop an entire BEGIN:VCALENDAR..END:VCALENDAR block (the raw ICS blob SOGo/Edison
+ *  invites inline in the email body). Mirrors the invite-extraction bounds in
+ *  EmailSyncEngineImpl so the preview matches what the parser actually consumes. */
+fun String.stripCalendar(): String {
+    val start = indexOf("BEGIN:VCALENDAR", ignoreCase = true)
+    if (start < 0) return this
+    val end = indexOf("END:VCALENDAR", ignoreCase = true)
+    val stop = if (end > start) end + "END:VCALENDAR".length else this.length
+    return (substring(0, start) + substring(stop)).trim().ifBlank { "" }
 }
 
 /** Strip HTML tags AND bare CSS (SOGo invites send bodies that are essentially just a
