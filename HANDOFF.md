@@ -245,8 +245,42 @@ stripped the ICS from the DETAIL screen; the OVERVIEW/LIST preview still shows
 the raw invite body. Separate fix needed (sanitize list preview like detail).
 Out of scope for this batch; flagged for Keith's call.
 
---- NEXT STEP (resume) ---
-1. Proceed to LIVE CHAT TEST (Keith's stated next milestone) — Chat scoped to
-   primary account, Edison-style bubbles, 12h timestamps (done earlier sessions,
-   not re-verified this round). OR fix the list-preview ICS leak above.
-2. Decide on the list-preview ICS leak: fix now or defer.
+--- THIS SESSION (2026-07-27, continued) ---
+
+VERIFIED ON DEVICE 10.0.0.228 (build after 0a4ccab):
+- DRAWER TOO WIDE — FIXED. ModalDrawerSheet was default M3 360dp (≈1262px on
+  this 411dp screen), a floating tonal-elevated panel for ~7 folder rows. Capped
+  sheet at 280dp, drawerTonalElevation=0, surface-colored. Measured panel
+  visible width ≈155dp. Added "Add Account" item at drawer bottom (icon+label)
+  -> navigates to add_account.
+- ADD ACCOUNT IN DARK MODE — FIXED. AddAccountScreen called UnifiedCommsTheme{}
+  (system default), ignored app dark. Now passes effectiveDark. Screenshot
+  corner luminance = 29 (near-black) => matches app dark theme.
+
+CHAT REFERENCE RE-ANCHORED: BlueMail (blix-inc), NOT Edison Mail.
+  "Edison-style" in code comments + earlier HANDOFF was the AGENT'S wrong
+  assumption — Keith corrected 2026-07-27: BlueMail is the client with the
+  chat feature; Edison was never the model. BlueMail APK ref:
+  https://www.apkmirror.com/apk/blix-inc/blue-mail-email-mailbox/...
+  Keith supplied the full IMAP/SMTP/MIME + AltMarkMove + FCM-push-proxy +
+  Room-offline-first + CalDAV/CardDAV architecture breakdown to build against.
+
+PENDING (B): install BlueMail on the phone, Keith drives / tells us what to match.
+  apkmirror is bot-walled (Keith's standing rule: don't burn budget on walled
+  sites) -> ask Keith to install BlueMail from Play Store on the phone (30s);
+  then drive it via adb (uiautomator) to study the chat UX and diff vs
+  UnifiedComms ChatSyncEngineImpl.
+  KNOWN GAP vs BlueMail/Delta-Chat (from the architecture Keith supplied):
+  - Our chat polls a Chat/UnifiedCommsChat IMAP folder (OK) but does NOT
+    AltMarkMove: no mark-\Seen on server, no move out of INBOX. Traditional
+    clients will show chat traffic as normal mail.
+  - No FCM push proxy: relies on WorkManager periodic sync, not sub-second
+    push. (Acceptable for v1; note for later.)
+  - UID-based threading OK (X-Chat-Conversation-Id / Message-ID). Room
+    offline-first OK (MessagingRepository). Matches spec on those.
+  - CalDAV/CardDAV already implemented (calendarRepo/contactSyncEngine).
+
+NEXT: (1) Keith installs BlueMail from Play Store on phone. (2) We drive it,
+  study chat UX, align UnifiedComms chat to BlueMail. (3) LIVE CHAT TEST
+  (Keith's stated milestone) after alignment. (Message cut off at "and then A"
+  — resume that thread when Keith sends the rest.)

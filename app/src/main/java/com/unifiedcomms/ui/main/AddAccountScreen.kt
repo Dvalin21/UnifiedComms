@@ -155,7 +155,8 @@ private fun ProviderTile(
 @Composable
 fun AddAccountScreen(
     viewModel: MainViewModel,
-    onComplete: () -> Unit
+    onComplete: () -> Unit,
+    darkTheme: Boolean = false
 ) {
     var email by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
@@ -256,7 +257,7 @@ fun AddAccountScreen(
         showAdvanced = false
     }
 
-    UnifiedCommsTheme {
+    UnifiedCommsTheme(darkTheme = darkTheme) {
         Scaffold(
             topBar = {
                 androidx.compose.material3.TopAppBar(
