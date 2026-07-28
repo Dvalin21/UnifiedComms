@@ -85,8 +85,7 @@ CREDENTIAL HANDLING (mailcow, CRITICAL)
 - NEVER inline a password in chat/shell history. Read from file, type via
   `adb shell input text '<pw>'` with SINGLE quotes so $ * # survive the remote shell.
 - testbox@houseofmanns.com login = MASTER password at ~/.hermes/uc_main_pw
-  (proven by seed_chat.py which logs in with it). (~/.hermes/uc_test_pw also exists;
-  use uc_main_pw for testbox — matches the working seed_chat.py path.)
+  (proven by the live email-sync instrumentation test which logs in with it).
 - MAILCOW LOCKOUT TRAP: testbox locks after >2 wrong passwords in 2 min. Max ~2
   auth attempts per session. After 2 failures, STOP and ask Keith.
 - Servers: IMAP imap.houseofmanns.com:993 (SSL, acceptAllCerts=true — wildcard cert
@@ -123,7 +122,7 @@ STATUS (2026-07-26, done): testbox@houseofmanns.com ADDED + SYNCING OK.
   keith.manns@houseofmanns.com -> testbox to exercise the InviteCard path.
 - NOTE: the live-credential-e2e ref mentions ~/.hermes/uc_testbox_pw but that
   file does NOT exist; testbox uses the MASTER pw at ~/.hermes/uc_main_pw
-  (matches seed_chat.py which logs in with it). Do not use uc_test_pw.
+  (proven by the live email-sync instrumentation test which logs in with it). Do not use uc_test_pw.
 
 ================================================================================
 KEY FACTS (cross-checked, current)
@@ -131,7 +130,7 @@ KEY FACTS (cross-checked, current)
 - Keith verification bar: green build + screenshot is NOT proof. Core functions must
   work on the REAL device before "fixed" is spoken.
 - Biometric lock: confirmed working by user. Don't touch it.
-- Chat feature: out of scope this session.
+- Chat feature: REMOVED 2026-07-28 (see CHAT REMOVAL below). No code references remain.
 - Don't modify personal houseofmanns.com / keith.manns server data without go-ahead;
   testbox is for test writes only.
 - THE EMAIL DOUBLE-CLICK BUG IS ROOT-CAUSE FIXED THIS SESSION (2026-07-27).
@@ -155,8 +154,7 @@ USER REQUESTS THIS SESSION (verbatim intent):
    rename "Add to Calendar" -> "+Just Add". [DONE + VERIFIED on phone]
 2. Telemetry toggle in Settings: there should be NONE (no telemetry exists). Remove it. [CODED]
 3. Sync interval: minimum "every 5 minutes". [CODED]
-4. Encryption: user asked what it means — does it encrypt email in transit / at rest /
-   chats? [ANSWERED, no code change]
+4. Encryption: user asked what it means — does it encrypt email in transit / at rest?
 5. Email list: "almost like you have to click twice before you can click the email.
    One click and I'm in the email." [ROOT-CAUSE FIXED + VERIFIED]
 6. Account settings: when opened it's not in dark mode. [CODED]
@@ -175,9 +173,8 @@ Committed: 71d5cd5. Verified: 3 equal-ish buttons, +Just Add complete, no clip.
 --- 4. ENCRYPTION MEANING (answer, no change) ---
 EncryptionScreen is AT-REST ONLY: encrypts stored credentials, calendar, tasks on-device
   via AES-GCM with a master key in Android Keystore. It is NOT end-to-end and
-  does NOT encrypt email bodies or chat messages in transit. In transit, email uses
+  does NOT encrypt email bodies in transit. In transit, email uses
   the server's TLS (EmailSyncEngineImpl: imap.ssl.enable / smtp.starttls.enable).
-  Chat transport rides the same IMAP/SMTP-over-TLS path. So "encryption" here =
   local data-at-rest only; not a Signal-style E2E scheme.
 
 --- 5. EMAIL DOUBLE-CLICK — ROOT CAUSE FOUND + FIXED + VERIFIED ---
@@ -257,30 +254,42 @@ VERIFIED ON DEVICE 10.0.0.228 (build after 0a4ccab):
   (system default), ignored app dark. Now passes effectiveDark. Screenshot
   corner luminance = 29 (near-black) => matches app dark theme.
 
-CHAT REFERENCE RE-ANCHORED: BlueMail (blix-inc), NOT Edison Mail.
-  "Edison-style" in code comments + earlier HANDOFF was the AGENT'S wrong
-  assumption — Keith corrected 2026-07-27: BlueMail is the client with the
-  chat feature; Edison was never the model. BlueMail APK ref:
-  https://www.apkmirror.com/apk/blix-inc/blue-mail-email-mailbox/...
-  Keith supplied the full IMAP/SMTP/MIME + AltMarkMove + FCM-push-proxy +
-  Room-offline-first + CalDAV/CardDAV architecture breakdown to build against.
+CHAT REMOVAL — 2026-07-28
+================================================================================
+Decision: the Chat feature was email rendered as bubbles (BlueMail-style IMAP/SMTP
++ closed Blix cloud, NOT selfhostable). Keith ruled it not worth maintaining and
+removed it. No selfhostable server-side exists, so no alternative path taken.
 
-PENDING (B): install BlueMail on the phone, Keith drives / tells us what to match.
-  apkmirror is bot-walled (Keith's standing rule: don't burn budget on walled
-  sites) -> ask Keith to install BlueMail from Play Store on the phone (30s);
-  then drive it via adb (uiautomator) to study the chat UX and diff vs
-  UnifiedComms ChatSyncEngineImpl.
-  KNOWN GAP vs BlueMail/Delta-Chat (from the architecture Keith supplied):
-  - Our chat polls a Chat/UnifiedCommsChat IMAP folder (OK) but does NOT
-    AltMarkMove: no mark-\Seen on server, no move out of INBOX. Traditional
-    clients will show chat traffic as normal mail.
-  - No FCM push proxy: relies on WorkManager periodic sync, not sub-second
-    push. (Acceptable for v1; note for later.)
-  - UID-based threading OK (X-Chat-Conversation-Id / Message-ID). Room
-    offline-first OK (MessagingRepository). Matches spec on those.
-  - CalDAV/CardDAV already implemented (calendarRepo/contactSyncEngine).
+What was deleted (chat-only, no shared code lost):
+- ChatSyncEngine.kt / ChatSyncEngineImpl.kt (IMAP Chat-folder poll + SMTP send)
+- MessagesScreen.kt / ConversationScreen.kt (chat UI)
+- IMessagingService.aidl + IMessagingCallback.aidl + MessageParcel.aidl + ConversationParcel.aidl (AIDL IPC)
+- ConversationParcel.kt / MessageParcel.kt
+- MessagingForegroundGate.kt
+- Conversation entity + ConversationDao + conversations table
+- MessagingRepository conversation half (kept message/search methods)
+- BackgroundSyncWorker chat wiring; SyncManager chatSync param + sendChatMessage
+- MainViewModel messagingRepo field + sendMessage; EmailSyncEngineImpl.listFolders
+  Chat-folder exclusion (FIX: was orphaning real mail moved to a hidden Chat folder)
+- Nav tab, compose_message route, syncChat/chatFolder config
+- 2 chat androidTests
 
-NEXT: (1) Keith installs BlueMail from Play Store on phone. (2) We drive it,
-  study chat UX, align UnifiedComms chat to BlueMail. (3) LIVE CHAT TEST
-  (Keith's stated milestone) after alignment. (Message cut off at "and then A"
-  — resume that thread when Keith sends the rest.)
+Kept (shared, non-chat): Message entity + MessageDao.searchMessages (powers the
+message SEARCH feature), UnifiedContact, CalendarInviteMessage, share messages,
+getCurrentUserId().
+
+Room: v4 -> v5. MIGRATION_4_5 DROPs the conversations table. On existing installs
+the migration runs at DB open (proven: live email-sync test opens DB and passes).
+
+Verification (REAL DEVICE, logcat gold standard):
+- Phone (Samsung SM-S908U 10.0.0.228:40311): HouseOfMannsEmailSyncTest
+  started -> finished -> VM exit code 0. Real IMAP connect/send/sync/Room read-back.
+- Tablet (TB570FU 10.0.0.211:34755): same test passed, result code 0.
+- Release APK (assembleRelease --rerun-tasks) builds + signs (v1/v2/v3,
+  CN=UnifiedComms O=Dvalin21). Installed on phone, launches, no crash.
+- The "Migration didn't properly handle" failure seen mid-session was a leftover
+  FolderListTest chatFolder ref (compile error), NOT a runtime migration bug.
+  Fixed; all device tests pass.
+
+BlueMail comparison / AltMarkMove chat study / live-chat milestone: CANCELLED —
+chat no longer exists in this codebase.
