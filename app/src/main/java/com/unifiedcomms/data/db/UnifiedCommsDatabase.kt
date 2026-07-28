@@ -18,10 +18,9 @@ import com.unifiedcomms.data.model.*
         Task::class,
         TaskList::class,
         Message::class,
-        Conversation::class,
         UnifiedContact::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 @TypeConverters(
@@ -40,7 +39,6 @@ import com.unifiedcomms.data.model.*
     SystemLabelsConverter::class,
     EmailFlagsConverter::class,
     TaskDateTimeConverter::class,
-    MessageAttachmentListConverter::class,
     GeoLocationConverter::class,
     ServerConfigConverter::class,
     AuthConfigConverter::class,
@@ -50,7 +48,6 @@ import com.unifiedcomms.data.model.*
     ConferenceDataConverter::class,
     TaskAssigneeConverter::class,
     TaskAttachmentListConverter::class,
-    ConversationSettingsConverter::class,
     EventReminderListConverter::class,
     InviteMessageConverter::class
 )
@@ -62,7 +59,6 @@ abstract class UnifiedCommsDatabase : RoomDatabase() {
     abstract fun taskDao(): TaskDao
     abstract fun taskListDao(): TaskListDao
     abstract fun messageDao(): MessageDao
-    abstract fun conversationDao(): ConversationDao
     abstract fun contactDao(): ContactDao
 
     companion object {
@@ -77,7 +73,7 @@ abstract class UnifiedCommsDatabase : RoomDatabase() {
                     "unifiedcomms.db"
                 )
                     .enableMultiInstanceInvalidation()
-                    .addMigrations(Migrations.MIGRATION_1_1, Migrations.MIGRATION_1_2, Migrations.MIGRATION_2_3, Migrations.MIGRATION_3_4)
+                    .addMigrations(Migrations.MIGRATION_1_1, Migrations.MIGRATION_1_2, Migrations.MIGRATION_2_3, Migrations.MIGRATION_3_4, Migrations.MIGRATION_4_5)
                     .also { builder ->
                         if (com.unifiedcomms.BuildConfig.DEBUG) {
                             builder.fallbackToDestructiveMigration()

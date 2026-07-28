@@ -983,16 +983,11 @@ class EmailSyncEngineImpl(
             val session = openImapSession(config)
             store = session.getStore("imap") as com.sun.mail.imap.IMAPStore
             connectStoreWithRetry(store, config, auth)
-            // ponytail: exclude the Chat folder from the mail folder list. The chat
-            // folder name is account-specific (syncConfig.chatFolder), but falls back
-            // to these two well-known names if unresolved.
-            val chatNames = setOf(
-                account.syncConfig.chatFolder,
-                ChatSyncEngineImpl.DEFAULT_CHAT_FOLDER,
-                ChatSyncEngineImpl.FALLBACK_CHAT_FOLDER
-            ).map { it.lowercase() }.filter { it.isNotBlank() }
+            // ponytail: list EVERY real mail folder. The old chat logic moved mail
+            // into a hidden "Chat" folder and this method excluded it; now that chat
+            // is gone we surface all of them so nothing stays orphaned/invisible.
             val all = store.defaultFolder.list("*").filter { it.exists() && it.type and javax.mail.Folder.HOLDS_MESSAGES != 0 }
-            val names = all.map { it.fullName }.filter { it.lowercase() !in chatNames }
+            val names = all.map { it.fullName }
             // INBOX first, then alphabetical — Edison-style ordering.
             names.sortedWith(compareBy({ it.lowercase() != "inbox" }, { it.lowercase() }))
         } catch (e: Exception) {

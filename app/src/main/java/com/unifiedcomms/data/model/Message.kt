@@ -1,15 +1,12 @@
 package com.unifiedcomms.data.model
 
 import androidx.room.Entity
-import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverters
 import com.unifiedcomms.data.db.converters.DateTimeConverter
 import com.unifiedcomms.data.db.converters.StringListConverter
 import com.unifiedcomms.data.db.converters.MapConverter
-import com.unifiedcomms.data.db.converters.MessageAttachmentListConverter
-import com.unifiedcomms.data.db.converters.ConversationSettingsConverter
 import kotlinx.datetime.Instant
 import kotlinx.datetime.Clock
 import kotlinx.serialization.Serializable
@@ -24,14 +21,6 @@ import kotlinx.serialization.Serializable
         Index(value = ["status"]),
         Index(value = ["messageType"]),
         Index(value = ["content"])
-    ],
-    foreignKeys = [
-        ForeignKey(
-            entity = Conversation::class,
-            parentColumns = ["id"],
-            childColumns = ["conversationId"],
-            onDelete = ForeignKey.CASCADE
-        )
     ]
 )
 data class Message(
@@ -44,7 +33,6 @@ data class Message(
     val status: MessageStatus = MessageStatus.PENDING,
     val replyToId: String? = null,
     val forwardFromId: String? = null,
-    @TypeConverters(MessageAttachmentListConverter::class) val attachments: List<MessageAttachment> = emptyList(),
     @TypeConverters(MapConverter::class) val metadata: Map<String, String> = emptyMap(),
     val isEncrypted: Boolean = true,
     val encryptionKeyId: String? = null,
@@ -87,80 +75,7 @@ enum class MessageStatus {
     EXPIRED       // Expired (e.g., invite expired)
 }
 
-@Serializable
-data class MessageAttachment(
-    val id: String = java.util.UUID.randomUUID().toString(),
-    val type: AttachmentType,
-    val fileName: String,
-    val mimeType: String,
-    val sizeBytes: Long,
-    val thumbnail: String? = null,
-    val url: String? = null,
-    val localPath: String? = null,
-    val durationSeconds: Int? = null, // For audio/video
-    val dimensions: Dimensions? = null // For images/video
-) {
-    enum class AttachmentType { IMAGE, VIDEO, AUDIO, FILE, CONTACT, LOCATION }
-    @Serializable
-    data class Dimensions(val width: Int, val height: Int)
-}
-
-@Serializable
-@Entity(
-    tableName = "conversations",
-    indices = [
-        Index(value = ["participantIds"]),
-        Index(value = ["lastActivityAt"]),
-        Index(value = ["isArchived"]),
-        Index(value = ["isPinned"])
-    ]
-)
-data class Conversation(
-    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
-    val participantIds: List<String>, // Includes our user ID + others
-    @TypeConverters(MapConverter::class) val participantNames: Map<String, String>, // userId -> display name
-    @TypeConverters(MapConverter::class) val participantAvatars: Map<String, String> = emptyMap(),
-    val type: ConversationType = ConversationType.DIRECT,
-    val title: String? = null, // For groups
-    val description: String? = null,
-    val lastMessageId: String? = null,
-    val lastMessagePreview: String? = null,
-    @TypeConverters(DateTimeConverter::class) val lastActivityAt: Instant = Clock.System.now(),
-    val unreadCount: Int = 0,
-    val isArchived: Boolean = false,
-    val isPinned: Boolean = false,
-    val isMuted: Boolean = false,
-    val muteUntil: Instant? = null,
-    @TypeConverters(ConversationSettingsConverter::class) val settings: ConversationSettings = ConversationSettings(),
-    @TypeConverters(DateTimeConverter::class) val createdAt: Instant = Clock.System.now(),
-    @TypeConverters(DateTimeConverter::class) val updatedAt: Instant = Clock.System.now()
-) {
-    fun getOtherParticipantIds(currentUserId: String): List<String> = participantIds.filter { it != currentUserId }
-    fun getOtherParticipantNames(currentUserId: String): List<String> = getOtherParticipantIds(currentUserId).map { participantNames[it] ?: it }
-    fun getDisplayName(currentUserId: String): String = when {
-        type == ConversationType.GROUP -> title ?: getOtherParticipantNames(currentUserId).joinToString(", ")
-        getOtherParticipantIds(currentUserId).isNotEmpty() -> participantNames[getOtherParticipantIds(currentUserId)[0]] ?: getOtherParticipantIds(currentUserId)[0]
-        else -> "Unknown"
-    }
-}
-
-@Serializable
-enum class ConversationType {
-    DIRECT,     // 1:1
-    GROUP,      // Multiple participants
-    BROADCAST   // One to many (read-only for recipients)
-}
-
-@Serializable
-data class ConversationSettings(
-    val disappearingMessages: Boolean = false,
-    val disappearingTimerSeconds: Int = 86400, // 24 hours default
-    val notifyForMessages: Boolean = true,
-    val notifyForMentions: Boolean = true,
-    val customNotificationSound: String? = null,
-    val backgroundColor: String? = null,
-    val customEmoji: Map<String, String> = emptyMap()
-)
+// ── Shared, non-chat model types (contacts / calendar invites / shares) ──
 
 @Serializable
 @Entity(tableName = "contacts")

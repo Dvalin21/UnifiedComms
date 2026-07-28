@@ -5,7 +5,6 @@ import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import com.unifiedcomms.data.model.Account
-import com.unifiedcomms.data.model.Conversation
 import com.unifiedcomms.data.model.Message
 import com.unifiedcomms.data.repository.AccountRepository
 import com.unifiedcomms.util.NotificationHelper
@@ -27,7 +26,6 @@ class SyncManager(
     private val calendarSync: CalendarSyncEngine,
     private val taskSync: TaskSyncEngine,
     private val contactSync: ContactSyncEngine,
-    private val chatSync: ChatSyncEngine? = null,
     private val accountRepo: AccountRepository,
     private val scope: CoroutineScope,
     private val context: Context,
@@ -140,13 +138,7 @@ class SyncManager(
                 "contacts" to r
             })
         }
-        if (chatSync != null && account.syncConfig.syncChat) {
-            jobs.add(scope.async {
-                val r = withTimeoutOrNull(120_000) { chatSync.syncAccount(fresh) }
-                    ?: SyncResult.failure("Chat sync timed out")
-                "chat" to r
-            })
-        }
+        // chatSync removed with the chat feature
 
         for (deferred in jobs) {
             val (leg, result) = runCatching { deferred.await() }.getOrDefault("unknown" to SyncResult.failure("crashed"))
@@ -224,11 +216,8 @@ class SyncManager(
         "calendar" to calendarSync.testConnection(account),
         "tasks" to taskSync.testConnection(account),
         "contacts" to contactSync.testConnection(account),
-        "chat" to (chatSync?.testConnection(account) ?: ConnectionTestResult(true, 0, emptyList(), null))
+        "chat" to ConnectionTestResult(true, 0, emptyList(), null)
     )
-
-    suspend fun sendChatMessage(account: Account, conversation: Conversation, message: Message): SendResult? =
-        chatSync?.sendChatMessage(account, conversation, message)
 
     /**
      * Gate persistence on a PROVEN connection. Refreshes OAuth, then probes
