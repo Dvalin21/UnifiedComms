@@ -38,16 +38,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.unifiedcomms.util.PreferencesManager
+import com.unifiedcomms.ui.theme.UnifiedCommsTheme
 
 @Composable
 fun EncryptionScreen(
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    darkTheme: Boolean = false
 ) {
     val prefs = remember { PreferencesManager.getInstance() }
     var encryptionEnabled by remember { mutableStateOf(prefs.getBoolean("encryption_enabled", true)) }
     var biometricLock by remember { mutableStateOf(prefs.getBoolean("biometric_lock", false)) }
 
     Surface(modifier = Modifier.fillMaxSize()) {
+        UnifiedCommsTheme(darkTheme = darkTheme) {
         Scaffold(
             topBar = {
                 TopAppBar(
@@ -126,6 +129,7 @@ fun EncryptionScreen(
                     }
                 }
             }
+        }
         }
     }
 }
