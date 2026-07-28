@@ -62,47 +62,41 @@ private fun BiometricLockScreen(onUnlocked: () -> Unit) {
         else biometricManager.canAuthenticate(allowed)
     }
 
+    // ponytail: auto-launch the system prompt the moment the lock appears — no separate
+    // "Unlock" button. On success we flip to UNLOCKED immediately (no app restart).
+    LaunchedEffect(Unit) {
+        if (canAuth != BiometricManager.BIOMETRIC_SUCCESS || activity == null) return@LaunchedEffect
+        val promptInfoBuilder = BiometricPrompt.PromptInfo.Builder()
+            .setTitle("Unlock UnifiedComms")
+            .setSubtitle("Authenticate to continue")
+            .setAllowedAuthenticators(allowed)
+        if (allowed and BiometricManager.Authenticators.DEVICE_CREDENTIAL == 0) {
+            promptInfoBuilder.setNegativeButtonText("Cancel")
+        }
+        val promptInfo = promptInfoBuilder.build()
+        BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                super.onAuthenticationSucceeded(result)
+                onUnlocked()
+            }
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                super.onAuthenticationError(errorCode, errString)
+                statusMessage = errString.toString()
+            }
+            override fun onAuthenticationFailed() {
+                super.onAuthenticationFailed()
+                statusMessage = "Authentication failed. Try again."
+            }
+        }).authenticate(promptInfo)
+    }
+
     androidx.compose.material3.AlertDialog(
         onDismissRequest = {},
         title = { androidx.compose.material3.Text("Biometric Lock") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(statusMessage.ifBlank { "Unlock to access UnifiedComms." })
-                if (canAuth == BiometricManager.BIOMETRIC_SUCCESS && activity != null) {
-                    androidx.compose.material3.Button(onClick = {
-                        // Allowed authenticators include DEVICE_CREDENTIAL, and Android
-                        // forbids setNegativeButtonText() in that case (PromptInfo.build()
-                        // throws IllegalArgumentException -> fingerprint prompt never shows).
-                        // The credential fallback is provided by the OS, so no negative button.
-                        val promptInfoBuilder = BiometricPrompt.PromptInfo.Builder()
-                            .setTitle("Unlock UnifiedComms")
-                            .setSubtitle("Authenticate to continue")
-                            .setAllowedAuthenticators(allowed)
-                        if (allowed and BiometricManager.Authenticators.DEVICE_CREDENTIAL == 0) {
-                            promptInfoBuilder.setNegativeButtonText("Cancel")
-                        }
-                        val promptInfo = promptInfoBuilder.build()
-                        val biometricPrompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
-                            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                                super.onAuthenticationSucceeded(result)
-                                onUnlocked()
-                            }
-
-                            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                                super.onAuthenticationError(errorCode, errString)
-                                statusMessage = errString.toString()
-                            }
-
-                            override fun onAuthenticationFailed() {
-                                super.onAuthenticationFailed()
-                                statusMessage = "Authentication failed. Try again."
-                            }
-                        })
-                        biometricPrompt.authenticate(promptInfo)
-                    }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Unlock")
-                    }
-                } else {
+                Text(statusMessage.ifBlank { "Authenticating…" })
+                if (canAuth != BiometricManager.BIOMETRIC_SUCCESS) {
                     val reason = when (canAuth) {
                         BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> "No biometric hardware on this device."
                         BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> "Biometric hardware is temporarily unavailable."
@@ -194,7 +188,11 @@ class MainActivity : FragmentActivity() {
                             composable("unified_inbox") {
                                 UnifiedInboxScreen(
                                     viewModel = viewModel,
-                                    onNavigateToEmail = { accountId, folder -> navController.navigate("email/$accountId/$folder") },
+                                    onNavigateToEmail = { accountId, folder ->
+                                        val route = "email/$accountId/$folder"
+                                        navController.navigate(route)
+                                    },
+                                    onEmailClick = { emailId -> navController.navigate("email_detail/$emailId") },
                                     onNavigateToCalendar = { navController.navigate("calendar") },
                                     onNavigateToSettings = { navController.navigate("settings") },
                                     onNavigateToAddAccount = { navController.navigate("add_account") },
@@ -340,7 +338,8 @@ class MainActivity : FragmentActivity() {
                                 AccountSettingsScreen(
                                     viewModel = viewModel,
                                     accountId = accountId,
-                                    onBack = { navController.popBackStack() }
+                                    onBack = { navController.popBackStack() },
+                                    darkTheme = effectiveDark
                                 )
                             }
                             composable("compose_message") {
@@ -370,7 +369,7 @@ class MainActivity : FragmentActivity() {
                                 )
                             }
                             composable("encryption") {
-                                EncryptionScreen(onBack = { navController.popBackStack() })
+                                EncryptionScreen(onBack = { navController.popBackStack() }, darkTheme = effectiveDark)
                             }
                             composable("contact_new") {
                                 ContactEditScreen(

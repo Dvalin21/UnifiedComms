@@ -86,6 +86,7 @@ import kotlinx.coroutines.launch
 fun UnifiedInboxScreen(
     viewModel: MainViewModel,
     onNavigateToEmail: (String, String) -> Unit,
+    onEmailClick: (String) -> Unit = {},
     onNavigateToCalendar: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToAddAccount: () -> Unit,
@@ -258,7 +259,7 @@ fun UnifiedInboxScreen(
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
             when (selectedTab) {
-                0 -> EmailOverviewScreen(activeAccounts, viewModel, onNavigateToEmail, onNavigateToAddAccount)
+                0 -> EmailOverviewScreen(activeAccounts, viewModel, onNavigateToEmail, onEmailClick, onNavigateToAddAccount)
                 1 -> CalendarScreen(viewModel, onCreateEvent = onCreateEvent, onEventClick = onEventClick)
                 2 -> TasksScreen(viewModel, onCreateTask = onCreateTask, onTaskClick = { onNavigateToTask(it.id) })
                 3 -> MessagesScreen(viewModel, onConversationClick = onNavigateToConversation, onNewMessage = onNavigateToComposeMessage)
@@ -279,6 +280,7 @@ fun EmailOverviewScreen(
     accounts: List<Account>,
     viewModel: MainViewModel,
     onNavigateToEmail: (String, String) -> Unit,
+    onEmailClick: (String) -> Unit = {},
     onAddAccount: () -> Unit = {}
 ) {
     val activeAccounts = accounts.filter { it.isActive }
@@ -314,34 +316,41 @@ fun EmailOverviewScreen(
 
     // Conversation grouping: collapse by threadId (Gmail X-GM-THRID, else Message-ID).
     // Representative = latest message in the thread; count shown as a badge.
-    val threads = emails.groupBy { it.threadId }.values.mapNotNull { msgs ->
-        val rep = msgs.maxByOrNull { it.sentAt } ?: return@mapNotNull null
-        rep to msgs.size
+    // ponytail: remember() so the list identity is stable across recompositions — an
+    // un-remembered groupBy re-emits a new list each frame, which cancels an in-flight
+    // row click (first tap dead, second tap works). Stable list = single-tap opens.
+    val threads = remember(emails) {
+        emails.groupBy { it.threadId }.values.mapNotNull { msgs ->
+            val rep = msgs.maxByOrNull { it.sentAt } ?: return@mapNotNull null
+            rep to msgs.size
+        }
     }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
-        items(threads) { (email, count) ->
+        items(threads, key = { it.first.id }) { (email, count) ->
             val color = accountColorById[email.accountId]
                 ?: com.unifiedcomms.ui.theme.AccountColor(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onPrimary, "Default")
             val fromName = email.sender.name ?: email.sender.email
             val avatarColor = color.container
             val initials = email.sender.getInitials()
             val unread = email.isUnread()
-            Surface(
+            // ponytail: plain clickable Row (no Surface) — Material3 Surface with tonalElevation
+            // consumes the first synthetic tap as a hover/indication event, so the row needs a
+            // second tap to open. A background+clickable Row opens on the first tap.
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onNavigateToEmail(email.accountId, "INBOX") },
-                color = if (unread) MaterialTheme.colorScheme.surfaceContainerHighest
-                else MaterialTheme.colorScheme.surface,
-                tonalElevation = if (unread) 1.dp else 0.dp
+                    .clickable { onEmailClick(email.id) }
+                    .background(
+                        if (unread) MaterialTheme.colorScheme.surfaceContainerHighest
+                        else MaterialTheme.colorScheme.surface
+                    )
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
                     if (unread) {
                         Box(
                             modifier = Modifier
@@ -417,9 +426,8 @@ fun EmailOverviewScreen(
                             )
                         }
                     }
-                }
-            }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         }
     }
 }

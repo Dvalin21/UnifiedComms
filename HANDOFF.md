@@ -134,3 +134,119 @@ KEY FACTS (cross-checked, current)
 - Chat feature: out of scope this session.
 - Don't modify personal houseofmanns.com / keith.manns server data without go-ahead;
   testbox is for test writes only.
+- THE EMAIL DOUBLE-CLICK BUG IS ROOT-CAUSE FIXED THIS SESSION (2026-07-27).
+  See "SESSION 2026-07-27" section below. Verified on the PHONE (10.0.0.228:40311).
+
+================================================================================
+CURRENT DEVICE (2026-07-27 refresh)
+================================================================================
+PHONE = 10.0.0.228:40311 (CURRENT, primary test device this session). Account
+  testbox@houseofmanns.com ATTACHED, Accept-All-Certs ON, emails synced.
+TABLET TB570FU (Lenovo Tab, Android 16) = 10.0.0.211 (used earlier; currently
+  the PHONE is the live target). emulator-5556 OFF-LIMITS per Keith.
+Git HEAD: 71d5cd5 (ui: invite buttons — third matches Accept/Decline, '+Just Add').
+  HANDOFF top-of-file "Latest commit 7a3e467" is STALE — real HEAD is 71d5cd5.
+
+================================================================================
+SESSION 2026-07-27 — INVITE BUTTONS, ENCRYPTION Q, + EMAIL DOUBLE-CLICK FIX
+================================================================================
+USER REQUESTS THIS SESSION (verbatim intent):
+1. Invite 3rd button: make it look like the other two (Accept/Decline) and
+   rename "Add to Calendar" -> "+Just Add". [DONE + VERIFIED on phone]
+2. Telemetry toggle in Settings: there should be NONE (no telemetry exists). Remove it. [CODED]
+3. Sync interval: minimum "every 5 minutes". [CODED]
+4. Encryption: user asked what it means — does it encrypt email in transit / at rest /
+   chats? [ANSWERED, no code change]
+5. Email list: "almost like you have to click twice before you can click the email.
+   One click and I'm in the email." [ROOT-CAUSE FIXED + VERIFIED]
+6. Account settings: when opened it's not in dark mode. [CODED]
+7. Biometric: toggling ON should instantly popup fingerprint, verify, then close —
+   no app restart, and NO separate "Unlock" button before the biometric prompt. [CODED]
+
+--- 1. INVITE 3RD BUTTON (+Just Add) — VERIFIED ON PHONE ---
+EmailScreen.kt InviteCard: 3rd button was a full-width FilledTonalButton labeled
+  "Add to Calendar". Now a filled Button (matches Accept/Decline) in the same Row
+  (Accept weight(1f), Decline weight(1f), +Just Add weight(1.3f) so the longer
+  label fits one line), text "maxLines=1, labelSmall", icons removed so all 3 fit.
+  Behavior unchanged (still calls addInviteToCalendar — no RSVP, no reminder;
+  reminder gap noted earlier: alarms field not populated from invite VALARM).
+Committed: 71d5cd5. Verified: 3 equal-ish buttons, +Just Add complete, no clip.
+
+--- 4. ENCRYPTION MEANING (answer, no change) ---
+EncryptionScreen is AT-REST ONLY: encrypts stored credentials, calendar, tasks on-device
+  via AES-GCM with a master key in Android Keystore. It is NOT end-to-end and
+  does NOT encrypt email bodies or chat messages in transit. In transit, email uses
+  the server's TLS (EmailSyncEngineImpl: imap.ssl.enable / smtp.starttls.enable).
+  Chat transport rides the same IMAP/SMTP-over-TLS path. So "encryption" here =
+  local data-at-rest only; not a Signal-style E2E scheme.
+
+--- 5. EMAIL DOUBLE-CLICK — ROOT CAUSE FOUND + FIXED + VERIFIED ---
+SYMPTOM: tapping an inbox row did nothing on first tap; second tap opened it.
+DIAGNOSIS (real, not guessed — used logcat EMAILTAP/EMAILNAV tags, then removed):
+- The row's click lambda DOES fire on the first tap (confirmed via log).
+- It called onNavigateToEmail(accountId, "INBOX") -> navController.navigate(
+  "email/$accountId/INBOX").
+- THAT ROUTE ("email/{accountId}/{folder}") renders EmailScreen = a FOLDER
+  LIST, not the email detail. The actual detail route is the SEPARATE
+  "email_detail/{emailId}" (renders EmailDetailScreen via getById(emailId)).
+- So tap1 -> folder list (EmailScreen), tap2 -> actually opens the email.
+  That two-stage navigation is the "double click."
+FIX: added onEmailClick(emailId) callback threaded Row -> EmailOverviewScreen
+  -> UnifiedInboxScreen -> MainActivity, navigating straight to
+  "email_detail/$emailId". Row now calls onEmailClick(email.id); onNavigateToEmail
+  (accountId,folder) is kept for the drawer folder-open path (EmailScreen list).
+VERIFIED ON PHONE (10.0.0.228): single tap on "Team Sync Invite" row -> opens
+  EmailDetailScreen directly (InviteCard "Quarterly Planning Sync" + Accept/Decline/
+  +Just Add visible). Dump after single tap shows Accept/Decline/+Just Add, list left.
+NOT YET COMMITTED (part of the uncommitted batch below — verify/commit pending).
+
+--- 2 / 3 / 6 / 7 — VERIFIED ON DEVICE 2026-07-27 (phone 10.0.0.228:40311) ---
+- SettingsScreen.kt: removed the "No Telemetry" SettingItem entirely (pref
+  no_telemetry was write-only — nothing reads it, so removal is honest).
+  Added 5 to "Every 5 minutes" as the new floor in the interval picker list
+  AND updated the syncLabel when-block (5 -> "Every 5 minutes"; else -> "Every 5
+  minutes"). Biometric toggle: when enabling, now launches a BiometricPrompt
+  immediately (canAuthenticate check first); pref is set true ONLY on
+  onAuthenticationSucceeded. No more "set then restart" — instant verify.
+- MainActivity.kt BiometricLockScreen: removed the separate "Unlock" AlertDialog
+  button. The system prompt now auto-launches via LaunchedEffect(Unit) the
+  moment the lock appears; on success -> onUnlocked() (no app restart). If
+  canAuthenticate != SUCCESS it still shows the reason text.
+- AccountSettingsScreen.kt + EncryptionScreen.kt: both were calling
+  UnifiedCommsTheme { } with the DEFAULT darkTheme (= isSystemInDarkTheme()),
+  ignoring the app's effectiveDark — that's why the account screen looked light.
+  Added `darkTheme: Boolean = false` param to each; MainActivity passes
+  effectiveDark into both nav destinations.
+
+--- UNCOMMITTED WORKING TREE (git status --short, pre-commit) ---
+ M AccountSettingsScreen.kt   (darkTheme param + pass effectiveDark)
+ M EncryptionScreen.kt       (darkTheme param + import UnifiedCommsTheme)
+ M MainActivity.kt           (onEmailClick nav; biometric auto-prompt; darkTheme pass)
+ M SettingsScreen.kt         (telemetry removed; 5-min floor; biometric instant-verify)
+ M UnifiedInboxScreen.kt     (onEmailClick threaded; row uses onEmailClick(email.id);
+                                remember(emails) for stable threads list)
+VERIFIED ON DEVICE 2026-07-27 (phone 10.0.0.228:40311, build 1.0.28-debug):
+- Settings/Security: "No Telemetry" row GONE (dumped text list, absent).
+- Sync interval picker: "Every 5 minutes" present as first option (5-min floor
+  enforced). Current value still "Every 15 minutes" (user default, unchanged).
+- Account settings screen: opened with Appearance=Dark -> screenshot corner
+  luminance = 29 (near-black) => dark theme IS applied (was light before fix).
+- Biometric Lock: toggled ON -> system fingerprint prompt appeared immediately;
+  Keith authenticated with fingerprint -> lock engaged. No separate "Unlock"
+  button, no app restart. VERIFIED by user.
+
+COMMITTED this session (commit after verification): email single-tap fix +
+  telemetry removal + 5-min floor + dark account/encryption + biometric instant.
+
+--- KNOWN PRE-EXISTING BUG SURFACED (NOT fixed this batch) ---
+Email LIST row preview leaks the raw ICS blob: "Please accept... --BOUND
+method=REQUEST; charset=utf-8 BEGIN:VCALENDAR VERSI...". Commit 49569d1 only
+stripped the ICS from the DETAIL screen; the OVERVIEW/LIST preview still shows
+the raw invite body. Separate fix needed (sanitize list preview like detail).
+Out of scope for this batch; flagged for Keith's call.
+
+--- NEXT STEP (resume) ---
+1. Proceed to LIVE CHAT TEST (Keith's stated next milestone) — Chat scoped to
+   primary account, Edison-style bubbles, 12h timestamps (done earlier sessions,
+   not re-verified this round). OR fix the list-preview ICS leak above.
+2. Decide on the list-preview ICS leak: fix now or defer.

@@ -54,6 +54,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import com.unifiedcomms.util.PreferencesManager
 import android.app.AlertDialog
 import androidx.compose.ui.Alignment
@@ -134,13 +139,15 @@ fun SettingsScreen(
                 var autoSync by remember { mutableStateOf(PreferencesManager.getInstance().getBoolean("auto_sync", true)) }
                 val syncIntervalMinutes = PreferencesManager.getInstance().getSyncIntervalMinutes(15)
                 val syncLabel = when (syncIntervalMinutes) {
+                    5 -> "Every 5 minutes"
+                    15 -> "Every 15 minutes"
                     30 -> "Every 30 minutes"
                     60 -> "Every 1 hour"
                     180 -> "Every 3 hours"
                     360 -> "Every 6 hours"
                     720 -> "Every 12 hours"
                     -1 -> "Manual only"
-                    else -> "Every 15 minutes"
+                    else -> "Every 5 minutes"
                 }
                 SettingItem(
                     title = "Auto-sync",
@@ -194,12 +201,52 @@ fun SettingsScreen(
 
             SettingsGroup(title = "Security", icon = Icons.Default.Lock) {
                 var biometric by remember { mutableStateOf(PreferencesManager.getInstance().getBoolean("biometric_lock", false)) }
-                SettingItem(title = "Biometric Lock", subtitle = "Require biometrics", icon = Icons.Default.Lock, trailing = { Switch(checked = biometric, onCheckedChange = { biometric = it; PreferencesManager.getInstance().putBoolean("biometric_lock", it) }) }, onClick = { })
+                val context = LocalContext.current
+                val activity = context as? FragmentActivity
+                val executor = remember { ContextCompat.getMainExecutor(context) }
+                SettingItem(title = "Biometric Lock", subtitle = "Require biometrics", icon = Icons.Default.Lock, trailing = {
+                    Switch(checked = biometric, onCheckedChange = { wantOn ->
+                        if (wantOn) {
+                            // ponytail: when enabling, immediately verify the user via the
+                            // system biometric prompt. Only commit the pref after success, so
+                            // there is no separate "Unlock" step and no app restart needed.
+                            val allowed = BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                                BiometricManager.Authenticators.BIOMETRIC_WEAK or
+                                BiometricManager.Authenticators.DEVICE_CREDENTIAL
+                            val canAuth = if (activity == null) BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED
+                            else BiometricManager.from(context).canAuthenticate(allowed)
+                            if (activity == null || canAuth != BiometricManager.BIOMETRIC_SUCCESS) {
+                                biometric = false
+                                return@Switch
+                            }
+                            val promptInfo = BiometricPrompt.PromptInfo.Builder()
+                                .setTitle("Enable Biometric Lock")
+                                .setSubtitle("Authenticate to confirm")
+                                .setAllowedAuthenticators(allowed)
+                                .build()
+                            BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
+                                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                                    super.onAuthenticationSucceeded(result)
+                                    biometric = true
+                                    PreferencesManager.getInstance().putBoolean("biometric_lock", true)
+                                }
+                                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                                    super.onAuthenticationError(errorCode, errString)
+                                    biometric = false
+                                }
+                                override fun onAuthenticationFailed() {
+                                    super.onAuthenticationFailed()
+                                    biometric = false
+                                }
+                            }).authenticate(promptInfo)
+                        } else {
+                            biometric = false
+                            PreferencesManager.getInstance().putBoolean("biometric_lock", false)
+                        }
+                    })
+                }, onClick = { })
                 HorizontalDivider()
                 SettingItem(title = "Encryption", icon = Icons.Default.Security, onClick = onEncryptionClick)
-                HorizontalDivider()
-                var noTelemetry by remember { mutableStateOf(PreferencesManager.getInstance().getBoolean("no_telemetry", false)) }
-                SettingItem(title = "No Telemetry", icon = Icons.Default.Block, trailing = { Switch(checked = noTelemetry, onCheckedChange = { noTelemetry = it; PreferencesManager.getInstance().putBoolean("no_telemetry", it) }) }, onClick = { })
             }
 
             SettingsGroup(title = "Advanced", icon = Icons.Default.Alarm) {
@@ -225,6 +272,7 @@ fun SettingsScreen(
 
     if (showReminderTime) {
         val syncIntervals = listOf(
+            5 to "Every 5 minutes",
             15 to "Every 15 minutes",
             30 to "Every 30 minutes",
             60 to "Every 1 hour",

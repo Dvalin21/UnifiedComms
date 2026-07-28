@@ -58,7 +58,8 @@ fun AccountSettingsScreen(
     viewModel: MainViewModel,
     accountId: String,
     onBack: () -> Unit,
-    coroutineScope: CoroutineScope? = null
+    coroutineScope: CoroutineScope? = null,
+    darkTheme: Boolean = false
 ) {
     // ponytail: read the account from the collected accounts stream, not a direct call during
     // composition — otherwise a not-yet-loaded list shows "Account not found" forever and the
@@ -66,7 +67,7 @@ fun AccountSettingsScreen(
     val allAccounts by viewModel.accounts.collectAsStateWithLifecycle(initialValue = emptyList())
     val account = allAccounts.find { it.id == accountId }
     if (account == null) {
-        UnifiedCommsTheme {
+        UnifiedCommsTheme(darkTheme = darkTheme) {
             Scaffold { innerPadding ->
                 Column(modifier = Modifier.padding(innerPadding).padding(16.dp)) {
                     Text("Account not found")
@@ -86,7 +87,7 @@ fun AccountSettingsScreen(
     var isActive by remember { mutableStateOf(account.isActive) }
     var isDefault by remember { mutableStateOf(account.isDefault) }
 
-    UnifiedCommsTheme {
+    UnifiedCommsTheme(darkTheme = darkTheme) {
         Scaffold(
             topBar = {
                 TopAppBar(
