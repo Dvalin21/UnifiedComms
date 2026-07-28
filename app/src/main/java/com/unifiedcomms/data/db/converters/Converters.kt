@@ -196,17 +196,6 @@ class TaskDateTimeConverter {
         decodeOr(com.unifiedcomms.data.model.TaskDateTime()) { value?.let { json.decodeFromString(value) } ?: com.unifiedcomms.data.model.TaskDateTime() }
 }
 
-class MessageAttachmentListConverter {
-    private val json = Json { ignoreUnknownKeys = true }
-
-    @TypeConverter
-    fun fromList(value: List<com.unifiedcomms.data.model.MessageAttachment>?): String? = value?.let { json.encodeToString(it) }
-
-    @TypeConverter
-    fun toList(value: String?): List<com.unifiedcomms.data.model.MessageAttachment> =
-        decodeOr(emptyList()) { value?.let { json.decodeFromString(value) } ?: emptyList() }
-}
-
 class GeoLocationConverter {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -281,17 +270,6 @@ class TaskAttachmentListConverter {
     @TypeConverter
     fun toList(value: String?): List<com.unifiedcomms.data.model.TaskAttachment> =
         decodeOr(emptyList()) { value?.let { json.decodeFromString(value) } ?: emptyList() }
-}
-
-class ConversationSettingsConverter {
-    private val json = Json { ignoreUnknownKeys = true }
-
-    @TypeConverter
-    fun fromSettings(value: com.unifiedcomms.data.model.ConversationSettings?): String? = value?.let { json.encodeToString(it) }
-
-    @TypeConverter
-    fun toSettings(value: String?): com.unifiedcomms.data.model.ConversationSettings =
-        decodeOr(com.unifiedcomms.data.model.ConversationSettings()) { value?.let { json.decodeFromString(value) } ?: com.unifiedcomms.data.model.ConversationSettings() }
 }
 
 class ServerConfigConverter {

@@ -10,7 +10,6 @@ import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import com.unifiedcomms.data.model.Message
-import com.unifiedcomms.data.model.Conversation
 import com.unifiedcomms.data.model.UnifiedContact
 import com.unifiedcomms.data.model.MessageStatus
 import com.unifiedcomms.data.model.MessageType
@@ -40,14 +39,10 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE id = :id")
     suspend fun getById(id: String): Message?
 
-    @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY sentAt ASC LIMIT :limit OFFSET :offset")
-    fun getByConversation(conversationId: String, limit: Int, offset: Int): Flow<List<Message>>
-
+    // ponytail: Message.conversationId now keys the search index only — searchMessages
+    // is the real consumer. kept as a simple lookup helper.
     @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY sentAt DESC LIMIT 1")
-    suspend fun getLastMessage(conversationId: String): Message?
-
-    @Query("SELECT * FROM messages WHERE conversationId = :conversationId AND status IN (:statuses) ORDER BY sentAt ASC")
-    fun getPendingMessages(conversationId: String, statuses: List<MessageStatus>): Flow<List<Message>>
+    suspend fun getLastForConversation(conversationId: String): Message?
 
     @Query("SELECT * FROM messages WHERE (senderId = :senderId AND recipientId = :recipientId) OR (senderId = :recipientId AND recipientId = :senderId) ORDER BY sentAt DESC LIMIT :limit")
     suspend fun getDirectMessages(senderId: String, recipientId: String, limit: Int): List<Message>
@@ -55,8 +50,8 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE content LIKE :query ORDER BY sentAt DESC LIMIT :limit")
     fun searchMessages(query: String, limit: Int): Flow<List<Message>>
 
-    @Query("SELECT * FROM messages WHERE messageType = :type AND conversationId = :conversationId ORDER BY sentAt DESC")
-    fun getByType(conversationId: String, type: MessageType): Flow<List<Message>>
+    @Query("SELECT * FROM messages WHERE messageType = :type ORDER BY sentAt DESC")
+    fun getByType(type: MessageType): Flow<List<Message>>
 
     @Query("SELECT * FROM messages WHERE needsSync = 1")
     suspend fun getNeedingSync(): List<Message>
@@ -84,108 +79,8 @@ interface MessageDao {
         }
     }
 
-    @Transaction
-    suspend fun markConversationRead(conversationId: String, currentUserId: String) {
-        val messages = getByConversation(conversationId, 1000, 0).first()
-        val toMark = messages.filter { it.recipientId == currentUserId && it.status != MessageStatus.READ }
-        for (msg in toMark) {
-            markRead(listOf(msg.id))
-        }
-    }
-
     @Query("DELETE FROM messages WHERE conversationId = :conversationId AND sentAt < :olderThan")
     suspend fun cleanupOldMessages(conversationId: String, olderThan: Long): Int
-}
-
-@Dao
-interface ConversationDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(conversation: Conversation): Long
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAll(conversations: List<Conversation>): List<Long>
-
-    @Update
-    suspend fun update(conversation: Conversation): Int
-
-    @Delete
-    suspend fun delete(conversation: Conversation): Int
-
-    @Query("DELETE FROM conversations WHERE id = :id")
-    suspend fun deleteById(id: String): Int
-
-    @Query("SELECT * FROM conversations WHERE id = :id")
-    suspend fun getById(id: String): Conversation?
-
-    @Query("SELECT * FROM conversations WHERE id IN (:ids)")
-    suspend fun getByIds(ids: List<String>): List<Conversation>
-
-    // ponytail: participantIds is a JSON-array STRING column (StringListConverter).
-    // instr() matches any occurrence — rare false positives on substrings of UUIDs/phones,
-    // acceptable for now. Add GLOB or json_each if precision matters.
-    @Query("SELECT * FROM conversations WHERE instr(participantIds, :userId) > 0 ORDER BY isPinned DESC, lastActivityAt DESC")
-    fun getAllForUser(userId: String): Flow<List<Conversation>>
-
-    @Query("SELECT * FROM conversations WHERE instr(participantIds, :userId) > 0 AND isArchived = 0 ORDER BY isPinned DESC, lastActivityAt DESC")
-    fun getActiveForUser(userId: String): Flow<List<Conversation>>
-
-    @Query("SELECT * FROM conversations WHERE instr(participantIds, :userId) > 0 AND isArchived = 1 ORDER BY lastActivityAt DESC")
-    fun getArchivedForUser(userId: String): Flow<List<Conversation>>
-
-    @Query("SELECT * FROM conversations WHERE instr(participantIds, :userId) > 0 AND isPinned = 1 ORDER BY lastActivityAt DESC")
-    fun getPinnedForUser(userId: String): Flow<List<Conversation>>
-
-    @Query("SELECT * FROM conversations WHERE (participantIds = :asc OR participantIds = :desc) AND type = :type")
-    suspend fun findDirectConversation(asc: List<String>, desc: List<String>, type: com.unifiedcomms.data.model.ConversationType): Conversation?
-
-    @Query("SELECT * FROM conversations WHERE unreadCount > 0 AND instr(participantIds, :userId) > 0 ORDER BY lastActivityAt DESC")
-    suspend fun getWithUnread(userId: String): List<Conversation>
-
-    @Query("SELECT COALESCE(SUM(unreadCount), 0) FROM conversations WHERE instr(participantIds, :userId) > 0")
-    suspend fun getTotalUnreadCount(userId: String): Int
-
-    @Transaction
-    suspend fun updateLastMessage(conversationId: String, message: Message, currentUserId: String) {
-        getById(conversationId)?.let { conv ->
-            val isIncoming = message.recipientId == currentUserId
-            val newUnread = if (isIncoming && message.status != MessageStatus.READ) conv.unreadCount + 1 else conv.unreadCount
-            update(conv.copy(
-                lastMessageId = message.id,
-                lastMessagePreview = message.content.take(100),
-                lastActivityAt = message.sentAt,
-                unreadCount = newUnread,
-                updatedAt = Clock.System.now()
-            ))
-        }
-    }
-
-    @Transaction
-    suspend fun markConversationRead(conversationId: String, currentUserId: String) {
-        getById(conversationId)?.let { conv ->
-            update(conv.copy(unreadCount = 0, updatedAt = Clock.System.now()))
-        }
-    }
-
-    @Transaction
-    suspend fun togglePin(conversationId: String) {
-        getById(conversationId)?.let { conv ->
-            update(conv.copy(isPinned = !conv.isPinned, updatedAt = Clock.System.now()))
-        }
-    }
-
-    @Transaction
-    suspend fun toggleArchive(conversationId: String) {
-        getById(conversationId)?.let { conv ->
-            update(conv.copy(isArchived = !conv.isArchived, updatedAt = Clock.System.now()))
-        }
-    }
-
-    @Transaction
-    suspend fun toggleMute(conversationId: String, muteUntil: Instant? = null) {
-        getById(conversationId)?.let { conv ->
-            update(conv.copy(isMuted = !conv.isMuted, muteUntil = muteUntil, updatedAt = Clock.System.now()))
-        }
-    }
 }
 
 @Dao

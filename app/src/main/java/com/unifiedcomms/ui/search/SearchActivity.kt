@@ -80,7 +80,7 @@ class SearchActivity : ComponentActivity() {
         val calendarRepo = CalendarRepositoryImpl(db.calendarEventDao(), db.calendarDao())
         val taskRepo = TaskRepositoryImpl(db.taskDao(), db.taskListDao())
         val contactRepo = ContactRepositoryImpl(db.contactDao())
-        val msgRepo = MessagingRepositoryImpl(db.messageDao(), db.conversationDao())
+        val msgRepo = MessagingRepositoryImpl(db.messageDao())
         val accountRepo = AccountRepositoryImpl(db.accountDao(), CryptoManagerImpl(this))
 
         setContent {

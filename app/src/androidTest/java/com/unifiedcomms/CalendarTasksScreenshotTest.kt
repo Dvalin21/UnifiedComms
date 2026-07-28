@@ -69,7 +69,7 @@ class CalendarTasksScreenshotTest {
                 caldavUrl = "https://email.houseofmanns.com/SOGo/dav/$user/Calendar/personal/"
             ),
             authConfig = AuthConfig.AppPassword(user, password()),
-            syncConfig = SyncConfig.Defaults().copy(syncEmail = false, syncCalendar = true, syncTasks = true, syncContacts = false, syncChat = false),
+            syncConfig = SyncConfig.Defaults().copy(syncEmail = false, syncCalendar = true, syncTasks = true, syncContacts = false),
             uiConfig = UIConfig.Defaults()
         )
         accountRepo.insert(acc)
