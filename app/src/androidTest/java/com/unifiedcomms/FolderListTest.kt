@@ -27,6 +27,6 @@ class FolderListTest {
         folders.forEachIndexed { i, f -> Log.e("FOLD", "  [$i] '$f'") }
         // ponytail: chat folder no longer hidden — if a "Chat" folder exists it now
         // lists as a normal mail folder (old AltMarkMove logic removed).
-        Log.e("FOLD", "CHAT_LISTED=${folders.any { it.equals("Chat", true) || it.equals(acc.syncConfig.chatFolder, true) }}")
+        Log.e("FOLD", "CHAT_LISTED=${folders.any { it.equals("Chat", true) }}")
     }
 }
