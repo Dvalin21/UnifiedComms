@@ -54,7 +54,13 @@ class ChatSyncEngineImpl(
                 accountRepo.update(reEncrypted.copy(syncConfig = reEncrypted.syncConfig.copy(chatFolder = effectiveFolder)))
             }
         }
-        return syncFolder(stored, effectiveFolder)
+        // ponytail: a peer who just emails us normally lands in INBOX, not the Chat
+        // folder. Scan INBOX as a chat source too, then AltMarkMove it out so the
+        // standard inbox stays clean for ordinary mail clients (Delta-Chat behaviour).
+        val inboxResult = syncFolder(stored, "INBOX")
+        val chatResult = if (effectiveFolder.isNotBlank()) syncFolder(stored, effectiveFolder)
+        else inboxResult
+        return if (effectiveFolder.isNotBlank()) chatResult else inboxResult
     }
 
     override suspend fun syncFolder(account: Account, folder: String): SyncResult {
@@ -92,8 +98,10 @@ class ChatSyncEngineImpl(
 
                     for (msg in messages) {
                         if (!f.isOpen) break
-                        val chatUid = msg.getHeader("X-Chat-Message-Id")?.firstOrNull()
+                        val chatHeader = msg.getHeader("X-Chat-Message-Id")?.firstOrNull()
+                            ?: msg.getHeader("Chat-Version")?.firstOrNull()
                             ?: msg.getHeader("Message-ID")?.firstOrNull()
+                        val chatUid = chatHeader
                             ?: "${folder}#${msg.messageNumber}"
                         val existing = messagingRepo.getMessageById(chatUid)
                         if (existing == null) {
@@ -111,6 +119,25 @@ class ChatSyncEngineImpl(
                                 }
                                 messagingRepo.insertMessage(chatMsg)
                                 synced++
+                                // AltMarkMove (Delta-Chat / BlueMail behaviour): the message is a
+                                // chat, not ordinary mail. Mark it \Seen on the server so normal
+                                // mail clients don't notify on it, and if it arrived in INBOX
+                                // move it into the Chat folder so the standard inbox stays clean.
+                                val chatFolder = account.syncConfig.chatFolder
+                                    .ifBlank { FALLBACK_CHAT_FOLDER }
+                                runCatching { msg.setFlag(javax.mail.Flags.Flag.SEEN, true) }
+                                if (folder.equals("INBOX", ignoreCase = true) &&
+                                    chatFolder.isNotBlank() && chatFolder != "INBOX"
+                                ) {
+                                    runCatching {
+                                        val dest = store.getFolder(chatFolder).also {
+                                            if (!it.exists()) it.create(javax.mail.Folder.HOLDS_MESSAGES)
+                                        }
+                                        f.copyMessages(arrayOf(msg), dest)
+                                        msg.setFlag(javax.mail.Flags.Flag.DELETED, true)
+                                        f.expunge()
+                                    }
+                                }
                             }
                         }
                     }
