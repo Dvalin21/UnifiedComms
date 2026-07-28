@@ -6,6 +6,7 @@ import com.unifiedcomms.UnifiedCommsApplication
 import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.model.Email
 import com.unifiedcomms.data.model.stripHtml
+import com.unifiedcomms.data.model.stripCalendar
 import com.unifiedcomms.data.model.EmailAddress
 import com.unifiedcomms.data.model.EmailFlags
 import com.unifiedcomms.data.model.EmailRecipients
@@ -500,7 +501,10 @@ class EmailSyncEngineImpl(
             }.getOrNull()
             if (invite != null) android.util.Log.d("INVITE", "extracted invite uid=${invite.eventUid} title='${invite.eventTitle}' start=${invite.startAt}")
 
-            val preview = bodyText?.take(200) ?: subject
+            // ponytail: strip the embedded VCALENDAR blob before storing the preview,
+            // so the inbox row never shows raw "BEGIN:VCALENDAR...". getSnippet() also
+            // strips defensively, but the stored value must be clean.
+            val preview = bodyText?.stripCalendar()?.stripHtml()?.take(200) ?: subject
             val flags = EmailFlags(
                 isRead = runCatching { msg.isSet(Flags.Flag.SEEN) }.getOrDefault(false),
                 isFlagged = runCatching { msg.isSet(Flags.Flag.FLAGGED) }.getOrDefault(false),
