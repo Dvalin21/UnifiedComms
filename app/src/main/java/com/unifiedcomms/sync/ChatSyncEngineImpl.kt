@@ -301,7 +301,10 @@ class ChatSyncEngineImpl(
 
     private fun buildThreadId(accountEmail: String, participants: Set<String>): String {
         val ids = listOf(accountEmail) + participants.filter { it != accountEmail }
-        return "chat/${ids.sorted().joinToString(":") { it.lowercase() }}"
+        // ponytail: must NOT contain '/', else the id ("chat/a@x:b@y") breaks
+        // navController.navigate("conversation/$id") -> deep-link parse fails ->
+        // IllegalArgumentException -> app force-closes when tapping a chat. Use '_'.
+        return "chat_${ids.sorted().joinToString("_") { it.lowercase() }}"
     }
 
     private fun buildChatSubject(message: Message, conversation: Conversation): String {

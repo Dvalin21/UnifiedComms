@@ -201,7 +201,14 @@ class MainActivity : FragmentActivity() {
                                             android.content.Intent(this@MainActivity, com.unifiedcomms.ui.search.SearchActivity::class.java)
                                         )
                                     },
-                                    onNavigateToConversation = { conversationId -> navController.navigate("conversation/$conversationId") },
+                                    onNavigateToConversation = { conversationId ->
+                                        // ponytail: conversation ids can contain '/'
+                                        // (legacy "chat/a@x:b@y" rows). Encode so the
+                                        // deep-link parser matches the route instead of
+                                        // throwing IllegalArgumentException -> force close.
+                                        val safe = java.net.URLEncoder.encode(conversationId, "UTF-8")
+                                        navController.navigate("conversation/$safe")
+                                    },
                                     onNavigateToComposeMessage = { navController.navigate("compose_message") },
                                     onEventClick = { eventId -> navController.navigate("event_detail/$eventId") },
                                     onCreateEvent = { navController.navigate("create_event") },
@@ -300,12 +307,17 @@ class MainActivity : FragmentActivity() {
                             composable("messages") {
                                 MessagesScreen(
                                     viewModel = viewModel,
-                                    onConversationClick = { conversationId -> navController.navigate("conversation/$conversationId") },
+                                    onConversationClick = { conversationId ->
+                                        val safe = java.net.URLEncoder.encode(conversationId, "UTF-8")
+                                        navController.navigate("conversation/$safe")
+                                    },
                                     onNewMessage = { navController.navigate("compose_message") }
                                 )
                             }
                             composable("conversation/{conversationId}") { backStackEntry ->
-                                val conversationId = backStackEntry.arguments?.getString("conversationId").orEmpty()
+                                val conversationId = java.net.URLDecoder.decode(
+                                    backStackEntry.arguments?.getString("conversationId").orEmpty(), "UTF-8"
+                                )
                                 ConversationScreen(
                                     viewModel = viewModel,
                                     conversationId = conversationId,
