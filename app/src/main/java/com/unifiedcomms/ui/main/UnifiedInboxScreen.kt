@@ -91,8 +91,6 @@ fun UnifiedInboxScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToAddAccount: () -> Unit,
     onNavigateToSearch: () -> Unit = {},
-    onNavigateToConversation: (String) -> Unit = {},
-    onNavigateToComposeMessage: () -> Unit = {},
     onEventClick: (String) -> Unit = {},
     onCreateEvent: () -> Unit = {},
     onNavigateToContact: (String) -> Unit = {},
@@ -124,8 +122,7 @@ fun UnifiedInboxScreen(
         }
     }
 
-    // ponytail: Edison-style left drawer listing every real mail folder (Chat
-    // excluded at the source in EmailSyncEngine.listFolders). Loaded on open.
+    // ponytail: Edison-style left drawer listing every real mail folder. Loaded on open.
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     var folderList by remember { mutableStateOf<List<FolderEntry>>(emptyList()) }
     val primaryAccountId = activeAccounts.firstOrNull()?.id.orEmpty()
@@ -261,7 +258,6 @@ fun UnifiedInboxScreen(
                         NavigationItem("Inbox", Icons.Default.Inbox, 0),
                         NavigationItem("Calendar", Icons.Default.CalendarMonth, 1),
                         NavigationItem("Tasks", Icons.Default.Checklist, 2),
-                        NavigationItem("Chat", Icons.AutoMirrored.Default.Message, 3),
                         NavigationItem("People", Icons.Default.Contacts, 4)
                     )
                     items.forEach { item ->
@@ -286,7 +282,6 @@ fun UnifiedInboxScreen(
                 0 -> EmailOverviewScreen(activeAccounts, viewModel, onNavigateToEmail, onEmailClick, onNavigateToAddAccount)
                 1 -> CalendarScreen(viewModel, onCreateEvent = onCreateEvent, onEventClick = onEventClick)
                 2 -> TasksScreen(viewModel, onCreateTask = onCreateTask, onTaskClick = { onNavigateToTask(it.id) })
-                3 -> MessagesScreen(viewModel, onConversationClick = onNavigateToConversation, onNewMessage = onNavigateToComposeMessage)
                 4 -> ContactsScreen(viewModel, onContactClick = onNavigateToContact, onAddContact = onNavigateToContactNew)
             }
         }

@@ -9,7 +9,6 @@ import com.unifiedcomms.data.repository.AccountRepositoryImpl
 import com.unifiedcomms.data.repository.CalendarRepositoryImpl
 import com.unifiedcomms.data.repository.ContactRepositoryImpl
 import com.unifiedcomms.data.repository.EmailRepositoryImpl
-import com.unifiedcomms.data.repository.MessagingRepositoryImpl
 import com.unifiedcomms.data.repository.TaskRepositoryImpl
 import com.unifiedcomms.security.CryptoManagerImpl
 import android.util.Log
@@ -40,7 +39,6 @@ class BackgroundSyncWorker(
         val emailRepo = EmailRepositoryImpl(db.emailDao())
         val calendarRepo = CalendarRepositoryImpl(db.calendarEventDao(), db.calendarDao())
         val taskRepo = TaskRepositoryImpl(db.taskDao(), db.taskListDao())
-        val messagingRepo = MessagingRepositoryImpl(db.messageDao(), db.conversationDao())
         val contactRepo = ContactRepositoryImpl(db.contactDao())
 
         val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -50,7 +48,6 @@ class BackgroundSyncWorker(
                 CalendarSyncEngineImpl(calendarRepo, accountRepo, crypto, scope),
                 TaskSyncEngineImpl(taskRepo, accountRepo, crypto, scope),
                 ContactSyncEngineImpl(contactRepo, accountRepo, crypto, scope),
-                ChatSyncEngineImpl(messagingRepo, accountRepo, crypto, scope, applicationContext),
                 accountRepo,
                 scope,
                 applicationContext,

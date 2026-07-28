@@ -64,6 +64,17 @@ object Migrations {
             }
         }
     }
+
+
+    /**
+     * Chat feature removed. The `conversations` table is chat-only; drop it.
+     * `messages` table is retained for search.
+     */
+    val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("DROP TABLE IF EXISTS conversations")
+        }
+    }
 }
 
 /** True if [table] already has a column named [column]. Used to make migrations idempotent. */

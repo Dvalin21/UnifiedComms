@@ -17,8 +17,6 @@ import com.unifiedcomms.data.repository.ContactRepository
 import com.unifiedcomms.data.repository.ContactRepositoryImpl
 import com.unifiedcomms.data.repository.EmailRepository
 import com.unifiedcomms.data.repository.EmailRepositoryImpl
-import com.unifiedcomms.data.repository.MessagingRepository
-import com.unifiedcomms.data.repository.MessagingRepositoryImpl
 import com.unifiedcomms.data.repository.TaskRepository
 import com.unifiedcomms.data.repository.TaskRepositoryImpl
 import com.unifiedcomms.security.CryptoManagerImpl
@@ -31,7 +29,6 @@ import com.unifiedcomms.sync.SendResult
 import com.unifiedcomms.sync.SyncManager
 import com.unifiedcomms.sync.SyncResult
 import com.unifiedcomms.sync.TaskSyncEngineImpl
-import com.unifiedcomms.sync.ChatSyncEngineImpl
 import com.unifiedcomms.data.model.CalendarInviteMessage
 import com.unifiedcomms.data.model.AttendeeStatus
 import com.unifiedcomms.data.model.UnifiedContact
@@ -55,10 +52,6 @@ class MainViewModel(
         app.database.taskDao(),
         app.database.taskListDao()
     )
-    private val messagingRepo: MessagingRepository = MessagingRepositoryImpl(
-        app.database.messageDao(),
-        app.database.conversationDao()
-    )
     private val contactRepo: ContactRepository = ContactRepositoryImpl(app.database.contactDao())
     private val crypto = com.unifiedcomms.security.CryptoManagerImpl(app)
     private val emailSyncEngine = EmailSyncEngineImpl(emailRepo, accountRepo, crypto, viewModelScope)
@@ -67,7 +60,6 @@ class MainViewModel(
         CalendarSyncEngineImpl(calendarRepo, accountRepo, crypto, viewModelScope),
         TaskSyncEngineImpl(taskRepo, accountRepo, crypto, viewModelScope),
         ContactSyncEngineImpl(contactRepo, accountRepo, crypto, viewModelScope),
-        ChatSyncEngineImpl(messagingRepo, accountRepo, crypto, viewModelScope, app),
         accountRepo,
         viewModelScope,
         app,
@@ -187,49 +179,6 @@ class MainViewModel(
     suspend fun provisionAccount(account: Account): com.unifiedcomms.sync.ProvisionResult =
         syncManager.provision(account)
 
-    suspend fun sendMessage(conversationId: String, content: String) {
-        val currentUserId = com.unifiedcomms.data.model.getCurrentUserId()
-        var conversation = messagingRepo.getConversationById(conversationId)
-        if (conversation == null) {
-            val peer = conversationId
-            conversation = com.unifiedcomms.data.model.Conversation(
-                id = conversationId,
-                participantIds = listOf(currentUserId, peer),
-                participantNames = mapOf(currentUserId to currentUserId, peer to peer)
-            )
-            messagingRepo.insertConversation(conversation)
-        }
-        val message = com.unifiedcomms.data.model.Message(
-            conversationId = conversation.id,
-            senderId = currentUserId,
-            recipientId = conversation.participantIds.firstOrNull { it != currentUserId }.orEmpty(),
-            content = content,
-            sentAt = kotlinx.datetime.Clock.System.now()
-        )
-        messagingRepo.insertMessage(message)
-        messagingRepo.updateLastMessage(conversation.id, message, currentUserId)
-        val account = getDefaultAccount()
-        if (account != null && account.syncConfig.syncChat) {
-            viewModelScope.launch {
-                val chatResult = runCatching { syncManager.sendChatMessage(account, conversation, message) }.getOrNull()
-                if (chatResult != null && chatResult.success) {
-                    messagingRepo.updateMessage(message.copy(status = com.unifiedcomms.data.model.MessageStatus.SENT, needsSync = false))
-                } else {
-                    messagingRepo.updateMessage(message.copy(status = com.unifiedcomms.data.model.MessageStatus.FAILED))
-                }
-            }
-        }
-        val peer = conversation?.getOtherParticipantNames(currentUserId)?.firstOrNull() ?: conversationId
-        if (com.unifiedcomms.util.MessagingForegroundGate.isOpen(conversationId).not()) {
-            com.unifiedcomms.util.NotificationHelper.showMessageNotification(
-                app,
-                conversationId,
-                peer,
-                content
-            )
-        }
-    }
-
     suspend fun sendEmail(email: com.unifiedcomms.data.model.Email): SendResult {
         val account = accountRepo.getById(email.accountId) ?: return SendResult.failure("Account not found")
         val result = syncManager.sendEmail(account, email)
@@ -283,7 +232,6 @@ class MainViewModel(
     val emailRepository: EmailRepository = emailRepo
     val calendarRepository: CalendarRepository = calendarRepo
     val taskRepository: TaskRepository = taskRepo
-    val messagingRepository: MessagingRepository = messagingRepo
     val contactRepository: ContactRepository = contactRepo
     val contactSyncEngine: ContactSyncEngine = ContactSyncEngineImpl(contactRepo, accountRepo, crypto, viewModelScope)
     val syncManagerInstance: SyncManager = syncManager

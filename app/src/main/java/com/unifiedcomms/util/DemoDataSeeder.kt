@@ -7,7 +7,6 @@ import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.model.AccountType
 import com.unifiedcomms.data.model.AuthConfig
 import com.unifiedcomms.data.model.CalendarEvent
-import com.unifiedcomms.data.model.Conversation
 import com.unifiedcomms.data.model.EventAttendee
 import com.unifiedcomms.data.model.EventDateTime
 import com.unifiedcomms.data.model.Message
@@ -83,8 +82,6 @@ object DemoDataSeeder {
         )
         db.accountDao().insert(account)
 
-        val a1 = UUID.randomUUID().toString()
-        val a2 = UUID.randomUUID().toString()
         db.contactDao().insert(UnifiedContact(id = UUID.randomUUID().toString(), displayName = "Alice Example", emails = listOf("alice@example.test"), organization = "Acme", accountId = accountId))
         db.contactDao().insert(UnifiedContact(id = UUID.randomUUID().toString(), displayName = "Bob Example", emails = listOf("bob@example.test"), organization = "Acme", accountId = accountId))
 
@@ -134,10 +131,6 @@ object DemoDataSeeder {
         )
 
         val localUserId = com.unifiedcomms.data.model.getCurrentUserId()
-        var conversationId = java.util.UUID.randomUUID().toString()
-        db.conversationDao().insert(Conversation(id = conversationId, participantIds = listOf(localUserId, a1, a2), participantNames = mapOf(localUserId to "Demo User", a1 to "Alice Example", a2 to "Bob Example"), title = "Demo group"))
-        db.messageDao().insert(Message(conversationId = conversationId, senderId = a1, recipientId = localUserId, content = "Welcome to UnifiedComms demo."))
-        db.messageDao().insert(Message(conversationId = conversationId, senderId = localUserId, recipientId = a1, content = "Demo account active. Calendar and tasks are visible on their tabs."))
     }
 
     private fun makeEvent(accountId: String, uid: String, title: String, start: String, end: String) = CalendarEvent(accountId = accountId, calendarId = "local", uid = uid, title = title, startAt = EventDateTime(LocalDateTime.parse(start), timeZone = java.time.ZoneId.systemDefault().id), endAt = EventDateTime(LocalDateTime.parse(end), timeZone = java.time.ZoneId.systemDefault().id), organizer = EventAttendee(email = "Demo User"))
