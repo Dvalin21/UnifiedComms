@@ -13,7 +13,7 @@
 
 ## 🎯 Philosophy
 
-**Data structures first.** Everything flows from the models: `Account`, `Email`, `CalendarEvent`, `Task`, `Message`, `Conversation`, `UnifiedContact`. No telemetry, no tracking, no data leaves your device without explicit consent.
+**Data structures first.** Everything flows from the models: `Account`, `Email`, `CalendarEvent`, `Task`, `Message`, `UnifiedContact`. No telemetry, no tracking, no data leaves your device without explicit consent.
 
 ---
 
@@ -28,7 +28,6 @@ Captured from the running app (debug build, light + dark themes, seeded demo dat
 | **Email — Unified Inbox** | ![Unified Inbox](docs/screenshots/uc_03_email_folder.png) | — |
 | **Calendar** | ![Calendar](docs/screenshots/uc_04_calendar.png) | ![Calendar](docs/screenshots/uc_11_calendar_dark.png) |
 | **Tasks** | ![Tasks](docs/screenshots/uc_05_tasks.png) | ![Tasks](docs/screenshots/uc_12_tasks_dark.png) |
-| **Messages** | ![Messages](docs/screenshots/uc_06_messages.png) | — |
 | **Settings** | ![Settings](docs/screenshots/uc_07_settings.png) | ![Settings](docs/screenshots/uc_13_settings_dark.png) |
 | **Add Account** | ![Add Account](docs/screenshots/uc_08_add_account.png) | — |
 | **Search** | ![Search](docs/screenshots/uc_09_search.png) | — |
@@ -42,7 +41,6 @@ Captured from the running app (debug build, light + dark themes, seeded demo dat
 | **📧 Email** | Google, Mailcow, Outlook, Yahoo, Exchange, iCloud, Generic IMAP/SMTP | Unified inbox, push, attachments, PGP, threading, flags |
 | **📅 Calendar** | Google, CalDAV, Exchange, iCloud | Shared calendars, color preservation, invites (Yes/No/Maybe), RRULE recurrence |
 | **✅ Tasks** | CalDAV VTODO, Google Tasks | Subtasks, priorities (Low/Normal/High/Urgent), due dates, recurring |
-| **💬 Messaging** | UnifiedComms users only | Direct/group/broadcast conversations, rich sharing (emails, events, tasks, calendar invites) |
 | **🔒 Security** | — | Biometric lock, AES-256 for stored credentials (Android Keystore), zero telemetry |
 | **🔔 Reminders** | AlarmManager | Full-screen heads-up alerts with snooze/dismiss |
 
@@ -229,38 +227,7 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 
 ---
 
-### 5. Messaging — Unified Chat
-
-**Main Screen → Messages Tab**
-
-**Conversations:**
-- **Direct** — 1:1 with another UnifiedComms user
-- **Group** — Multiple participants (admin controls)
-- **Broadcast** — Read-only announcements
-
-**Starting a Chat:**
-1. Tap **+** FAB → New Message
-2. Search by email or UnifiedComms ID
-3. Select contact → Opens conversation
-
-**Rich Sharing (in chat input bar):**
-| Button | Shares |
-|--------|--------|
-| 📎 | File from storage |
-| 📅 | **Calendar Invite** — Creates event with Yes/No/Maybe buttons |
-| ✅ | **Task** — Shares task with due date, priority |
-| 📧 | **Email** — Shares email preview with sender/subject |
-
-**Features:**
-- **Read Receipts** — Double-check when delivered/read
-- **Push Notifications** — Real-time where supported
-- **Mute** — Per-conversation, custom duration
-- **Pin** — Keep important chats at top
-- **Archive** — Hide without deleting
-
----
-
-### 6. Reminders — Full-Screen Alerts
+### 5. Reminders & Alerts
 
 **Default: 1 hour before events**
 
@@ -289,7 +256,7 @@ When reminder fires:
 
 ---
 
-### 7. Security & Privacy
+### 6. Security & Privacy
 
 **Biometric Lock:**
 - Settings → Security → Biometric Lock → Enable
@@ -298,7 +265,7 @@ When reminder fires:
 **Encryption:**
 - **At Rest** — AuthConfig credentials (passwords, tokens) encrypted with Android Keystore (AES-256-GCM)
 - **Keys** — Stored in Android Keystore (hardware-backed)
-- **In Transit** — TLS 1.3 for network sync
+- **In Transit** — TLS for IMAP/SMTP sync (IMAPS 993 implicit TLS + SMTP STARTTLS 587). Credentials are never sent in plaintext. Note: accounts configured with `acceptAllCerts` (auto-enabled for Mailcow/SOGo boxes whose cert SAN excludes the bare domain) skip certificate hostname validation — encryption without strict authentication, by design for self-hosted mailcow.
 - **Database** — Standard Room database (no SQLCipher)
 
 **Zero Telemetry:**
@@ -314,7 +281,7 @@ When reminder fires:
 
 ---
 
-### 8. Sync & Data Management
+### 7. Sync & Data Management
 
 **Auto-Sync:**
 - Interval: 15 min (default) / 30 min / 1 hour / Manual
@@ -382,7 +349,7 @@ When reminder fires:
 ```
 app/
 ├── data/
-│   ├── model/          # Account, Email, CalendarEvent, Task, Message, Conversation, UnifiedContact
+│   ├── model/          # Account, Email, CalendarEvent, Task, Message, UnifiedContact
 │   ├── db/             # Room: Database, 9 DAOs, TypeConverters
 │   └── repository/     # 7 Repositories (interfaces + impls)
 ├── sync/
@@ -395,11 +362,9 @@ app/
 ├── security/
 │   ├── CryptoManager   # AES-256-GCM (Keystore), encrypt AuthConfig secrets
 │   └── BiometricManager # Fingerprint/Face ID auth
-├── push/               # Push manager, device registration, topic subscriptions
-├── messaging/          # MessagingService, Parcelables
 ├── reminder/           # AlarmManager exact alarms, FullScreenReminderActivity
 ├── ui/
-│   ├── main/           # MainActivity, 6 screens (Inbox, Email, Calendar, Tasks, Messages, Settings)
+│   ├── main/           # MainActivity, 5 screens (Inbox, Email, Calendar, Tasks, Settings)
 │   ├── auth/           # AddAccountActivity (OAuth + manual), OAuthCallbackActivity
 │   ├── search/         # Global search
 │   ├── settings/       # Settings activity
