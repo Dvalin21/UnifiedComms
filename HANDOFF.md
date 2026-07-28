@@ -172,9 +172,15 @@ Committed: 71d5cd5. Verified: 3 equal-ish buttons, +Just Add complete, no clip.
 
 --- 4. ENCRYPTION MEANING (answer, no change) ---
 EncryptionScreen is AT-REST ONLY: encrypts stored credentials, calendar, tasks on-device
-  via AES-GCM with a master key in Android Keystore. It is NOT end-to-end and
-  does NOT encrypt email bodies in transit. In transit, email uses
-  the server's TLS (EmailSyncEngineImpl: imap.ssl.enable / smtp.starttls.enable).
+  via AES-GCM with a master key in Android Keystore. It is NOT end-to-end.
+  EMAIL IN TRANSIT IS ENCRYPTED: EmailSyncEngineImpl sets mail.imap.ssl.enable
+  (IMAPS/993) + mail.smtp.starttls.enable (STARTTLS/587) from ServerConfig
+  (AddAccountScreen defaults both ON). So bodies ARE TLS-protected on the wire.
+  REAL GAP: acceptAllCerts (auto-ON for MAILCOW accounts, see AddAccountScreen.kt:237)
+  disables cert/hostname validation via a trust-all X509TrustManager — encryption
+  WITHOUT authentication, MITM-vulnerable. Root cause is the server cert
+  (*.houseofmanns.com) lacking a bare-domain SAN, so strict TLS fails. Fix = correct
+  server cert or pin the CA, not trust-all. Not a code bug in the sync path.
   local data-at-rest only; not a Signal-style E2E scheme.
 
 --- 5. EMAIL DOUBLE-CLICK — ROOT CAUSE FOUND + FIXED + VERIFIED ---
