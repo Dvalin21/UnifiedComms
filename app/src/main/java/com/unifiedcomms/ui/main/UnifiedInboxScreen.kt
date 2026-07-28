@@ -143,8 +143,16 @@ fun UnifiedInboxScreen(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
+        // ponytail: default M3 drawer is 360dp (min 90% width on phones) and uses a
+        // tonal-elevation surface that reads as a separate "panel" — far wider than the
+        // handful of folders it lists. Cap the sheet at 280dp (Material spec max) and drop
+        // the elevation so it sits flush, not as an oversized floating sheet.
         drawerContent = {
-            ModalDrawerSheet {
+            ModalDrawerSheet(
+                drawerContainerColor = MaterialTheme.colorScheme.surface,
+                drawerTonalElevation = 0.dp,
+                modifier = Modifier.width(280.dp)
+            ) {
                 Text(
                     "Folders",
                     style = MaterialTheme.typography.titleMedium,
@@ -154,7 +162,12 @@ fun UnifiedInboxScreen(
                     modifier = Modifier.padding(16.dp)
                 )
                 HorizontalDivider()
-                LazyColumn(modifier = Modifier.fillMaxSize().padding(vertical = 8.dp)) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .weight(1f)
+                        .padding(vertical = 8.dp)
+                ) {
                     items(folderList) { entry ->
                         NavigationDrawerItem(
                             label = {
@@ -177,6 +190,17 @@ fun UnifiedInboxScreen(
                         )
                     }
                 }
+                HorizontalDivider()
+                NavigationDrawerItem(
+                    label = { Text("Add Account") },
+                    icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                    selected = false,
+                    onClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        onNavigateToAddAccount()
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                )
             }
         }
     ) {

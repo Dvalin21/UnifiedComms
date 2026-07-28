@@ -324,6 +324,7 @@ class MainActivity : FragmentActivity() {
                             composable("add_account") {
                                 AddAccountScreen(
                                     viewModel = viewModel,
+                                    darkTheme = effectiveDark,
                                     onComplete = {
                                         // Land on the inbox after save (user requirement),
                                         // regardless of whether add was launched from Settings.
