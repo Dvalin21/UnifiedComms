@@ -3,6 +3,7 @@ package com.unifiedcomms.util
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import com.unifiedcomms.data.model.AttendeeStatus
 import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.repository.CalendarRepository
@@ -66,7 +67,10 @@ class InviteActionReceiver : BroadcastReceiver() {
                     )
 
                     calendarRepo.updateEvent(updatedEvent)
-                    calendarSync.updateEvent(account, updatedEvent)
+                    val result = calendarSync.respondToInvite(account, updatedEvent.uid, status, null)
+                    if (!result.success) {
+                        Log.w("InviteActionReceiver", "RSVP failed: ${result.errorMessage}")
+                    }
                 }
             } finally {
                 pending.finish()
