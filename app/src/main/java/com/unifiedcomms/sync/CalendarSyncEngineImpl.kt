@@ -282,9 +282,13 @@ class CalendarSyncEngineImpl(
                 else -> EventStatus.CONFIRMED
             })
             calendarRepo.updateEvent(updated)
+            val calDavResult = updateEvent(account, updated)
+            if (!calDavResult.success) {
+                return calDavResult
+            }
 
             // Attempt iTIP reply to organizer. This is best-effort: protocol support/errors
-            // must not block the local status update.
+            // must not block the local/CalDAV status update.
             runCatching { sendReplyMail(account, updated, status, comment) }
 
             SyncResult.success()
