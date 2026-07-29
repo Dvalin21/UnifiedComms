@@ -22,7 +22,15 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 import okhttp3.OkHttpClient
+import java.util.Properties
 import java.util.concurrent.TimeUnit
+import javax.mail.Authenticator
+import javax.mail.Message
+import javax.mail.PasswordAuthentication
+import javax.mail.Session
+import javax.mail.Transport
+import javax.mail.internet.InternetAddress
+import javax.mail.internet.MimeMessage
 
 class CalendarSyncEngineImpl(
     private val calendarRepo: CalendarRepository,
@@ -274,11 +282,89 @@ class CalendarSyncEngineImpl(
                 else -> EventStatus.CONFIRMED
             })
             calendarRepo.updateEvent(updated)
+
+            // Attempt iTIP reply to organizer. This is best-effort: protocol support/errors
+            // must not block the local status update.
+            runCatching { sendReplyMail(account, updated, status, comment) }
+
             SyncResult.success()
         } catch (e: Exception) {
             SyncResult.failure(e.message ?: "Response failed")
         }
     }
+
+    // ponytail: RFC 5546 minimal REPLY: message/calendar with one VEVENT, METHOD:REPLY,
+    // attendee PARTSTAT updated. Sender = current user; recipient = organizer.
+    private suspend fun sendReplyMail(
+        account: Account,
+        event: CalendarEvent,
+        status: com.unifiedcomms.data.model.AttendeeStatus,
+        comment: String?
+    ) = withContext(Dispatchers.IO) {
+        val auth = crypto.decryptAuthConfig(account.authConfig)
+        val props = Properties().apply {
+            put("mail.smtp.host", account.serverConfig.smtpHost)
+            put("mail.smtp.port", account.serverConfig.smtpPort)
+            put("mail.smtp.auth", true)
+            put("mail.smtp.starttls.enable", account.serverConfig.smtpUseStartTls)
+            put("mail.smtp.connectiontimeout", "30000")
+            put("mail.smtp.timeout", "30000")
+        }
+        val session = Session.getInstance(props, object : javax.mail.Authenticator() {
+            override fun getPasswordAuthentication(): javax.mail.PasswordAuthentication {
+                return javax.mail.PasswordAuthentication(auth.username ?: account.email, auth.passwordEncrypted ?: "")
+            }
+        })
+
+        val tzid = event.startAt.timeZone.ifBlank { java.time.ZoneId.systemDefault().toString() }
+        val format = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss")
+        val myAttendee = event.attendees.firstOrNull { it.email.equals(account.email, ignoreCase = true) }
+            ?: event.attendees.firstOrNull()
+            ?: return@withContext
+        val partstat = when (status) {
+            com.unifiedcomms.data.model.AttendeeStatus.ACCEPTED -> "ACCEPTED"
+            com.unifiedcomms.data.model.AttendeeStatus.DECLINED -> "DECLINED"
+            else -> "TENTATIVE"
+        }
+
+        // Minimal attended matching rough standard clients.
+        val attendeeBlock = StringBuilder()
+        for (a in event.attendees) {
+            attendeeBlock.appendLine("ATTENDEE;RSVP=${if (a.rsvp) "TRUE" else "FALSE"}:${a.name?.let { "CN=$it" } ?: ""} <${a.email}>")
+        }
+
+        val ical = buildString {
+            appendLine("BEGIN:VCALENDAR")
+            appendLine("VERSION:2.0")
+            appendLine("PRODID:-//UnifiedComms//Calendar//EN")
+            appendLine("METHOD:REPLY")
+            appendLine("BEGIN:VEVENT")
+            appendLine("UID:${event.uid}")
+            appendLine("DTSTAMP:${java.time.Instant.now().atZone(java.time.ZoneId.of("UTC")).format(format)}Z")
+            event.startAt.dateTime?.let { appendLine("DTSTART;TZID=$tzid:${it}") }
+                ?: appendLine("DTSTART;VALUE=DATE:${event.startAt.date ?: ""}")
+            event.endAt.dateTime?.let { appendLine("DTEND;TZID=$tzid:${it}") }
+                ?: appendLine("DTEND;VALUE=DATE:${event.endAt.date ?: ""}")
+            if (!event.description.isNullOrBlank()) appendLine("DESCRIPTION:${escapeIcal(event.description!!)}")
+            appendLine(attendeeBlock)
+            appendLine("ATTENDEE;PARTSTAT=$partstat;RSVP=FALSE:${myAttendee.name?.let { "CN=$it" } ?: ""} <${myAttendee.email}>")
+            if (!comment.isNullOrBlank()) appendLine("COMMENT:${escapeIcal(comment)}")
+            appendLine("END:VEVENT")
+            appendLine("END:VCALENDAR")
+        }
+
+        val msg = MimeMessage(session)
+        msg.setFrom(InternetAddress(account.email))
+        val organizer = event.organizer?.takeIf { !it.email.isNullOrBlank() }?.email ?: event.attendees.firstOrNull { !it.email.isNullOrBlank() }?.email
+        if (organizer.isNullOrBlank()) return@withContext
+        msg.addRecipient(javax.mail.Message.RecipientType.TO, InternetAddress(organizer))
+        msg.subject = "Re: ${event.title.takeIf { it.isNotBlank() } ?: "Calendar Invitation"}"
+        msg.setContent(ical, "text/calendar; method=REPLY; charset=UTF-8")
+        Transport.send(msg)
+    }
+
+    private fun escapeIcal(s: String): String = s.replace("\\", "\\\\").replace("\n", "\\n").replace(",", "\\,").replace(";", "\\;")
+
 
     fun allProgress() = _syncProgress.map { it.values.toList() }.distinctUntilChanged()
 

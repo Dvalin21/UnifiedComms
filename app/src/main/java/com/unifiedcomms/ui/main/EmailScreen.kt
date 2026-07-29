@@ -454,6 +454,9 @@ private fun AttachmentRow(attachment: com.unifiedcomms.data.model.Attachment, on
 private fun InviteCard(invite: CalendarInviteMessage, viewModel: MainViewModel) {
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
+    var acceptResult by remember { mutableStateOf<String?>(null) }
+    var declineResult by remember { mutableStateOf<String?>(null) }
+    var addResult by remember { mutableStateOf<String?>(null) }
     val tz = if (invite.timezone.isBlank()) ZoneId.systemDefault() else runCatching { ZoneId.of(invite.timezone) }.getOrDefault(ZoneId.systemDefault())
     val start = runCatching { LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(invite.startAt.toEpochMilliseconds()), tz) }.getOrDefault(LocalDateTime.now())
     val end = runCatching { LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(invite.endAt.toEpochMilliseconds()), tz) }.getOrDefault(LocalDateTime.now())
@@ -497,21 +500,39 @@ private fun InviteCard(invite: CalendarInviteMessage, viewModel: MainViewModel) 
             Spacer(modifier = Modifier.height(16.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
-                    onClick = { scope.launch { busy = true; viewModel.respondToInvite(invite, AttendeeStatus.ACCEPTED); busy = false } },
+                    onClick = {
+                        scope.launch {
+                            busy = true
+                            acceptResult = if (viewModel.respondToInvite(invite, AttendeeStatus.ACCEPTED)) "Accepted" else "Accept failed"
+                            busy = false
+                        }
+                    },
                     enabled = !busy,
                     modifier = Modifier.weight(1f)
                 ) {
                     Text("Accept", maxLines = 1, style = MaterialTheme.typography.labelSmall)
                 }
                 OutlinedButton(
-                    onClick = { scope.launch { busy = true; viewModel.respondToInvite(invite, AttendeeStatus.DECLINED); busy = false } },
+                    onClick = {
+                        scope.launch {
+                            busy = true
+                            declineResult = if (viewModel.respondToInvite(invite, AttendeeStatus.DECLINED)) "Declined" else "Decline failed"
+                            busy = false
+                        }
+                    },
                     enabled = !busy,
                     modifier = Modifier.weight(1f)
                 ) {
                     Text("Decline", maxLines = 1, style = MaterialTheme.typography.labelSmall)
                 }
                 Button(
-                    onClick = { scope.launch { busy = true; viewModel.addInviteToCalendar(invite); busy = false } },
+                    onClick = {
+                        scope.launch {
+                            busy = true
+                            addResult = if (viewModel.addInviteToCalendar(invite)) "Added to calendar" else "Add failed"
+                            busy = false
+                        }
+                    },
                     enabled = !busy,
                     // ponytail: +Just Add is two words; give it a bit more width so it fits on
                     // one line without clipping (Accept/Decline stay at 1f).
@@ -520,8 +541,23 @@ private fun InviteCard(invite: CalendarInviteMessage, viewModel: MainViewModel) 
                     Text("+Just Add", maxLines = 1, style = MaterialTheme.typography.labelSmall)
                 }
             }
+            StatusRow("Accepted", acceptResult, MaterialTheme.colorScheme.primary)
+            StatusRow("Declined", declineResult, MaterialTheme.colorScheme.primary)
+            StatusRow("Added", addResult, MaterialTheme.colorScheme.primary)
         }
     }
+}
+
+@Composable
+private fun StatusRow(labelPrefix: String, result: String?, successColor: androidx.compose.ui.graphics.Color) {
+    if (result == null) return
+    Spacer(modifier = Modifier.height(8.dp))
+    Text(
+        text = result,
+        color = if (result.endsWith("failed")) MaterialTheme.colorScheme.onSurfaceVariant else successColor,
+        maxLines = 1,
+        softWrap = false
+    )
 }
 
 private fun openFile(context: android.content.Context, path: String, mimeType: String) {
