@@ -276,11 +276,21 @@ class CalendarSyncEngineImpl(
     override suspend fun respondToInvite(account: Account, eventUid: String, status: com.unifiedcomms.data.model.AttendeeStatus, comment: String?): SyncResult {
         return try {
             val event = calendarRepo.getEventByUid(eventUid, account.id) ?: return SyncResult.failure("Event not found")
-            val updated = event.copy(status = when (status) {
-                com.unifiedcomms.data.model.AttendeeStatus.ACCEPTED -> EventStatus.CONFIRMED
-                com.unifiedcomms.data.model.AttendeeStatus.DECLINED -> EventStatus.CANCELLED
-                else -> EventStatus.CONFIRMED
-            })
+            val updatedAttendees = event.attendees.map { att ->
+                if (att.email.equals(account.email, ignoreCase = true)) {
+                    att.copy(status = status, respondedAt = kotlinx.datetime.Clock.System.now())
+                } else att
+            }
+            val updated = event.copy(
+                attendees = updatedAttendees,
+                status = when (status) {
+                    com.unifiedcomms.data.model.AttendeeStatus.ACCEPTED -> EventStatus.CONFIRMED
+                    com.unifiedcomms.data.model.AttendeeStatus.DECLINED -> EventStatus.CANCELLED
+                    else -> EventStatus.CONFIRMED
+                },
+                needsSync = true,
+                updatedAt = kotlinx.datetime.Clock.System.now()
+            )
             calendarRepo.updateEvent(updated)
             val calDavResult = updateEvent(account, updated)
             if (!calDavResult.success) {
