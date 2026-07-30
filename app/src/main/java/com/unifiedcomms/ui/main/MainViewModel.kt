@@ -319,36 +319,20 @@ class MainViewModel(
     }
 
     /**
-     * Accept/Decline the invite: ensure the event exists in the calendar, stamp the
-     * current user's attendee status, then push to the server. Already sends iTIP
-     * REPLY via CalendarSyncEngineImpl.
+     * Accept/Decline the invite: ensure the event exists in the calendar, then
+     * delegate to CalendarSyncEngineImpl, which stamps the attendee status,
+     * updates local state, pushes to CalDAV, and sends the iTIP REPLY.
      */
     suspend fun respondToInvite(invite: CalendarInviteMessage, status: AttendeeStatus): Boolean {
-         return runCatching {
-             val account = getDefaultAccount() ?: return@runCatching false
-             val sync = CalendarSyncEngineImpl(calendarRepo, accountRepo, crypto, viewModelScope)
-             val existing = calendarRepo.getEventByUid(invite.eventUid, account.id)
-             val event = existing ?: insertInviteEvent(invite) ?: return@runCatching false
-             val updatedAttendees = event.attendees.map { att ->
-                 if (att.email.equals(account.email, ignoreCase = true)) {
-                     att.copy(status = status, respondedAt = kotlinx.datetime.Clock.System.now())
-                 } else att
-             }
-             val updated = event.copy(
-                 attendees = updatedAttendees,
-                 status = when (status) {
-                     AttendeeStatus.ACCEPTED -> com.unifiedcomms.data.model.EventStatus.CONFIRMED
-                     AttendeeStatus.DECLINED -> com.unifiedcomms.data.model.EventStatus.CANCELLED
-                     else -> com.unifiedcomms.data.model.EventStatus.CONFIRMED
-                 },
-                 needsSync = true,
-                 updatedAt = kotlinx.datetime.Clock.System.now()
-             )
-             calendarRepo.updateEvent(updated)
-             val result = sync.respondToInvite(account, updated.uid, status, null)
-             result.success
-         }.getOrDefault(false)
-     }
+        return runCatching {
+            val account = getDefaultAccount() ?: return@runCatching false
+            val sync = CalendarSyncEngineImpl(calendarRepo, accountRepo, crypto, viewModelScope)
+            val existing = calendarRepo.getEventByUid(invite.eventUid, account.id)
+            val event = existing ?: insertInviteEvent(invite) ?: return@runCatching false
+            val result = sync.respondToInvite(account, event.uid, status, null)
+            result.success
+        }.getOrDefault(false)
+    }
 }
 
 /** Result of a contact create op: carries the server-assigned uid/etag so the
