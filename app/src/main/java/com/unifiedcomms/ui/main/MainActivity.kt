@@ -36,7 +36,11 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Arrangement
+import com.unifiedcomms.ui.chat.ChatDetailScreen
+import com.unifiedcomms.ui.chat.ChatListScreen
+import com.unifiedcomms.ui.chat.ChatViewModel
 import com.unifiedcomms.util.PreferencesManager
+import androidx.compose.material.icons.Icons
 
 enum class BiometricLockState { LOCKED, UNLOCKED }
 
@@ -187,6 +191,7 @@ class MainActivity : FragmentActivity() {
                         NavHost(navController, startDestination = "unified_inbox") {
                             composable("unified_inbox") {
                                 UnifiedInboxScreen(
+                                    navController = navController,
                                     viewModel = viewModel,
                                     onNavigateToEmail = { accountId, folder ->
                                         val route = "email/$accountId/$folder"
@@ -348,6 +353,25 @@ class MainActivity : FragmentActivity() {
                             }
                             composable("encryption") {
                                 EncryptionScreen(onBack = { navController.popBackStack() }, darkTheme = effectiveDark)
+                            }
+                            composable(
+                                route = "chat_detail/{peerPhone}/{peerName}",
+                                arguments = listOf(
+                                    androidx.navigation.navArgument("peerPhone") { type = androidx.navigation.NavType.StringType },
+                                    androidx.navigation.navArgument("peerName") { type = androidx.navigation.NavType.StringType },
+                                ),
+                            ) { backStackEntry ->
+                                val peerPhone = backStackEntry.arguments?.getString("peerPhone").orEmpty()
+                                val peerName = backStackEntry.arguments?.getString("peerName").orEmpty()
+                                ChatDetailScreen(
+                                    viewModel = ChatViewModel(
+                                        messageDao = com.unifiedcomms.UnifiedCommsApplication.getInstance().database.messageDao(),
+                                        chatSyncManager = com.unifiedcomms.UnifiedCommsApplication.chatSync,
+                                    ),
+                                    peerPhone = peerPhone,
+                                    peerName = peerName,
+                                    onBack = { navController.popBackStack() },
+                                )
                             }
                             composable("contact_new") {
                                 ContactEditScreen(
