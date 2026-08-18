@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Inbox
@@ -76,6 +77,8 @@ import android.util.Log
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.unifiedcomms.data.model.Account
+import com.unifiedcomms.data.e2ee.ChatSyncManager
+import com.unifiedcomms.ui.chat.ChatListScreen
 import com.unifiedcomms.ui.theme.AccountColors
 import com.unifiedcomms.ui.theme.UnifiedCommsTheme
 import kotlinx.coroutines.flow.combine
@@ -84,6 +87,7 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UnifiedInboxScreen(
+    navController: androidx.navigation.NavController,
     viewModel: MainViewModel,
     onNavigateToEmail: (String, String) -> Unit,
     onEmailClick: (String) -> Unit = {},
@@ -258,6 +262,7 @@ fun UnifiedInboxScreen(
                         NavigationItem("Inbox", Icons.Default.Inbox, 0),
                         NavigationItem("Calendar", Icons.Default.CalendarMonth, 1),
                         NavigationItem("Tasks", Icons.Default.Checklist, 2),
+                        NavigationItem("Chats", Icons.Default.Chat, 3),
                         NavigationItem("People", Icons.Default.Contacts, 4)
                     )
                     items.forEach { item ->
@@ -282,6 +287,16 @@ fun UnifiedInboxScreen(
                 0 -> EmailOverviewScreen(activeAccounts, viewModel, onNavigateToEmail, onEmailClick, onNavigateToAddAccount)
                 1 -> CalendarScreen(viewModel, onCreateEvent = onCreateEvent, onEventClick = onEventClick)
                 2 -> TasksScreen(viewModel, onCreateTask = onCreateTask, onTaskClick = { onNavigateToTask(it.id) })
+                3 -> ChatListScreen(
+                    viewModel = com.unifiedcomms.ui.chat.ChatViewModel(
+                        messageDao = com.unifiedcomms.UnifiedCommsApplication.getInstance().database.messageDao(),
+                    chatSyncManager = com.unifiedcomms.UnifiedCommsApplication.chatSync,
+                    ),
+                    onNavigateToChat = { peerPhone, peerName ->
+                        navController.navigate("chat_detail/$peerPhone/$peerName")
+                    },
+                    onNavigateToAddPeer = { },
+                )
                 4 -> ContactsScreen(viewModel, onContactClick = onNavigateToContact, onAddContact = onNavigateToContactNew)
             }
         }

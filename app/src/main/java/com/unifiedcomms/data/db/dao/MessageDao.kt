@@ -39,6 +39,9 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE id = :id")
     suspend fun getById(id: String): Message?
 
+    @Query("SELECT * FROM messages ORDER BY sentAt DESC")
+    fun getAllMessages(): Flow<List<Message>>
+
     // ponytail: Message.conversationId now keys the search index only — searchMessages
     // is the real consumer. kept as a simple lookup helper.
     @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY sentAt DESC LIMIT 1")
