@@ -155,14 +155,13 @@ data class ServerConfig(
             val host = serverUrl.removeSuffix("/").removeSuffix("https://").removeSuffix("http://")
             val domain = email.substringAfter("@").lowercase().trim().takeIf { it.isNotBlank() } ?: host
             // SOGo web FQDN is per-install. Prefer explicit davHost, then the provider table
-            // (encodes e.g. houseofmanns.com -> email.<domain>), else mailcow default mail.<domain>.
+            // (encodes e.g. example.com -> email.<domain>), else mailcow default mail.<domain>.
             // The bare apex is never valid (wildcard cert excludes it, nginx rejects it).
             val davHostname = davHost
                 ?: ProviderProfiles.forDomain(domain)?.caldavUrl?.substringAfter("://")?.substringBefore("/")
-                ?: "mail.$domain"
-            val davBase = "https://$davHostname/SOGo/dav/"
-            val caldavUrl = if (email.isNotBlank()) "${davBase}$email/Calendar/personal/" else davBase
-            val carddavUrl = if (email.isNotBlank()) "${davBase}$email/Contacts/personal/" else davBase
+            val davBase = davHostname?.let { "https://$it/SOGo/dav/" }
+            val caldavUrl = davBase?.let { base -> if (email.isNotBlank()) "${base}$email/Calendar/personal/" else base }
+            val carddavUrl = davBase?.let { base -> if (email.isNotBlank()) "${base}$email/Contacts/personal/" else base }
             return ServerConfig(
                 imapHost = "imap.$host",
                 imapPort = 993,

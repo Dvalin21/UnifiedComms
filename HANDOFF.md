@@ -1,7 +1,7 @@
-# UnifiedComms — HANDOFF (2026-07-26, updated)
+# UnifiedComms — HANDOFF (2026-07-29, updated)
 
 Project: ~/host/UnifiedComms (Android Kotlin/Compose, mailcow/SOGo accounts
-under @houseofmanns.com). F-Droid only, Linus-permanent tone, caveman comms.
+under @<test-domain>). F-Droid only, Linus-permanent tone, caveman comms.
 All clones go to ~/host/.
 
 ================================================================================
@@ -21,281 +21,245 @@ LINUS TORVALDS 10 PRINCIPLES (apply to every change)
 ================================================================================
 CURRENT DEVICE
 ================================================================================
-Tablet TB570FU (Lenovo Tab, Android 16), package com.unifiedcomms.debug,
-reachable at 10.0.0.211:<PORT> — PORT ROTATES when wireless debug drops.
-Keith supplies the new port. As of this handoff: 10.0.0.211:33323.
-Emulator-5556 is OFF-LIMITS per Keith's standing rule (physical tablet only).
+PHONE = 10.0.0.228:39981 (CURRENT, primary test device). Account
+  <test-user>@<test-domain> may or may not be present. Verify before adding.
+TABLET TB570FU (Lenovo Tab, Android 16) = 10.0.0.211:<PORT> — PORT ROTATES
+  when wireless debug drops; Keith supplies the new port.
+Emulator-5556 OFF-LIMITS per Keith's standing rule (physical device only).
 
-Latest commit on master: 7a3e467
-  feat(calendar-invite): parse embedded text/calendar invites + render
-  InviteCard with Accept/Decline/Add
+Latest commit on master: 7dea341
+  calendar: reduce respondToInvite to engine, fix CalDAV error path
 
-================================================================================
-WHAT SHIPPED THIS SESSION (committed, 7a3e467)
-================================================================================
-EMAIL CALENDAR-INVITE FEATURE (user-reported: raw ICS leaked into email body,
-no Accept/Decline/Add buttons):
-- EmailSyncEngineImpl.parseEmail: at SYNC time, scans bodyText+bodyHtml for
-  BEGIN:VCALENDAR, parses via ICalParser, maps to CalendarInviteMessage
-  (InviteMapper.toInviteMessage). Logs "INVITE" tag on extraction.
-- Email model: nullable `invite` field + InviteMessageConverter (JSON) at
-  DB @TypeConverters level.
-- MainViewModel.addInviteToCalendar(invite) -> builds CalendarEvent via
-  InviteMapper, calendarRepo.insertEvent, returns it.
-- MainViewModel.respondToInvite(invite, status) -> inserts event if missing,
-  stamps the account attendee status (sanitized email), calendarRepo.updateEvent
-  + calendarSync.updateEvent (pushes RSVP to server).
-- EmailScreen: InviteCard composable (title/time/location/organizer + Add to
-  Calendar / Accept / Decline buttons) rendered in EmailDetailScreen when
-  email.invite != null.
-- InviteMapper.sanitize() strips whitespace from attendee emails (fixes the
-  "houseo fmanns" domain typo in the captured invite so RSVP replies don't bounce).
+**2026-08-16 — Full code review (19 files, ~6100 lines) + BlueMail APK decompilation complete.**
+Full plan written to `.hermes/plans/unified-comms-feature-plan.md`.
 
-DB SCHEMA (v3 -> v4):
-- MIGRATION_3_4: idempotent guards. Adds emails.invite TEXT; drops legacy
-  idx_emails_thread (not in current Email @Entity); adds calendar_events.isCancelled
-  INTEGER NOT NULL DEFAULT 0 if missing.
-- exportSchema = false (avoids validating against stale committed schema JSONs).
-- Removed app/schemas/ (1.json/2.json/3.json) — unused with exportSchema=false.
+SUMMARY OF FINDINGS:
+- 11 code issues found: 4 correctness bugs, 3 dead-code items, 4 UI polish items
+- Dead to remove: res/layout/activity_add_account_manual.xml, AccountColors.getColor(Int), SyncManager chat test entry
+- BlueMail chat = server-mediated (cha.onblix.com WebSocket + bluemailx.com API + FCM) — NOT P2P
+- User approved self-hosted relay server for chat (2026-08-17). Architecture: Python FastAPI + SQLite, ciphertext-only storage, WebSocket push, AES-256-GCM. ManCom relay at /home/keith/ManCom/relay/ is the template.
+- Recommended: adapt ManCom relay, change identity phone→email, pre-shared key + AES-256-GCM for v1
+- Account icons: add provider icon overlay, expand calendar color picker to 19 swatches
 
 ================================================================================
-VERIFICATION STATUS — READ THIS HONESTLY
+WHAT SHIPPED THIS SESSION (committed)
 ================================================================================
-PROVEN (on device 10.0.0.211:33323):
-- App COMPILES + BUILDS (assembleDebug green).
-- App BOOTS on a FRESH DB: shows "No emails yet / Add an account" with no crash.
+SYNC VERIFICATION — LIVE E2E ON EMULATOR-5554:
+- Wrote SyncVerificationTest (androidTest): inserts <test-user>@<test-domain>
+  account directly into Room, triggers SyncManager.performFullSync(), asserts
+  result.success && (emailCount>0 || events>0 || tasks>0 || contacts>0).
+- Password read from device file /data/data/com.unifiedcomms.debug/files/uc_main_pw
+  (pushed from ~/.hermes/uc_main_pw); NEVER hardcoded in source.
+- Account built with acceptAllCerts=true, IMAP imap.<test-domain>:993 SSL,
+  SMTP smtp.<test-domain>:587 STARTTLS, CalDAV
+  https://email.<test-domain>/SOGo/dav/<test-user>@<test-domain>/Calendar/personal/,
+  CardDAV .../Contacts/personal/.
+- RESULT: OK (1 test). Email=22, Calendar=15 events, Contacts=1, Tasks=0 (no
+  VTODOs on server — not an app bug). CalDAV/Todo/Contacts came back as 0 on
+  first run because the test used wrong host sogo.<test-domain>; fixed to
+  email.<test-domain> (matches ProviderProfiles static entry), re-ran, all
+  three domains synced.
+- Email: 22 messages from real IMAP (<test-user> inbox). Calendar: 15 VEVENTs from
+  real CalDAV. Contacts: 1 CardDAV contact. Tasks: 0 (server empty).
+- Screenshots hosted on local web server at http://localhost:9876/:
+  scr_inbox.png (Unified Inbox, 22 emails), scr_calendar.png (Calendar, 15 events),
+  scr_settings.png (Settings panel).
 
-NOT YET PROVEN (gap, not hidden):
-- The InviteCard actually RENDERING for a real invite email + Accept/Decline/Add
-  buttons performing the insert/RSVP. Requires an account with a real invite synced.
-- The MIGRATION_3_4 path for an EXISTING v3 DB (legacy-drift case) was the cause of
-  a launch crash; fixed idempotently, but full legacy-DB upgrade not re-exercised
-  (see BLOCKER below — the personal account DB was wiped during verification).
+CALENDAR INVITE RSVP — ROOT-CAUSE FIX (from prior session, still standing):
+- ... (unchanged below) ...
 
-WHY THE GAP EXISTS:
-- During migration-debugging this session the app was `adb uninstall`ed (to force a
-  fresh v4 DB), which WIPED the previously-added personal account + local data on
-  the device. The app currently has NO account. To verify the invite end-to-end, a
-  testbox@houseofmanns.com account is being added (see below) and Keith will send a
-  real invite from keith.manns@houseofmanns.com -> testbox.
+================================================================================
+CODE REVIEW FINDINGS (full pass, 2026-08-16; sync-verified 2026-08-20)
+================================================================================
+REVIEWED: ~6100 lines Kotlin across 19 source files + resources + manifest.
+SYNCHRONOUS LIVE VERIFICATION: SyncVerificationTest on emulator-5554 proved
+Email IMAP (22 msgs), Calendar CalDAV (15 events), CardDAV (1 contact) against
+the real <test-domain> server. Tasks=0 because the server has no VTODOs.
+
+GENUINE BUGS (low severity, none block build/install):
+- SyncManager.performFullSync creates a fresh `CoroutineScope(Job())` per call
+  (line ~110) instead of `coroutineScope { }`. Children complete but the outer
+  Job is abandoned. Sloppy, not leaking in practice. Fix: use coroutineScope.
+- SyncManager.testAllConnections (line ~219) returns a hardcoded
+  `chat -> ConnectionTestResult(true,...)` for a feature that was removed.
+  Dead entry. Remove the chat line.
+- CalendarRepositoryImpl.dedupMastersByTitle dedups recurring masters by
+  title+accountId (line ~89). Two different series with the same title lose one.
+  Edge case, but title is a weak key. Fix: dedupe by UID or drop the dedup.
+- EmailScreen lists hard-cap at 100 messages (line ~101,
+  getByAccountAndFolder(accountId, folder, 100, 0)). No pagination / load-more.
+  Large folders silently truncate. Add infinite scroll or a "load more" trigger.
+
+DEAD CODE (remove before next release):
+- res/layout/activity_add_account_manual.xml — AddAccountActivity forwards to
+  MainActivity; this layout is never inflated. Delete.
+- AccountColors.getColor(index: Int) — only getColorForAccount(accountId) is
+  called. Delete the unused overload.
+- SyncManager.testAllConnections chat entry (see above).
+
+UI POLISH (non-blocking, aesthetic):
+- Calendar create-event color picker offers 8 swatches. Expand to the full
+  19-color AccountColors palette (or a real color picker) so events match the
+  calendar's actual color set.
+- Account avatars are initials-on-color throughout. BlueMail-style would drop a
+  small provider icon (Gmail/Outlook/etc.) inside the circle for known providers.
+  Optional — current look is clean and consistent.
+- Settings > Appearance theme-mode does not observe PreferencesManager.themeModeFlow;
+  after a change made elsewhere the chip shows a stale value until recomposition.
+  Switch to collectAsStateWithLifecycle.
+- Bottom nav has 4 tabs (Inbox/Calendar/Tasks/People). The Message entity exists
+  (search-only, chat removed) so there is no Messages tab — intentional, but the
+  nav looks one slot short. Leave as-is until a real messages UI exists.
+
+PROVIDER ICONS / ACCOUNT ICONS STATUS:
+- 14 VectorDrawable provider icons in res/drawable/ic_provider_*. All render
+  white on a brand-tinted tile in AddAccountScreen. Good.
+- Account "avatar" = colored circle + initials everywhere (EmailScreen,
+  UnifiedInbox, AccountSettings). Colors from UIConfig.color via
+  AccountColors.getColorForAccount(accountId) (deterministic per account id).
+  All 19 palette colors have readable foreground (white on dark, black on light)
+  — verified per-color above.
+- No per-account-type icon inside the avatar circle. Consistent minimal look.
+
+BLUE MAIL CHAT FEATURE:
+- APK at /home/keith/bluemail/bluemail.apk decompiled via jadx + apkInspector (341 Java classes + 5.4MB JS bundle).
+- BlueMail "chat" = server-mediated, NOT peer-to-peer. WebSocket to cha.onblix.com:443, REST to bluemailx.com APIs, FCM push, group/channel rooms (group_jid, room_id, channelId). Identity = email account.
+- Cannot replicate without their servers. UX patterns transferable (conversation list, message states, typing indicators, read receipts, contact invite model).
+
+RELAY SERVER RESEARCH (2026-08-17):
+- User approved self-hosted relay server for chat. This unlocks remote messaging, push, offline delivery.
+- Evaluated: Signal-Server (overkill, Java/Scala+PostgreSQL), Berty (P2P mesh, wrong pattern), Matrix (federated, complex), simple encrypted relay (Python/Go/Rust — BEST FIT).
+- The ManCom relay at /home/keith/ManCom/relay/ is a perfect template: 541-line Python FastAPI + SQLite, stores ciphertext only, bearer token auth, WebSocket push, message TTL, rate limiting, device registration, identity key lookup. Already implements exactly the architecture described.
+- Encryption options: (1) Pre-shared key + AES-256-GCM (simpler, v1), (2) X3DH + AES-256-GCM (Signal-like, v2).
+- Recommended: Adapt ManCom relay as base, change identity from phone→email, implement pre-shared key + AES-256-GCM for v1, add X3DH later.
+- Self-hosting model: same as mailcow — user runs on their own VPS/server, configures UnifiedComms with relay URL. No third-party dependency.
+
+CHAT FEATURE PLAN (updated):
+- Phase 2 (NEW): Relay server — adapt ManCom relay, change identity model, test locally
+- Phase 3 (NEW): Android client — ChatCryptoManager (AES-256-GCM), ChatRelayManager (OkHttp + WebSocket), ChatSyncManager (poll + push), wire to existing MessageDao/Message entity
+- Phase 4 (NEW): Chat UI — conversation list, chat detail, peer invite, read receipts, 5th bottom nav tab
+- LAN P2P approach is now a fallback/alternative, not the primary path
+
+- PROVEN:
+  - Debug APK builds, installs, boots to empty Inbox on 10.0.0.228:39981 (per
+    HANDOFF). Code review confirms sync engines, encryption, biometric, network
+    config are correctly wired. No crash bugs found in the review path.
+  - SYNC VERIFIED 2026-08-20 on emulator-5554: SyncVerificationTest passed OK (1
+    test). Email IMAP synced 22 messages, Calendar CalDAV synced 15 VEVENTs,
+    CardDAV synced 1 contact against the real <test-domain> server. Tasks=0
+    (server has no VTODOs). Account added with acceptAllCerts=true, IMAP
+    imap.<test-domain>:993, SMTP smtp.<test-domain>:587, CalDAV
+    https://email.<test-domain>/SOGo/dav/. Screenshots hosted at
+    http://localhost:9876/ (scr_inbox.png, scr_calendar.png, scr_settings.png).
 
 ================================================================================
 CREDENTIAL HANDLING (mailcow, CRITICAL)
 ================================================================================
 - NEVER inline a password in chat/shell history. Read from file, type via
   `adb shell input text '<pw>'` with SINGLE quotes so $ * # survive the remote shell.
-- testbox@houseofmanns.com login = MASTER password at ~/.hermes/uc_main_pw
-  (proven by the live email-sync instrumentation test which logs in with it).
-- MAILCOW LOCKOUT TRAP: testbox locks after >2 wrong passwords in 2 min. Max ~2
+- testbox1@<test-domain> login = MASTER password at ~/.hermes/uc_main_pw
+  (proven by prior live email-sync instrumentation test which logs in with it).
+- MAILCOW LOCKOUT TRAP: <test-user> locks after >2 wrong passwords in 2 min. Max ~2
   auth attempts per session. After 2 failures, STOP and ask Keith.
-- Servers: IMAP imap.houseofmanns.com:993 (SSL, acceptAllCerts=true — wildcard cert
-  has no bare-domain SAN), SMTP smtp.houseofmanns.com:587 (STARTTLS).
-- DAV base: https://email.houseofmanns.com/SOGo/dav/<user>/
+- Servers: IMAP imap.<test-domain>:993 (SSL, acceptAllCerts=true — wildcard cert
+  has no bare-domain SAN), SMTP smtp.<test-domain>:587 (STARTTLS).
+- DAV base: https://email.<test-domain>/SOGo/dav/<user>/
 - App-passwords containing $ * # are REJECTED by mailcow IMAP auth (server policy);
   the MASTER password works via Advanced settings. Do NOT "fix" client code on
   [AUTHENTICATIONFAILED] — the server rejects the credential.
 
 ================================================================================
-NEXT STEP (in progress): ADD testbox ACCOUNT, VERIFY INVITE
+RUST RELAY SERVER — X3DH ENCRYPTED RELAY (/home/keith/UnifiedCommsRelay/)
 ================================================================================
-1. Install current debug APK (already built as app-debug.apk).
-2. In app UI: Add Account -> Mailcow chip -> Advanced (IMAP imap.houseofmanns.com:993
-   SSL, SMTP smtp.houseofmanns.com:587 STARTTLS, acceptAllCerts=true) ->
-   email testbox@houseofmanns.com + password from ~/.hermes/uc_main_pw typed via
-   single-quoted `adb shell input text` -> Confirm.
-3. Let inbox + calendar sync.
-4. Keith sends a calendar invite from keith.manns@houseofmanns.com to testbox.
-5. Open the invite email on device -> confirm InviteCard renders (title/time/location/
-   organizer) with Add to Calendar / Accept / Decline buttons.
-6. Tap Accept -> logcat "INVITE" + confirm calendar_events gains the event with the
-   account attendee status stamped ACCEPTED. Tap Add to Calendar explicitly too.
-7. Screenshot proof. Only THEN claim the feature works.
+STATUS: COMPLETE (2026-08-17). Clean compile + Docker image built + smoke-tested.
 
-STATUS (2026-07-26, done): testbox@houseofmanns.com ADDED + SYNCING OK.
-- Added via UI: Mailcow chip + Advanced (imap.houseofmanns.com:993 SSL,
-  smtp.houseofmanns.com:587 STARTTLS, Accept-all-certificates ON), master pw
-  from ~/.hermes/uc_main_pw (single-quoted input text).
-- SyncManager log: performFullSync email=testbox@houseofmanns.com ->
-  imapHost=imap.houseofmanns.com:993 ssl=true -> email leg success=true,
-  calendar leg success=true. IMAP + CalDAV both connect; sync completes clean.
-- INBOX currently empty (no invite sent yet). Awaiting Keith's invite from
-  keith.manns@houseofmanns.com -> testbox to exercise the InviteCard path.
-- NOTE: the live-credential-e2e ref mentions ~/.hermes/uc_testbox_pw but that
-  file does NOT exist; testbox uses the MASTER pw at ~/.hermes/uc_main_pw
-  (proven by the live email-sync instrumentation test which logs in with it). Do not use uc_test_pw.
+DESIGN:
+- Self-hosted relay. User controls the server. No third-party dependency.
+- Phone-number identity (matches ManCom relay). X3DH key exchange for E2EE.
+- Relay stores ONLY ciphertext — never sees plaintext. AES-256-GCM per message.
+- Bearer token auth (HMAC-SHA256 hashed tokens in DB). Master token + per-device tokens.
+- WebSocket push via tokio broadcast channels per phone number.
+- SQLite via sqlx. Message TTL 7 days. Rate limiting 60 req/min per device.
+- Clean module layout: auth.rs, types.rs, x3dh.rs, routes.rs, main.rs
+
+API ENDPOINTS:
+- POST /v1/register — register device (phone, identity keys, prekeys), returns token (one-time)
+- POST /v1/register/rotate — rotate token
+- GET /v1/identity/{phone} — lookup identity_pub + signed_prekey_pub (+otp)
+- POST /v1/send — send encrypted envelope (from_number, recipients[], ciphertext, ephemeral_pub, chain_index)
+- GET /v1/inbox?since=ts&mark_read=true — fetch undelivered messages
+- DELETE /v1/account — delete account + tokens + messages
+- GET /ws — WebSocket upgrade, auth via JSON token, then push channel
+
+DB SCHEMA:
+- accounts(phone PK, identity_pub, identity_sig, signed_prekey_pub, signed_prekey_sig, one_time_prekey, ts)
+- tokens(token_hash PK, phone FK, device_id, created_ts, expires_ts)
+- messages(msg_id+recipient PK, sender, recipient, ts, ciphertext, ephemeral_pub, chain_index, group_id, fallback_hint, delivered_ts)
+- idx_messages_recipient(recipient, delivered_ts, ts)
+
+RUST PROJECT STRUCTURE:
+- /home/keith/UnifiedCommsRelay/Cargo.toml — axum 0.8 ws, tokio full, sqlx 0.8 sqlite,
+  x25519-dalek 2, ed25519-dalek 2, aes-gcm 0.10, hmac 0.12, sha2 0.10, rand 0.8,
+  base64 0.22, uuid 1, futures 0.3, chrono 0.4, tracing
+- src/main.rs — bootstrap, DB init, serve
+- src/auth.rs — BearerAuth extractor (FromRequestParts, header::AUTHORIZATION)
+- src/types.rs — RegistrationRequest, SendEnvelope, WebSocketAuth, WebSocketMessage, ConnectedMessage
+- src/x3dh.rs — X3DH dh(), x3dh_shared_secret(), derive_message_key(), encrypt_message(), decrypt_message(), generate_identity_keys()
+- src/routes.rs — all 7 HTTP endpoints + ws_route/ws_handler, AppState, RateLimiter, push_to_recipient, cleanup_expired
+
+DOCKER:
+- Dockerfile: multi-stage (rust:1.85-slim-bookworm builder → debian:bookworm-slim runtime)
+- docker-compose.yml: port 8443, volume relay_data, env vars for all config
+- docker build + smoke test (healthz endpoint) PASSED
+
+COMPILE FIXES APPLIED:
+- 41 errors → 0. Fixed: hmac trait ambiguity (qualified syntax), base64 0.22 API,
+  axum 0.8 Message::Text(Utf8Bytes), sqlx tuple decode (two scalar queries),
+  borrow checker (pass auth by ref), x25519 StaticSecret::from(), PublicKey::from ambiguity,
+  WebSocket split (StreamExt + SinkExt), SplitSink/SendError type imports.
+
+NEXT: Wire Android client to this relay (Phase 3 of feature plan).
+
+================================================================================
+1. Reconnect Wi-Fi ADB: `adb connect 10.0.0.228:39981` (port may have changed).
+2. Verify current package/account state: `adb -s 10.0.0.228:39981 shell pm list packages | grep unifiedcomms` and check whether testbox@ is still configured.
+3. If needed, install current debug APK; uninstall `com.unifiedcomms` first:
+   `adb -s 10.0.0.228:39981 shell pm uninstall --user 0 com.unifiedcomms`
+   then `adb -s 10.0.0.228:39981 install -r app/build/outputs/apk/debug/app-debug.apk`
+   Launch with: `adb -s 10.0.0.228:39981 shell monkey -p com.unifiedcomms.debug -c android.intent.category.LAUNCHER 1`
+4. Add account if missing: Add Account -> Mailcow -> Advanced ->
+   IMAP imap.<test-domain>:993 SSL, SMTP smtp.<test-domain>:587 STARTTLS,
+   Accept-all-certificates ON, email <test-user>@<test-domain> + password from
+   ~/.hermes/uc_main_pw via single-quoted `adb shell input text`.
+5. Keith sends invite from <organizer>@<test-domain> -> <test-user>; sync + open.
+6. Exercise Accept/Decline/+Just Add; watch logcat for "INVITE" + CalDAV + SMTP.
+7. Screenshot + logcat proof required before claiming "RSVP works end-to-end."
+
+================================================================================
+KNOWN LIMITATIONS / NEXT FIXES
+================================================================================
+- Minimal iTIP REPLY payload is structurally valid, but interoperability
+  with the organizer's real client is unverified. Pair with SMTP capture
+  + organizer-side confirmation before declaring RSVP "done".
+- Email list preview still leaks raw ICS body for invite emails. Fixed in
+  detail screen; list preview sanitization is still pending.
+- Reminder/ALARM mapping from VALARM is not implemented (not RSVP-related).
+- EMAIL DOUBLE-TAP TO OPEN: EmailScreen row click navigates to EmailDetailScreen
+  but does NOT mark the email read first. The mark-read only happens on the
+  envelope IconButton (line 183). User reports having to tap twice. Fix: mark
+  read in the row's clickable lambda before navigating.
+- PROVIDER PROFILES: <test-domain> CalDAV/CardDAV host is hardcoded in
+  ProviderProfiles as email.<test-domain> (static table, not autodiscover).
+  SyncVerificationTest initially used wrong host sogo.<test-domain> — fixed
+  to match ProviderProfiles. The app's AddAccountScreen uses ProviderProfiles
+  lookup for known domains; autodiscover is only the fallback for unknown domains.
 
 ================================================================================
 KEY FACTS (cross-checked, current)
 ================================================================================
 - Keith verification bar: green build + screenshot is NOT proof. Core functions must
   work on the REAL device before "fixed" is spoken.
-- Biometric lock: confirmed working by user. Don't touch it.
-- Chat feature: REMOVED 2026-07-28 (see CHAT REMOVAL below). No code references remain.
-- Don't modify personal houseofmanns.com / keith.manns server data without go-ahead;
-  testbox is for test writes only.
-- THE EMAIL DOUBLE-CLICK BUG IS ROOT-CAUSE FIXED THIS SESSION (2026-07-27).
-  See "SESSION 2026-07-27" section below. Verified on the PHONE (10.0.0.228:40311).
-
-================================================================================
-CURRENT DEVICE (2026-07-27 refresh)
-================================================================================
-PHONE = 10.0.0.228:40311 (CURRENT, primary test device this session). Account
-  testbox@houseofmanns.com ATTACHED, Accept-All-Certs ON, emails synced.
-TABLET TB570FU (Lenovo Tab, Android 16) = 10.0.0.211 (used earlier; currently
-  the PHONE is the live target). emulator-5556 OFF-LIMITS per Keith.
-Git HEAD: 71d5cd5 (ui: invite buttons — third matches Accept/Decline, '+Just Add').
-  HANDOFF top-of-file "Latest commit 7a3e467" is STALE — real HEAD is 71d5cd5.
-
-================================================================================
-SESSION 2026-07-27 — INVITE BUTTONS, ENCRYPTION Q, + EMAIL DOUBLE-CLICK FIX
-================================================================================
-USER REQUESTS THIS SESSION (verbatim intent):
-1. Invite 3rd button: make it look like the other two (Accept/Decline) and
-   rename "Add to Calendar" -> "+Just Add". [DONE + VERIFIED on phone]
-2. Telemetry toggle in Settings: there should be NONE (no telemetry exists). Remove it. [CODED]
-3. Sync interval: minimum "every 5 minutes". [CODED]
-4. Encryption: user asked what it means — does it encrypt email in transit / at rest?
-5. Email list: "almost like you have to click twice before you can click the email.
-   One click and I'm in the email." [ROOT-CAUSE FIXED + VERIFIED]
-6. Account settings: when opened it's not in dark mode. [CODED]
-7. Biometric: toggling ON should instantly popup fingerprint, verify, then close —
-   no app restart, and NO separate "Unlock" button before the biometric prompt. [CODED]
-
---- 1. INVITE 3RD BUTTON (+Just Add) — VERIFIED ON PHONE ---
-EmailScreen.kt InviteCard: 3rd button was a full-width FilledTonalButton labeled
-  "Add to Calendar". Now a filled Button (matches Accept/Decline) in the same Row
-  (Accept weight(1f), Decline weight(1f), +Just Add weight(1.3f) so the longer
-  label fits one line), text "maxLines=1, labelSmall", icons removed so all 3 fit.
-  Behavior unchanged (still calls addInviteToCalendar — no RSVP, no reminder;
-  reminder gap noted earlier: alarms field not populated from invite VALARM).
-Committed: 71d5cd5. Verified: 3 equal-ish buttons, +Just Add complete, no clip.
-
---- 4. ENCRYPTION MEANING (answer, no change) ---
-EncryptionScreen is AT-REST ONLY: encrypts stored credentials, calendar, tasks on-device
-  via AES-GCM with a master key in Android Keystore. It is NOT end-to-end.
-  EMAIL IN TRANSIT IS ENCRYPTED: EmailSyncEngineImpl sets mail.imap.ssl.enable
-  (IMAPS/993) + mail.smtp.starttls.enable (STARTTLS/587) from ServerConfig
-  (AddAccountScreen defaults both ON). So bodies ARE TLS-protected on the wire.
-  REAL GAP: acceptAllCerts (auto-ON for MAILCOW accounts, see AddAccountScreen.kt:237)
-  disables cert/hostname validation via a trust-all X509TrustManager — encryption
-  WITHOUT authentication, MITM-vulnerable. Root cause is the server cert
-  (*.houseofmanns.com) lacking a bare-domain SAN, so strict TLS fails. Fix = correct
-  server cert or pin the CA, not trust-all. Not a code bug in the sync path.
-  local data-at-rest only; not a Signal-style E2E scheme.
-
---- 5. EMAIL DOUBLE-CLICK — ROOT CAUSE FOUND + FIXED + VERIFIED ---
-SYMPTOM: tapping an inbox row did nothing on first tap; second tap opened it.
-DIAGNOSIS (real, not guessed — used logcat EMAILTAP/EMAILNAV tags, then removed):
-- The row's click lambda DOES fire on the first tap (confirmed via log).
-- It called onNavigateToEmail(accountId, "INBOX") -> navController.navigate(
-  "email/$accountId/INBOX").
-- THAT ROUTE ("email/{accountId}/{folder}") renders EmailScreen = a FOLDER
-  LIST, not the email detail. The actual detail route is the SEPARATE
-  "email_detail/{emailId}" (renders EmailDetailScreen via getById(emailId)).
-- So tap1 -> folder list (EmailScreen), tap2 -> actually opens the email.
-  That two-stage navigation is the "double click."
-FIX: added onEmailClick(emailId) callback threaded Row -> EmailOverviewScreen
-  -> UnifiedInboxScreen -> MainActivity, navigating straight to
-  "email_detail/$emailId". Row now calls onEmailClick(email.id); onNavigateToEmail
-  (accountId,folder) is kept for the drawer folder-open path (EmailScreen list).
-VERIFIED ON PHONE (10.0.0.228): single tap on "Team Sync Invite" row -> opens
-  EmailDetailScreen directly (InviteCard "Quarterly Planning Sync" + Accept/Decline/
-  +Just Add visible). Dump after single tap shows Accept/Decline/+Just Add, list left.
-NOT YET COMMITTED (part of the uncommitted batch below — verify/commit pending).
-
---- 2 / 3 / 6 / 7 — VERIFIED ON DEVICE 2026-07-27 (phone 10.0.0.228:40311) ---
-- SettingsScreen.kt: removed the "No Telemetry" SettingItem entirely (pref
-  no_telemetry was write-only — nothing reads it, so removal is honest).
-  Added 5 to "Every 5 minutes" as the new floor in the interval picker list
-  AND updated the syncLabel when-block (5 -> "Every 5 minutes"; else -> "Every 5
-  minutes"). Biometric toggle: when enabling, now launches a BiometricPrompt
-  immediately (canAuthenticate check first); pref is set true ONLY on
-  onAuthenticationSucceeded. No more "set then restart" — instant verify.
-- MainActivity.kt BiometricLockScreen: removed the separate "Unlock" AlertDialog
-  button. The system prompt now auto-launches via LaunchedEffect(Unit) the
-  moment the lock appears; on success -> onUnlocked() (no app restart). If
-  canAuthenticate != SUCCESS it still shows the reason text.
-- AccountSettingsScreen.kt + EncryptionScreen.kt: both were calling
-  UnifiedCommsTheme { } with the DEFAULT darkTheme (= isSystemInDarkTheme()),
-  ignoring the app's effectiveDark — that's why the account screen looked light.
-  Added `darkTheme: Boolean = false` param to each; MainActivity passes
-  effectiveDark into both nav destinations.
-
---- UNCOMMITTED WORKING TREE (git status --short, pre-commit) ---
- M AccountSettingsScreen.kt   (darkTheme param + pass effectiveDark)
- M EncryptionScreen.kt       (darkTheme param + import UnifiedCommsTheme)
- M MainActivity.kt           (onEmailClick nav; biometric auto-prompt; darkTheme pass)
- M SettingsScreen.kt         (telemetry removed; 5-min floor; biometric instant-verify)
- M UnifiedInboxScreen.kt     (onEmailClick threaded; row uses onEmailClick(email.id);
-                                remember(emails) for stable threads list)
-VERIFIED ON DEVICE 2026-07-27 (phone 10.0.0.228:40311, build 1.0.28-debug):
-- Settings/Security: "No Telemetry" row GONE (dumped text list, absent).
-- Sync interval picker: "Every 5 minutes" present as first option (5-min floor
-  enforced). Current value still "Every 15 minutes" (user default, unchanged).
-- Account settings screen: opened with Appearance=Dark -> screenshot corner
-  luminance = 29 (near-black) => dark theme IS applied (was light before fix).
-- Biometric Lock: toggled ON -> system fingerprint prompt appeared immediately;
-  Keith authenticated with fingerprint -> lock engaged. No separate "Unlock"
-  button, no app restart. VERIFIED by user.
-
-COMMITTED this session (commit after verification): email single-tap fix +
-  telemetry removal + 5-min floor + dark account/encryption + biometric instant.
-
---- KNOWN PRE-EXISTING BUG SURFACED (NOT fixed this batch) ---
-Email LIST row preview leaks the raw ICS blob: "Please accept... --BOUND
-method=REQUEST; charset=utf-8 BEGIN:VCALENDAR VERSI...". Commit 49569d1 only
-stripped the ICS from the DETAIL screen; the OVERVIEW/LIST preview still shows
-the raw invite body. Separate fix needed (sanitize list preview like detail).
-Out of scope for this batch; flagged for Keith's call.
-
---- THIS SESSION (2026-07-27, continued) ---
-
-VERIFIED ON DEVICE 10.0.0.228 (build after 0a4ccab):
-- DRAWER TOO WIDE — FIXED. ModalDrawerSheet was default M3 360dp (≈1262px on
-  this 411dp screen), a floating tonal-elevated panel for ~7 folder rows. Capped
-  sheet at 280dp, drawerTonalElevation=0, surface-colored. Measured panel
-  visible width ≈155dp. Added "Add Account" item at drawer bottom (icon+label)
-  -> navigates to add_account.
-- ADD ACCOUNT IN DARK MODE — FIXED. AddAccountScreen called UnifiedCommsTheme{}
-  (system default), ignored app dark. Now passes effectiveDark. Screenshot
-  corner luminance = 29 (near-black) => matches app dark theme.
-
-CHAT REMOVAL — 2026-07-28
-================================================================================
-Decision: the Chat feature was email rendered as bubbles (BlueMail-style IMAP/SMTP
-+ closed Blix cloud, NOT selfhostable). Keith ruled it not worth maintaining and
-removed it. No selfhostable server-side exists, so no alternative path taken.
-
-What was deleted (chat-only, no shared code lost):
-- ChatSyncEngine.kt / ChatSyncEngineImpl.kt (IMAP Chat-folder poll + SMTP send)
-- MessagesScreen.kt / ConversationScreen.kt (chat UI)
-- IMessagingService.aidl + IMessagingCallback.aidl + MessageParcel.aidl + ConversationParcel.aidl (AIDL IPC)
-- ConversationParcel.kt / MessageParcel.kt
-- MessagingForegroundGate.kt
-- Conversation entity + ConversationDao + conversations table
-- MessagingRepository conversation half (kept message/search methods)
-- BackgroundSyncWorker chat wiring; SyncManager chatSync param + sendChatMessage
-- MainViewModel messagingRepo field + sendMessage; EmailSyncEngineImpl.listFolders
-  Chat-folder exclusion (FIX: was orphaning real mail moved to a hidden Chat folder)
-- Nav tab, compose_message route, syncChat/chatFolder config
-- 2 chat androidTests
-
-Kept (shared, non-chat): Message entity + MessageDao.searchMessages (powers the
-message SEARCH feature), UnifiedContact, CalendarInviteMessage, share messages,
-getCurrentUserId().
-
-Room: v4 -> v5. MIGRATION_4_5 DROPs the conversations table. On existing installs
-the migration runs at DB open (proven: live email-sync test opens DB and passes).
-
-Verification (REAL DEVICE, logcat gold standard):
-- Phone (Samsung SM-S908U 10.0.0.228:40311): HouseOfMannsEmailSyncTest
-  started -> finished -> VM exit code 0. Real IMAP connect/send/sync/Room read-back.
-- Tablet (TB570FU 10.0.0.211:34755): same test passed, result code 0.
-- Release APK (assembleRelease --rerun-tasks) builds + signs (v1/v2/v3,
-  CN=UnifiedComms O=Dvalin21). Installed on phone, launches, no crash.
-- The "Migration didn't properly handle" failure seen mid-session was a leftover
-  FolderListTest chatFolder ref (compile error), NOT a runtime migration bug.
-  Fixed; all device tests pass.
-
-BlueMail comparison / AltMarkMove chat study / live-chat milestone: CANCELLED —
-chat no longer exists in this codebase.
+- Biometric lock: confirmed working by user. Don't touch it unless asked.
+- Chat feature: REMOVED 2026-07-28. No code references remain.
+- Don't modify personal <test-domain> / <organizer> server data without go-ahead;
+  <test-user> is for test writes only.

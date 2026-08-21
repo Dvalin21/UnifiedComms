@@ -14,7 +14,7 @@ package com.unifiedcomms.util
  * broken windows — no runtime host guessing / TLS probing.)
  *
  * Per-install mailcow SOGo web FQDN is encoded explicitly here
- * (e.g. houseofmanns.com -> email.<domain>) instead of a live probe.
+ * (e.g. example.com -> email.<domain>) instead of a live probe.
  */
 data class ProviderProfile(
     val imapHost: String? = null,
@@ -76,14 +76,8 @@ object ProviderProfiles {
             caldavUrl = "https://caldav.calendar.yahoo.com/dav/",
             carddavUrl = "https://carddav.address.yahoo.com/dav/"
         ),
-        // mailcow install: SOGo web FQDN is per-install. Encoded explicitly
-        // (no TLS probe). Email hosts are imap./smtp.<domain> per the account-add
-        // mandate (NOT the misconfigured autoconfig XML's mail.*).
-        "houseofmanns.com" to ProviderProfile(
-            imapHost = "imap.houseofmanns.com", smtpHost = "smtp.houseofmanns.com",
-            caldavUrl = "https://email.houseofmanns.com/SOGo/dav/",
-            carddavUrl = "https://email.houseofmanns.com/SOGo/dav/"
-        )
+        // mailcow: IMAP/SMTP = imap.<domain>/smtp.<domain> (MailcowDefaults).
+        // CalDAV/CardDAV via autodiscover — never hardcode a domain here.
     )
 
     /** Exact-domain lookup. Returns null for unknown / generic domains. */
