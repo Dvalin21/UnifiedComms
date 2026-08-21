@@ -76,14 +76,8 @@ object ProviderProfiles {
             caldavUrl = "https://caldav.calendar.yahoo.com/dav/",
             carddavUrl = "https://carddav.address.yahoo.com/dav/"
         ),
-        // mailcow install: SOGo web FQDN is per-install. Encoded explicitly
-        // (no TLS probe). Email hosts are imap./smtp.<domain> per the account-add
-        // mandate (NOT the misconfigured autoconfig XML's mail.*).
-        "example.com" to ProviderProfile(
-            imapHost = "imap.example.com", smtpHost = "smtp.example.com",
-            caldavUrl = "https://email.example.com/SOGo/dav/",
-            carddavUrl = "https://email.example.com/SOGo/dav/"
-        )
+        // mailcow: IMAP/SMTP = imap.<domain>/smtp.<domain> (MailcowDefaults).
+        // CalDAV/CardDAV via autodiscover — never hardcode a domain here.
     )
 
     /** Exact-domain lookup. Returns null for unknown / generic domains. */
