@@ -169,56 +169,88 @@ CREDENTIAL HANDLING (mailcow, CRITICAL)
   [AUTHENTICATIONFAILED] — the server rejects the credential.
 
 ================================================================================
-RUST RELAY SERVER — X3DH ENCRYPTED RELAY (/home/keith/UnifiedCommsRelay/)
+PYTHON RELAY SERVER — E2EE ENCRYPTED RELAY (/home/keith/ManCom/relay/)
 ================================================================================
-STATUS: COMPLETE (2026-08-17). Clean compile + Docker image built + smoke-tested.
+STATUS: PRODUCTION HARDENED (2026-08-21). Clean compile + TLS + systemd + integration-tested.
+**Integration test PASSES: 37/37** (test_integration.py). Full E2E: register → send →
+inbox (mark_read) → rate limit → delete → token rotate.
 
 DESIGN:
 - Self-hosted relay. User controls the server. No third-party dependency.
-- Phone-number identity (matches ManCom relay). X3DH key exchange for E2EE.
-- Relay stores ONLY ciphertext — never sees plaintext. AES-256-GCM per message.
-- Bearer token auth (HMAC-SHA256 hashed tokens in DB). Master token + per-device tokens.
-- WebSocket push via tokio broadcast channels per phone number.
-- SQLite via sqlx. Message TTL 7 days. Rate limiting 60 req/min per device.
-- Clean module layout: auth.rs, types.rs, x3dh.rs, routes.rs, main.rs
+- Phone-number identity. Stores ciphertext only — never sees plaintext.
+- AES-256-GCM per message (encryption happens client-side; relay is zero-trust).
+- Bearer token auth (SHA-256 hashed tokens in DB). Master token + per-device tokens.
+- WebSocket push via in-memory connection set per phone number.
+- SQLite via stdlib sqlite3. Message TTL 7 days (configurable). Rate limiting 60 req/min.
+- One file (~740 lines): main.py. stdlib + FastAPI + uvicorn + websockets + pydantic.
+- TLS: RELAY_TLS_CERT + RELAY_TLS_KEY for HTTPS, or RELAY_TLS_AUTO_SIGNED=1 for dev cert.
+- Config validation at startup: port range, rate limit, TTL, token expiry, bind address.
 
 API ENDPOINTS:
-- POST /v1/register — register device (phone, identity keys, prekeys), returns token (one-time)
-- POST /v1/register/rotate — rotate token
-- GET /v1/identity/{phone} — lookup identity_pub + signed_prekey_pub (+otp)
-- POST /v1/send — send encrypted envelope (from_number, recipients[], ciphertext, ephemeral_pub, chain_index)
-- GET /v1/inbox?since=ts&mark_read=true — fetch undelivered messages
+- GET /healthz — health check (no auth)
+- POST /v1/register — register device (phone, identity keys, prekeys) → bearer token
+- POST /v1/register/rotate — rotate bearer token
+- POST /v1/enroll/start — legacy: start SMS enrollment (code in DB, no SMS configured)
+- POST /v1/enroll/verify — legacy: verify SMS code
+- POST /v1/enroll/keys — legacy: upload identity keys
+- GET /v1/identity/{number} — lookup identity_pub + signed_prekey_pub
+- POST /v1/send — submit encrypted envelope (v, from_number, to[], ts, ciphertext,
+  ephemeral_pub, chain_index, group_id, fallback_hint)
+- GET /v1/inbox — fetch undelivered messages (since, mark_read params; accepts
+  "true"/"false"/"1"/"0" for mark_read)
 - DELETE /v1/account — delete account + tokens + messages
-- GET /ws — WebSocket upgrade, auth via JSON token, then push channel
+- GET /v1/metrics — operational metrics (master token only)
+- WS /ws — WebSocket push (auth as first JSON {"token": "..."})
 
-DB SCHEMA:
-- accounts(phone PK, identity_pub, identity_sig, signed_prekey_pub, signed_prekey_sig, one_time_prekey, ts)
+DB SCHEMA (schema.sql):
+- accounts(phone PK, identity_pub, identity_sig, signed_prekey_pub, one_time_prekey, ts)
 - tokens(token_hash PK, phone FK, device_id, created_ts, expires_ts)
-- messages(msg_id+recipient PK, sender, recipient, ts, ciphertext, ephemeral_pub, chain_index, group_id, fallback_hint, delivered_ts)
+- messages(msg_id+recipient PK, sender, recipient, ts, ciphertext, ephemeral_pub,
+  chain_index, group_id, fallback_hint, delivered_ts)
+- enroll(phone PK, code, ts) — legacy SMS enrollment codes
 - idx_messages_recipient(recipient, delivered_ts, ts)
 
-RUST PROJECT STRUCTURE:
-- /home/keith/UnifiedCommsRelay/Cargo.toml — axum 0.8 ws, tokio full, sqlx 0.8 sqlite,
-  x25519-dalek 2, ed25519-dalek 2, aes-gcm 0.10, hmac 0.12, sha2 0.10, rand 0.8,
-  base64 0.22, uuid 1, futures 0.3, chrono 0.4, tracing
-- src/main.rs — bootstrap, DB init, serve
-- src/auth.rs — BearerAuth extractor (FromRequestParts, header::AUTHORIZATION)
-- src/types.rs — RegistrationRequest, SendEnvelope, WebSocketAuth, WebSocketMessage, ConnectedMessage
-- src/x3dh.rs — X3DH dh(), x3dh_shared_secret(), derive_message_key(), encrypt_message(), decrypt_message(), generate_identity_keys()
-- src/routes.rs — all 7 HTTP endpoints + ws_route/ws_handler, AppState, RateLimiter, push_to_recipient, cleanup_expired
+DEPLOYMENT:
+- systemd: relay.service (hardened: NoNewPrivileges, ProtectSystem=strict, ReadOnlyPaths)
+- start.sh: env validation, dir creation, privilege drop, exec uvicorn with TLS args
+- bin/start-relay: alternate startup script
+- Config via /etc/relay/relay.conf (EnvironmentFile) or service Environment=
+- Direct HTTPS: RELAY_TLS_CERT + RELAY_TLS_KEY, or RELAY_TLS_AUTO_SIGNED=1 (dev only)
+- Caddy reverse proxy: recommended for production TLS termination
+- Tailscale/WireGuard: no TLS needed (point-to-point encryption)
 
-DOCKER:
-- Dockerfile: multi-stage (rust:1.85-slim-bookworm builder → debian:bookworm-slim runtime)
-- docker-compose.yml: port 8443, volume relay_data, env vars for all config
-- docker build + smoke test (healthz endpoint) PASSED
+REQUIREMENTS (requirements.txt):
+fastapi>=0.111.0, uvicorn[standard]>=0.29.0, pydantic>=2.7.0, websockets>=12.0, cryptography>=42.0
 
-COMPILE FIXES APPLIED:
-- 41 errors → 0. Fixed: hmac trait ambiguity (qualified syntax), base64 0.22 API,
-  axum 0.8 Message::Text(Utf8Bytes), sqlx tuple decode (two scalar queries),
-  borrow checker (pass auth by ref), x25519 StaticSecret::from(), PublicKey::from ambiguity,
-  WebSocket split (StreamExt + SinkExt), SplitSink/SendError type imports.
+RUN (dev):
+  RELAY_TOKEN=changeme RELAY_TLS_AUTO_SIGNED=1 python3 -m uvicorn main:app --host 0.0.0.0 --port 8443
 
-NEXT: Wire Android client to this relay (Phase 3 of feature plan).
+RUN (systemd):
+  cp relay.service /etc/systemd/system/
+  cp start.sh /opt/relay/
+  systemctl enable --now relay
+
+SMOKE TEST (verified):
+- TLS auto-signed cert generates on first run (relay.crt + relay.key, 0600 on key)
+- HTTPS healthz returns {"ok":true,"ts":...,"version":"2.0.0"}
+- Config validation rejects: bad port, rate_limit<1, msg_ttl<1, token_expiry<1,
+  TLS_AUTO_SIGNED with explicit cert/key, default devtoken token
+- start.sh validates: RELAY_TOKEN required, schema file exists, TLS cert/key files exist
+
+INTEGRATION TEST (test_integration.py) — 37/37 PASS:
+- Register device → bearer token (not devtoken, phone returned)
+- Register second device
+- Send encrypted envelope (v1, from_number, to[], ts, ciphertext, ephemeral_pub, chain_index)
+- Inbox with mark_read=1: ciphertext, ephemeral_pub, chain_index, msg_id all preserved;
+  follow-up inbox empty (mark worked)
+- Inbox sender (not a recipient): empty
+- Unread message: delivered_ts=None until marked
+- Rate limit on send: 429 after 60 req/min
+- Account deletion: tokens + messages + account removed; inbox empty after
+- Token rotate: old token rejected, new token works
+
+NEXT: Android client wiring (ChatCryptoManager, ChatRelayManager, ChatSyncManager).
+No domains on GitHub — Integrated test runner (Relay via UnifiedComms) + Android client.
 
 ================================================================================
 1. Reconnect Wi-Fi ADB: `adb connect 10.0.0.228:39981` (port may have changed).
