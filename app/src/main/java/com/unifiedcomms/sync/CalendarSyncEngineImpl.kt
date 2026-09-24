@@ -55,7 +55,7 @@ class CalendarSyncEngineImpl(
                 updateProgress(account.id, null, SyncStage.LISTING_FOLDERS, 0, allCalendars.size)
                 if (allCalendars.isEmpty()) {
                     Log.w("CalendarSyncEngineImpl", "No calendars discovered for ${account.email}")
-                    return@withContext SyncResult.success(0, emptyList(), emptyList())
+                    return@withContext SyncResult.failure("No calendars discovered (check CalDAV URL / app-password)")
                 }
 
                 // ponytail: persist discovered calendars into the local `calendars`
@@ -83,6 +83,25 @@ class CalendarSyncEngineImpl(
                 }
 
                 val localEvents = calendarRepo.getAllEventsForAccount(account.id).first()
+
+                // Push offline edits before down-sync. Otherwise a server copy fetched
+                // later in this same pass overwrites the user's pending local change.
+                for (pending in localEvents.filter { it.isLocalOnly || it.needsSync }) {
+                    val calendarPath = if (isDavCollectionPath(pending.calendarId)) {
+                        pending.calendarId
+                    } else {
+                        calendarRepo.getCalendarById(pending.calendarId)?.serverId
+                            ?: allCalendars.firstOrNull()?.path
+                    }
+                    if (calendarPath.isNullOrBlank()) continue
+                    val pushEvent = pending.copy(calendarId = calendarPath)
+                    val etag = calDav.putResource(VEventSerializer.hrefFor(pushEvent), VEventSerializer.toVevent(pushEvent))
+                        ?: return@withContext SyncResult.failure("Calendar write failed for ${pending.uid}")
+                    calendarRepo.updateEvent(
+                        pushEvent.copy(etag = etag, isLocalOnly = false, needsSync = false)
+                    )
+                }
+
                 // ponytail: key the local cache by NORMALIZED SERVER PATH (the .ics
                 // href), not by UID. The fetch/dedup filter below compares against the
                 // server href too, so the two sides must use the same key. Keying by
@@ -99,7 +118,9 @@ class CalendarSyncEngineImpl(
                 val updatedItems = mutableListOf<String>()
 
                 for (cal in allCalendars) {
-                    val etagEntries = calDav.getETagList(cal.path)
+                    val etagEntries = calDav.getETagList(cal.path).getOrElse {
+                        return@withContext SyncResult.failure(it.message ?: "Calendar collection listing failed")
+                    }
                     masterServerHrefs.addAll(etagEntries.map { localEt -> localEt.href })
                     masterServerPaths.addAll(etagEntries.map { localEt -> pathOf(localEt.href) })
                     val toFetch = etagEntries.filter { entry ->
@@ -205,7 +226,7 @@ class CalendarSyncEngineImpl(
             val auth = crypto.decryptAuthConfig(account.authConfig)
             val client = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
             val dav = newCalDav(url, auth, client)
-            val etagEntries = dav.getETagList(calendarId)
+            val etagEntries = dav.getETagList(calendarId).getOrElse { return@withContext null }
             etagEntries.firstOrNull { entry -> entry.href.contains(uid, true) }?.let { entry ->
                 val fetched = dav.fetchItem(account.id, entry.href) ?: return@withContext null
                 ICalParser.parse(fetched.ical, account.id, calendarId, entry.href).events.firstOrNull()
@@ -215,6 +236,9 @@ class CalendarSyncEngineImpl(
 
     override suspend fun createEvent(account: Account, event: CalendarEvent): com.unifiedcomms.sync.CreateResult {
         return try {
+            if (!isDavCollectionPath(event.calendarId)) {
+                return com.unifiedcomms.sync.CreateResult.failure("No calendar collection path")
+            }
             val client = clientFor(account)
             val href = VEventSerializer.hrefFor(event)
             val ical = VEventSerializer.toVevent(event)
@@ -232,6 +256,9 @@ class CalendarSyncEngineImpl(
 
     override suspend fun updateEvent(account: Account, event: CalendarEvent): SyncResult {
         return try {
+            if (!isDavCollectionPath(event.calendarId)) {
+                return SyncResult.failure("No calendar collection path")
+            }
             val client = clientFor(account)
             val href = VEventSerializer.hrefFor(event)
             val ical = VEventSerializer.toVevent(event)
@@ -250,6 +277,7 @@ class CalendarSyncEngineImpl(
         // Normalize the href the same way createEvent's hrefFor does (single slash)
         // to avoid double-slash paths that servers may not resolve.
         return try {
+            if (!isDavCollectionPath(calendarId)) return SyncResult.failure("No calendar collection path")
             val cal = calendarId.trimEnd('/')
             val href = "$cal/$uid.ics"
             val local = calendarRepo.getEventByUid(uid, account.id)
@@ -388,6 +416,12 @@ class CalendarSyncEngineImpl(
         if (href.isBlank()) return ""
         return runCatching { java.net.URI(href).path }.getOrDefault(href.substringAfterLast('/').let { if (it.contains('.')) "/$it" else it })
     }
+
+    private fun isDavCollectionPath(value: String): Boolean =
+        value.startsWith("http://", true) ||
+            value.startsWith("https://", true) ||
+            value.startsWith("/") ||
+            (value.contains('/') && !value.equals("local", ignoreCase = true))
 
     override fun observeSyncProgress(accountId: String): kotlinx.coroutines.flow.Flow<SyncProgress> {
         return allProgress().map { list -> list.firstOrNull { it.accountId == accountId } ?: SyncProgress(accountId, null, SyncStage.COMPLETED, 0, 0) }

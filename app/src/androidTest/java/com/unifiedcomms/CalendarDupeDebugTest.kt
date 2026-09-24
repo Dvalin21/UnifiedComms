@@ -129,9 +129,14 @@ class CalendarDupeDebugTest {
             val cals = dav.discoverCalendars()
             Log.e("PROBEDBG", "ACC ${acc.email} caldav=$url calendars=${cals.map { it.path }}")
             for (cal in cals) {
-                val etags = dav.getETagList(cal.path)
-                val google = etags.filter { it.href.contains("@google.com", true) || it.href.contains("maggie", true) }
-                Log.e("PROBEDBG", "CAL ${cal.path} totalHrefs=${etags.size} googleOrMaggie=${google.size} e.g.=${google.take(5).map { it.href }}")
+                val listing = dav.getETagList(cal.path)
+                val etags = listing.getOrNull()
+                if (etags == null) {
+                    Log.e("PROBEDBG", "CAL ${cal.path} listing failed: ${listing.exceptionOrNull()?.message}")
+                } else {
+                    val google = etags.filter { it.href.contains("@google.com", true) || it.href.contains("maggie", true) }
+                    Log.e("PROBEDBG", "CAL ${cal.path} totalHrefs=${etags.size} googleOrMaggie=${google.size} e.g.=${google.take(5).map { it.href }}")
+                }
             }
         }
     }

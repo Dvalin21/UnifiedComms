@@ -76,8 +76,9 @@ fun TasksScreen(
     var filter by remember { mutableStateOf(TaskFilter.ALL) }
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
     val activeAccountIds = accounts.filter { it.isActive }.map { it.id }
-    val tasks by viewModel.taskRepository.getAllUnified(activeAccountIds)
-        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val taskFlow = if (activeAccountIds.isEmpty()) kotlinx.coroutines.flow.flowOf<List<com.unifiedcomms.data.model.Task>>(emptyList())
+    else viewModel.taskRepository.getAllUnified(activeAccountIds)
+    val tasks by taskFlow.collectAsStateWithLifecycle(initialValue = emptyList())
     var displayTasks by remember { mutableStateOf<List<MockTask>>(emptyList()) }
     LaunchedEffect(tasks) { displayTasks = tasks.map { it.toMockTask() } }
     val coroutineScope = rememberCoroutineScope()
@@ -162,7 +163,9 @@ fun TasksScreen(
                         onClick = { onTaskClick(task) },
                         onToggle = {
                             coroutineScope.launch {
-                                viewModel.taskRepository.markCompleted(task.id, !task.isCompleted)
+                                tasks.firstOrNull { it.id == task.id }?.let { modelTask ->
+                                    viewModel.setTaskCompleted(modelTask, !task.isCompleted)
+                                }
                             }
                         }
                     )
@@ -361,22 +364,42 @@ fun CreateTaskScreen(
                     IconButton(onClick = {
                         if (title.isNotBlank()) {
                             coroutineScope.launch {
-                                val task = com.unifiedcomms.data.model.Task(
-                                    id = taskId ?: java.util.UUID.randomUUID().toString(),
-                                    accountId = accountId,
-                                    listId = listName,
-                                    uid = taskId ?: java.util.UUID.randomUUID().toString(),
+                                val existing = taskId?.let { viewModel.getTaskById(it) }
+                                val resolvedAccountId = existing?.accountId
+                                    ?: accountId.takeIf { it.isNotBlank() }
+                                    ?: viewModel.getDefaultAccount()?.id
+                                    ?: viewModel.getActiveAccounts().firstOrNull()?.id
+                                    ?: return@launch
+                                val mappedPriority = when (priority) {
+                                    TaskPriority.LOW -> com.unifiedcomms.data.model.TaskPriority.LOW
+                                    TaskPriority.NORMAL -> com.unifiedcomms.data.model.TaskPriority.MEDIUM
+                                    TaskPriority.HIGH -> com.unifiedcomms.data.model.TaskPriority.HIGH
+                                    TaskPriority.URGENT -> com.unifiedcomms.data.model.TaskPriority.URGENT
+                                }
+                                val dueAt = dueDate?.let {
+                                    com.unifiedcomms.data.model.TaskDateTime(
+                                        date = kotlinx.datetime.LocalDate(it.year, it.monthValue, it.dayOfMonth)
+                                    )
+                                }
+                                val task = existing?.copy(
                                     title = title,
                                     description = description.takeIf { it.isNotBlank() },
-                                    priority = when (priority) {
-                                        TaskPriority.LOW -> com.unifiedcomms.data.model.TaskPriority.LOW
-                                        TaskPriority.NORMAL -> com.unifiedcomms.data.model.TaskPriority.MEDIUM
-                                        TaskPriority.HIGH -> com.unifiedcomms.data.model.TaskPriority.HIGH
-                                        TaskPriority.URGENT -> com.unifiedcomms.data.model.TaskPriority.URGENT
-                                    },
-                                    dueAt = dueDate?.let { com.unifiedcomms.data.model.TaskDateTime(date = kotlinx.datetime.LocalDate(it.year, it.monthValue, it.dayOfMonth)) }
+                                    listId = listName,
+                                    priority = mappedPriority,
+                                    dueAt = dueAt,
+                                    needsSync = true
+                                ) ?: com.unifiedcomms.data.model.Task(
+                                    accountId = resolvedAccountId,
+                                    listId = listName,
+                                    uid = java.util.UUID.randomUUID().toString(),
+                                    title = title,
+                                    description = description.takeIf { it.isNotBlank() },
+                                    priority = mappedPriority,
+                                    dueAt = dueAt,
+                                    isLocalOnly = true,
+                                    needsSync = true
                                 )
-                                if (taskId == null) viewModel.taskRepository.insert(task) else viewModel.taskRepository.update(task)
+                                viewModel.saveTask(task)
                                 onSave()
                             }
                         }

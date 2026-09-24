@@ -26,34 +26,10 @@ class ContactRepositoryImplTest {
     }
 
     @Test
-    fun `mergeContacts merges fields and deletes secondary`() = runTest {
-        val primary = UnifiedContact(
-            id = "1",
-            displayName = "Primary",
-            emails = listOf("a@example.com"),
-            tags = listOf("tag1"),
-            notes = null
-        )
-        val secondary = UnifiedContact(
-            id = "2",
-            displayName = "Secondary",
-            emails = listOf("b@example.com"),
-            tags = listOf("tag2"),
-            notes = null
-        )
-        whenever(dao.getById("1")).thenReturn(primary)
-        whenever(dao.getById("2")).thenReturn(secondary)
-
+    fun `mergeContacts delegates to dao`() = runTest {
         repo.mergeContacts("1", listOf("2"))
 
-        verify(dao).update(
-            primary.copy(
-                emails = listOf("a@example.com", "b@example.com"),
-                tags = listOf("tag1", "tag2"),
-                notes = "\n\n-- Merged from Secondary --\n"
-            )
-        )
-        verify(dao).deleteById("2")
+        verify(dao).mergeContacts("1", listOf("2"))
     }
 
     @Test
@@ -64,5 +40,20 @@ class ContactRepositoryImplTest {
         whenever(dao.search("Alice", 10)).thenReturn(flowOf(contacts))
         val result = repo.search("Alice", 10).first()
         assertEquals(contacts, result)
+    }
+
+    @Test
+    fun `People flow includes local and CardDAV contacts`() = runTest {
+        val contacts = listOf(
+            UnifiedContact(id = "local", displayName = "Local"),
+            UnifiedContact(
+                id = "carddav",
+                displayName = "CardDAV",
+                source = com.unifiedcomms.data.model.ContactSource.CARDDAV,
+                accountId = "account"
+            )
+        )
+        whenever(dao.getUnifiedCommsContacts()).thenReturn(flowOf(contacts))
+        assertEquals(contacts, repo.getUnifiedCommsContacts().first())
     }
 }

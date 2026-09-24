@@ -157,8 +157,8 @@ class MainActivity : FragmentActivity() {
                     "inbox", "unified_inbox", "email" -> 0
                     "calendar" -> 1
                     "tasks" -> 2
-                    "messages" -> 3
-                    "contacts" -> 4
+                    "messages" -> null
+                    "contacts" -> 3
                     else -> null
                 }
             }
@@ -166,6 +166,34 @@ class MainActivity : FragmentActivity() {
                 if (pendingTab != null) {
                     navController.popBackStack("unified_inbox", false)
                     viewModel.requestTab(pendingTab)
+                }
+            }
+
+            val navigationTarget = intent?.getStringExtra("navigate_to")
+            LaunchedEffect(navigationTarget) {
+                val target = navigationTarget ?: return@LaunchedEffect
+                when {
+                    target.startsWith("event_detail/") -> {
+                        navController.navigate("event_detail/${target.substringAfter('/')}")
+                        intent?.removeExtra("navigate_to")
+                    }
+                    target.startsWith("task_detail/") -> {
+                        navController.navigate("task_detail/${target.substringAfter('/')}")
+                        intent?.removeExtra("navigate_to")
+                    }
+                    target.startsWith("email/") -> {
+                        val parts = target.split('/', limit = 3)
+                        if (parts.size == 3) {
+                            navController.navigate(
+                                "email/${android.net.Uri.encode(parts[1])}/${android.net.Uri.encode(parts[2])}"
+                            )
+                            intent?.removeExtra("navigate_to")
+                        }
+                    }
+                    target == "settings" -> {
+                        navController.navigate("settings")
+                        intent?.removeExtra("navigate_to")
+                    }
                 }
             }
 
@@ -191,14 +219,12 @@ class MainActivity : FragmentActivity() {
                         NavHost(navController, startDestination = "unified_inbox") {
                             composable("unified_inbox") {
                                 UnifiedInboxScreen(
-                                    navController = navController,
                                     viewModel = viewModel,
                                     onNavigateToEmail = { accountId, folder ->
                                         val route = "email/$accountId/$folder"
                                         navController.navigate(route)
                                     },
                                     onEmailClick = { emailId -> navController.navigate("email_detail/$emailId") },
-                                    onNavigateToCalendar = { navController.navigate("calendar") },
                                     onNavigateToSettings = { navController.navigate("settings") },
                                     onNavigateToAddAccount = { navController.navigate("add_account") },
                                     onNavigateToSearch = {

@@ -17,6 +17,7 @@ import java.io.StringReader
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.net.URI
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import kotlin.experimental.and
@@ -28,8 +29,8 @@ import kotlin.experimental.and
  * truth) — no per-domain probes. Resolution order:
  *   - Email:   known config -> ProviderProfiles -> Thunderbird autoconfig XML
  *              -> RFC 6186 SRV -> canonical imap.<domain>/smtp.<domain>.
- *   - CalDAV:  known config -> ProviderProfiles -> RFC 6764 SRV
- *              -> .well-known -> principal/home-set discovery.
+ *   - CalDAV:  known config -> ProviderProfiles -> RFC 6764 .well-known
+ *              -> SRV -> principal/home-set discovery.
  * Principal discovery (PROPFIND current-user-principal -> home-set) returns
  * a URL that actually hosts collections (NOT a guess like $domain/dav/).
  *
@@ -99,6 +100,7 @@ object Autodiscover {
             "https://$domain/.well-known/autoconfig/mail/config-v1.1.xml",
             "https://$domain/.well-known/mail/config-v1.1.xml"
         )
+        val canonical by lazy { canonicalSelfHosted(domain) }
         for (url in urls) {
             try {
                 val req = Request.Builder().url(url)
@@ -108,7 +110,13 @@ object Autodiscover {
                     if (!resp.isSuccessful) return@use null
                     resp.body?.string()
                 } ?: continue
-                parseEmail(body)?.let { return it }
+                val parsed = parseEmail(body) ?: continue
+                if (!parsed.imapHost.startsWith("imap.", ignoreCase = true) ||
+                    !parsed.smtpHost.startsWith("smtp.", ignoreCase = true)
+                ) {
+                    canonical?.let { return it }
+                }
+                return parsed
             } catch (e: Exception) {
                 Log.d(TAG, "autoconfig miss at $url: ${e.message}")
             }
@@ -116,32 +124,28 @@ object Autodiscover {
         // 4) RFC 6186 SRV fallback (generic, provider-agnostic).
         srvEmailLookup(domain)?.let { return it }
         // 5) Canonical self-hosted convention: imap.<domain>/smtp.<domain> on the
-        //    standard secure ports. Single fallback replaces the old duplicated
-        //    mailcowEmailOverride / selfHostedEmailFallback probes. Only when
-        //    the IMAP host resolves, so we never hand back a fabricated host.
-        return try {
-            val imapHost = "imap.$domain"
-            val smtpHost = "smtp.$domain"
-            InetAddress.getByName(imapHost)
-            InetAddress.getByName(smtpHost)
-            Discovered(
-                imapHost = imapHost, imapPort = 993, imapSsl = true,
-                smtpHost = smtpHost, smtpPort = 587, smtpStartTls = true
-            )
-        } catch (_: Exception) {
-            null
-        }
+        //    standard secure ports. Only returned when both hosts resolve.
+        return canonical
+    }
+
+    private fun canonicalSelfHosted(domain: String): Discovered? = try {
+        val imapHost = "imap.$domain"
+        val smtpHost = "smtp.$domain"
+        InetAddress.getByName(imapHost)
+        InetAddress.getByName(smtpHost)
+        Discovered(
+            imapHost = imapHost, imapPort = 993, imapSsl = true,
+            smtpHost = smtpHost, smtpPort = 587, smtpStartTls = true
+        )
+    } catch (_: Exception) {
+        null
     }
 
     /**
      * mailcow / standard self-hosted mail: the real IMAP/SMTP hosts are imap.<domain> and
-     * smtp.<domain>. The provider's Thunderbird autoconfig XML frequently advertises mail.<domain>
-     * instead (wrong for this install). If both canonical hosts resolve, return them and skip the
-     * misleading XML. Returns null when they don't resolve, so genuine mail.<domain>-only providers
-     * fall through to the autoconfig path unchanged.
+     * smtp.<domain>. A provider XML that advertises a different host is overridden only
+     * when both canonical names resolve.
      */
-    // mailcowEmailOverride + selfHostedEmailFallback removed: consolidated into
-    // discoverEmail step 5 (canonical imap.<domain>/smtp.<domain> probe).
 
     /**
      * RFC 6186 SRV-based email discovery. Tries the secure SRV labels first,
@@ -188,7 +192,7 @@ object Autodiscover {
             val pkt = DatagramPacket(buf, buf.size)
             sock.receive(pkt)
             sock.close()
-            parseSrvResponse(buf, pkt.length, name)?.first?.removeSuffix(".")
+            parseSrvResponse(buf, pkt.length)?.first?.removeSuffix(".")
         } catch (e: Exception) {
             Log.d(TAG, "SRV $name failed: ${e.message}")
             null
@@ -268,20 +272,26 @@ object Autodiscover {
     /**
      * Returns (caldavUrl, carddavUrl) or null if neither could be discovered.
      */
-    private fun discoverDav(domain: String, profile: ProviderProfile?, known: ServerConfig?): Pair<String, String?>? = withContextSafe {
+    private fun discoverDav(domain: String, profile: ProviderProfile?, known: ServerConfig?): Pair<String?, String?>? = withContextSafe {
         // 1) Known config (UI provider path) already carries correct CalDAV/CardDAV URLs.
         if (known?.caldavUrl != null || known?.carddavUrl != null) {
-            return@withContextSafe Pair(known.caldavUrl ?: known.carddavUrl!!, known.carddavUrl ?: known.caldavUrl!!)
+            return@withContextSafe Pair(known.caldavUrl, known.carddavUrl)
         }
         // 2) Declarative provider table (replaces knownDavOverrides / sogoDavProbe).
         if (profile?.caldavUrl != null || profile?.carddavUrl != null) {
-            return@withContextSafe Pair(profile.caldavUrl ?: profile.carddavUrl!!, profile.carddavUrl ?: profile.caldavUrl!!)
+            return@withContextSafe Pair(profile.caldavUrl, profile.carddavUrl)
         }
-        // 3) SRV records (SSL first), then .well-known. Either yields a base.
-        val calBase = srvLookup("_caldavs._tcp.$domain") ?: srvLookup("_caldav._tcp.$domain")
-            ?: wellKnownDav("https://$domain/.well-known/caldav")
-        val cardBase = srvLookup("_carddavs._tcp.$domain") ?: srvLookup("_carddav._tcp.$domain")
-            ?: wellKnownDav("https://$domain/.well-known/carddav")
+        // 3) Prefer RFC 6764 well-known redirects. If the apex is not a
+        //    certificate/SNI endpoint, retry the host advertised by SRV; never
+        //    invent a provider hostname such as email.<domain>.
+        val calSrv = srvLookup("_caldavs._tcp.$domain")
+        val cardSrv = srvLookup("_carddavs._tcp.$domain")
+        val calBase = wellKnownDav(domain, "caldav")
+            ?: calSrv?.let { srv -> originOf(srv)?.let { wellKnownDav(it, "caldav") } }
+            ?: calSrv
+        val cardBase = wellKnownDav(domain, "carddav")
+            ?: cardSrv?.let { srv -> originOf(srv)?.let { wellKnownDav(it, "carddav") } }
+            ?: cardSrv
         // mailcow (and others) answer /.well-known/caldav with a 307 redirect to the
         // real DAV path. wellKnownDav returns that Location, so resolveDavHomeSet
         // PROPFINDs the real endpoint, not the redirect stub.
@@ -291,7 +301,7 @@ object Autodiscover {
         val cal = calBase?.let { resolveDavHomeSet(it, "caldav") } ?: calBase
         val card = cardBase?.let { resolveDavHomeSet(it, "carddav") } ?: cardBase
         if (cal != null || card != null) {
-            return@withContextSafe Pair(cal ?: card!!, card ?: cal!!)
+            return@withContextSafe Pair(cal, card)
         }
         null
     }
@@ -315,13 +325,15 @@ object Autodiscover {
                 base,
                 "<D:propfind xmlns:D=\"DAV:\"><D:prop><D:current-user-principal/></D:prop></D:propfind>"
             ) ?: return null
+            val principalUrl = resolveAgainst(principal, base) ?: return null
             val homeSetProp = if (kind == "caldav") "calendar-home-set" else "addressbook-home-set"
             val ns = if (kind == "caldav") "urn:ietf:params:xml:ns:caldav" else "urn:ietf:params:xml:ns:carddav"
-            homeSetHref(
-                principal,
+            val homeSet = homeSetHref(
+                principalUrl,
                 "<D:propfind xmlns:D=\"DAV:\" xmlns:C=\"$ns\"><D:prop><C:$homeSetProp/></D:prop></D:propfind>",
                 homeSetProp
-            )
+            ) ?: return null
+            resolveAgainst(homeSet, principalUrl)
         } catch (_: Exception) { null }
     }
 
@@ -335,6 +347,11 @@ object Autodiscover {
      */
     private fun homeSetHref(url: String, body: String, propLocalName: String): String? =
         propfindInnerHref(url, body, propLocalName)
+
+    internal fun resolveAgainst(href: String, base: String): String? = runCatching {
+        val resolved = URI(base).resolve(href).toString()
+        resolved.takeIf { it.startsWith("https://") }
+    }.getOrNull()
 
     private fun propfindInnerHref(url: String, body: String, propLocalName: String): String? {
         val text = try {
@@ -399,10 +416,9 @@ object Autodiscover {
             val pkt = DatagramPacket(buf, buf.size)
             sock.receive(pkt)
             sock.close()
-            parseSrvResponse(buf, pkt.length, name)?.let { (target, port, path) ->
+            parseSrvResponse(buf, pkt.length)?.let { (target, port, path) ->
                 val clean = target.removeSuffix(".")
-                val scheme = if (name.startsWith("_caldavs") || name.startsWith("_carddavs")) "https" else "http"
-                "$scheme://$clean:$port${if (path.isBlank()) "/" else path}"
+                "https://$clean:$port${if (path.isBlank()) "/" else path}"
             }
         } catch (e: Exception) {
             Log.d(TAG, "SRV $name failed: ${e.message}")
@@ -441,51 +457,80 @@ object Autodiscover {
         return out.toByteArray()
     }
 
-    private fun parseSrvResponse(buf: ByteArray, len: Int, qname: String): Triple<String, Int, String>? {
-        // Skip header (12) + question section (re-parse qname length).
+    internal fun parseSrvResponse(buf: ByteArray, len: Int): Triple<String, Int, String>? {
+        if (len < 12) return null
         var off = 12
-        // parse question name to find end
-        while (buf[off].toInt() != 0) off += (buf[off].toInt() and 0xFF) + 1
-        off += 1 // null terminator
-        off += 4 // qtype + qclass
-        // answer section; we just need the first SRV (type 0x0021) in the response.
-        while (off + 12 <= len) {
-            // skip name (may be pointer 0xC0)
-            if ((buf[off].toInt() and 0xC0) == 0xC0) off += 2 else {
-                while (buf[off] != 0.toByte()) off += (buf[off].toInt() and 0xFF) + 1
-                off += 1
-            }
-            val type = ((buf[off].toInt() and 0xFF) shl 8) or (buf[off + 1].toInt() and 0xFF)
-            off += 10 // type(2) + class(2) + ttl(4) + rdlength(2)
-            val rdlen = ((buf[off].toInt() and 0xFF) shl 8) or (buf[off + 1].toInt() and 0xFF)
-            off += 2
+        val (_, afterQuestionName) = readDnsName(buf, off, len) ?: return null
+        off = afterQuestionName + 4 // qtype + qclass
+        if (off + 4 > len) return null
+
+        val answerCount = readUInt16(buf, 6)
+        repeat(answerCount) {
+            val (_, afterName) = readDnsName(buf, off, len) ?: return null
+            off = afterName
+            if (off + 10 > len) return null
+            val type = readUInt16(buf, off)
+            val rdlength = readUInt16(buf, off + 8)
+            val rdata = off + 10
+            if (rdata + rdlength > len) return null
             if (type == 0x0021) {
-                // priority(2) weight(2) port(2)
-                val port = ((buf[off + 4].toInt() and 0xFF) shl 8) or (buf[off + 5].toInt() and 0xFF)
-                off += 6
-                val (target, _) = readName(buf, off, len)
-                return Triple(target, port, "")
-            } else {
-                off += rdlen
+                if (rdlength < 7) return null
+                val port = readUInt16(buf, rdata + 4)
+                val (target, _) = readDnsName(buf, rdata + 6, len) ?: return null
+                if (target.isNotBlank()) return Triple(target, port, "")
+                return null
+            }
+            off = rdata + rdlength
+        }
+        return null
+    }
+
+    private fun readUInt16(buf: ByteArray, offset: Int): Int =
+        ((buf[offset].toInt() and 0xFF) shl 8) or (buf[offset + 1].toInt() and 0xFF)
+
+    /** Read a DNS name, following compression pointers, and return its end offset. */
+    private fun readDnsName(buf: ByteArray, start: Int, len: Int): Pair<String, Int>? {
+        var off = start
+        var next = -1
+        var jumps = 0
+        val labels = mutableListOf<String>()
+        while (off in 0 until len) {
+            val length = buf[off].toInt() and 0xFF
+            when {
+                length == 0 -> {
+                    if (next < 0) next = off + 1
+                    return labels.joinToString(".") to next
+                }
+                (length and 0xC0) == 0xC0 -> {
+                    if (off + 1 >= len) return null
+                    if (next < 0) next = off + 2
+                    val pointer = ((length and 0x3F) shl 8) or (buf[off + 1].toInt() and 0xFF)
+                    if (pointer >= off || ++jumps > len) return null
+                    off = pointer
+                }
+                (length and 0xC0) != 0 || length > 63 || off + 1 + length > len -> return null
+                else -> {
+                    labels.add(String(buf, off + 1, length, Charsets.US_ASCII))
+                    off += 1 + length
+                }
             }
         }
         return null
     }
 
-    private fun readName(buf: ByteArray, start: Int, len: Int): Pair<String, Int> {
-        val labels = mutableListOf<String>()
-        var off = start
-        while (off < len) {
-            val lenByte = buf[off].toInt() and 0xFF
-            if (lenByte == 0) { off += 1; break }
-            if ((lenByte and 0xC0) == 0xC0) { off += 2; break } // pointer
-            off += 1
-            val label = String(buf, off, lenByte, Charsets.US_ASCII)
-            labels.add(label)
-            off += lenByte
-        }
-        return Pair(labels.joinToString("."), off)
+    private fun wellKnownDav(host: String, resource: String): String? {
+        val origin = if (host.startsWith("https://")) host.trimEnd('/') else "https://${host.trimEnd('/')}"
+        return wellKnownDav("$origin/.well-known/$resource")
     }
+
+    private fun originOf(url: String): String? = runCatching {
+        val uri = URI(url)
+        if (uri.scheme == "https" && uri.host != null) {
+            "${uri.scheme}://${uri.authority}"
+        } else {
+            null
+        }
+    }.getOrNull()
 
     private fun wellKnownDav(url: String): String? {
         return try {
@@ -494,11 +539,11 @@ object Autodiscover {
                 .build()
             http.newCall(req).execute().use { resp ->
                 val loc = resp.header("Location")
-                // Only trust a Location that is a real URL (absolute or server-relative).
-                // Junk redirects (e.g. proxy error pages with control chars) are ignored.
-                if (loc != null && (loc.startsWith("http://") || loc.startsWith("https://") || loc.startsWith("/"))) {
-                    loc
-                } else if (resp.isSuccessful) {
+                // Only trust an HTTPS redirect or a DAV response. A 200 HTML page
+                // is a webmail login page, not a usable DAV base.
+                if (loc != null && (loc.startsWith("https://") || loc.startsWith("/"))) {
+                    resolveAgainst(loc, url)
+                } else if (resp.code == 207 || resp.header("Content-Type")?.lowercase()?.contains("xml") == true) {
                     url
                 } else {
                     null

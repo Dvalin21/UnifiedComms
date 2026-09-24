@@ -15,7 +15,6 @@
         <domain includeSubdomains="true">zoho.com</domain>
         <domain includeSubdomains="true">gmx.com</domain>
         <domain includeSubdomains="true">aol.com</domain>
-        <!-- User-configured custom domains only, not emulator shortcuts -->
     </domain-config>
 
     <base-config cleartextTrafficPermitted="false">
@@ -23,6 +22,4 @@
             <certificates src="system" />
         </trust-anchors>
     </base-config>
-
-    <!-- No debug-overrides user-CA trust. Debug builds still use system CAs only. -->
 </network-security-config>

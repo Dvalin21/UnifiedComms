@@ -143,9 +143,7 @@
              The old SyncAdapter <service> referenced a non-existent class
              (UnifiedCommsSyncService) -> removed. res/xml/syncadapter.xml deleted. -->
 
-        <!-- Widgets (Glance) -->
-        <!-- Widget receivers - disabled for build -->
-        <!--
+        <!-- Widgets -->
         <receiver
             android:name=".widgets.email.EmailWidgetReceiver"
             android:exported="true"
@@ -197,7 +195,6 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/appwidget_unified_info" />
         </receiver>
-        -->
     </application>
 
 </manifest>

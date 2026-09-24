@@ -94,7 +94,10 @@ class SyncManager(
         updateState(stored.id) { it.copy(isSyncing = true, lastError = null) }
         NotificationHelper.showSyncNotification(context, "Syncing ${stored.name}...", -1)
         // ponytail: refresh OAuth token before talking to servers so accounts don't die at expiry.
-        val fresh = tokenRefresher.ensureFreshToken(stored)
+        val fresh = runCatching { tokenRefresher.ensureFreshToken(stored) }.getOrElse { error ->
+            updateState(stored.id) { it.copy(isSyncing = false, lastError = error.message) }
+            return SyncResult.failure(error.message ?: "Token refresh failed")
+        }
         val maxEmailRetry = 2
         var totalSynced = 0
         val startTime = System.currentTimeMillis()
@@ -161,6 +164,7 @@ class SyncManager(
             return SyncResult.failure(errorMessage ?: "Sync failed")
         }
         NotificationHelper.showSyncNotification(context, "Sync completed", 100)
+        refreshWidgets()
         return SyncResult.success(totalSynced)
     }
 
@@ -180,24 +184,61 @@ class SyncManager(
     suspend fun syncEmail(account: Account, folder: String? = null): SyncResult {
         updateState(account.id) { it.copy(emailProgress = SyncProgress(account.id, folder, SyncStage.CONNECTING, 0, 0), isSyncing = true) }
         NotificationHelper.showSyncNotification(context, "Syncing email ${account.name}...", -1)
-        return if (folder != null) emailSync.syncFolder(account, folder) else emailSync.syncAccount(account)
+        return try {
+            val result = if (folder != null) emailSync.syncFolder(account, folder) else emailSync.syncAccount(account)
+            updateState(account.id) { it.copy(isSyncing = false, lastSync = System.currentTimeMillis(), lastError = if (result.success) null else result.errorMessage) }
+            result
+        } catch (e: Exception) {
+            updateState(account.id) { it.copy(isSyncing = false, lastError = e.message) }
+            SyncResult.failure(e.message ?: "Email sync failed")
+        }
     }
 
     suspend fun syncCalendar(account: Account): SyncResult {
         updateState(account.id) { it.copy(calendarProgress = SyncProgress(account.id, null, SyncStage.CONNECTING, 0, 0), isSyncing = true) }
         NotificationHelper.showSyncNotification(context, "Syncing calendar ${account.name}...", -1)
-        return calendarSync.syncAccount(account)
+        return try {
+            val result = calendarSync.syncAccount(account)
+            updateState(account.id) { it.copy(isSyncing = false, lastSync = System.currentTimeMillis(), lastError = if (result.success) null else result.errorMessage) }
+            result
+        } catch (e: Exception) {
+            updateState(account.id) { it.copy(isSyncing = false, lastError = e.message) }
+            SyncResult.failure(e.message ?: "Calendar sync failed")
+        }
     }
 
     suspend fun syncTasks(account: Account): SyncResult {
         updateState(account.id) { it.copy(taskProgress = SyncProgress(account.id, null, SyncStage.CONNECTING, 0, 0), isSyncing = true) }
         NotificationHelper.showSyncNotification(context, "Syncing tasks ${account.name}...", -1)
-        return taskSync.syncAccount(account)
+        return try {
+            val result = taskSync.syncAccount(account)
+            updateState(account.id) { it.copy(isSyncing = false, lastSync = System.currentTimeMillis(), lastError = if (result.success) null else result.errorMessage) }
+            result
+        } catch (e: Exception) {
+            updateState(account.id) { it.copy(isSyncing = false, lastError = e.message) }
+            SyncResult.failure(e.message ?: "Task sync failed")
+        }
     }
 
     suspend fun syncContacts(account: Account): SyncResult {
         updateState(account.id) { it.copy(contactProgress = SyncProgress(account.id, null, SyncStage.CONNECTING, 0, 0), isSyncing = true) }
-        return contactSync.syncAccount(account)
+        return try {
+            val result = contactSync.syncAccount(account)
+            updateState(account.id) { it.copy(isSyncing = false, lastSync = System.currentTimeMillis(), lastError = if (result.success) null else result.errorMessage) }
+            result
+        } catch (e: Exception) {
+            updateState(account.id) { it.copy(isSyncing = false, lastError = e.message) }
+            SyncResult.failure(e.message ?: "Contact sync failed")
+        }
+    }
+
+    private fun refreshWidgets() {
+        runCatching {
+            com.unifiedcomms.widgets.calendar.CalendarWidgetReceiver.refreshAll(context)
+            com.unifiedcomms.widgets.email.EmailWidgetReceiver.refreshAll(context)
+            com.unifiedcomms.widgets.tasks.TasksWidgetReceiver.refreshAll(context)
+            com.unifiedcomms.widgets.unified.UnifiedWidgetReceiver.refreshAll(context)
+        }
     }
 
     private fun updateState(accountId: String, transform: (SyncState) -> SyncState) {

@@ -1,5 +1,6 @@
 package com.unifiedcomms.util
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -29,43 +30,33 @@ object NotificationHelper {
     const val CHANNEL_ID_SYNC = "sync"
     const val CHANNEL_ID_SECURITY = "security"
 
+    @SuppressLint("MissingPermission")
     private fun Context.notifySafe(id: Int, notification: Notification) {
-        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+        if (canPostNotifications()) {
             NotificationManagerCompat.from(this).notify(id, notification)
         } else {
             notifyBlocked()
         }
     }
 
+    @SuppressLint("MissingPermission")
     private fun Context.notifySafe(tag: String?, id: Int, notification: Notification) {
-        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+        if (canPostNotifications()) {
             NotificationManagerCompat.from(this).notify(tag, id, notification)
         } else {
             notifyBlocked()
         }
     }
 
-    // ponytail: never silently drop alerts. When POST_NOTIFICATIONS is denied (Android 13+),
-    // every email/calendar/task/reminder notification would otherwise vanish with no signal.
-    // Instead post one persistent, tapping-routes-to-settings notice so the user can re-grant.
+    private fun Context.canPostNotifications(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    // A denied POST_NOTIFICATIONS permission also prevents posting a "please enable"
+    // notification. Log instead of attempting a second privileged call.
     private fun Context.notifyBlocked() {
-        val intent = Intent(this, MainActivity::class.java).apply {
-            putExtra("navigate_to", "settings")
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            this, 7777, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID_SECURITY)
-            .setSmallIcon(R.drawable.ic_notification_sync)
-            .setContentTitle("Notifications are blocked")
-            .setContentText("UnifiedComms can't alert you to new mail, events, or tasks. Tap to enable.")
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_SYSTEM)
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
-            .build()
-        NotificationManagerCompat.from(this).notify(7777, notification)
+        Log.w("NotificationHelper", "Notifications blocked by user")
     }
 
     fun createNotificationChannels(context: Context) {

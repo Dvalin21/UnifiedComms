@@ -3,9 +3,13 @@
     
     <!-- Widgets -->
     <string name="widget_email_title">UnifiedComms Email</string>
+    <string name="widget_email_desc">Shows unread email count from your accounts</string>
     <string name="widget_calendar_title">UnifiedComms Calendar</string>
+    <string name="widget_calendar_desc">Shows today\'s events with weather</string>
     <string name="widget_tasks_title">UnifiedComms Tasks</string>
+    <string name="widget_tasks_desc">Shows your upcoming tasks</string>
     <string name="widget_unified_title">UnifiedComms Unified</string>
+    <string name="widget_unified_desc">Calendar + tasks in one widget</string>
     
     <!-- Account Types -->
     <string name="account_type_google">Google</string>

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#1A1A2E"
+    android:orientation="vertical"
+    android:padding="10dp"
+    android:gravity="center_vertical"
+    android:id="@+id/widget_root">
+
+    <TextView
+        android:id="@+id/widget_tasks_due"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Due today"
+        android:textColor="#888888"
+        android:textSize="11sp" />
+
+    <TextView
+        android:id="@+id/widget_tasks_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="No tasks"
+        android:textColor="#AAAAAA"
+        android:textSize="12sp"
+        android:layout_marginTop="4dp" />
+</LinearLayout>

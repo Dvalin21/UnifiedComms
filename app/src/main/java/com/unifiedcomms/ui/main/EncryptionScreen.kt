@@ -95,7 +95,7 @@ fun EncryptionScreen(
                             )
                         }
                         HorizontalDivider()
-                        Text(text = "When enabled, sensitive data such as mail credentials, calendar data, and task lists are encrypted on-device using AES-GCM with a master key stored in the Android Keystore.", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(text = "Account credentials are protected with AES-GCM and an Android Keystore master key. Existing records are rewrapped when their account is next saved.", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
 

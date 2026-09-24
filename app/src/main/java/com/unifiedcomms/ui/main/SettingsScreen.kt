@@ -80,7 +80,7 @@ fun SettingsScreen(
     onEncryptionClick: () -> Unit = {}
 ) {
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
-    val activeAccounts = accounts.filter { it.isActive }
+    val visibleAccounts = accounts
     var showAbout by remember { mutableStateOf(false) }
     var showClearDataConfirm by remember { mutableStateOf(false) }
     var showReminderTime by remember { mutableStateOf(false) }
@@ -108,7 +108,7 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             AccountBlock(
-                accounts = activeAccounts,
+                accounts = visibleAccounts,
                 onAddAccount = onAddAccount,
                 onAccountClick = onAccountClick
             )
@@ -351,7 +351,10 @@ private fun AccountBlock(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(text = account.name, fontWeight = FontWeight.Bold)
-                        Text(text = account.email, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            text = if (account.isActive) account.email else "${account.email} · Disabled",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
                 HorizontalDivider()

@@ -31,6 +31,22 @@ class ContactSyncEngineImpl(
             try {
                 updateProgress(account.id, null, SyncStage.CONNECTING, 0, 0)
 
+                // Push local/pending contact edits before downloading the server copy.
+                for (pending in contactRepo.getNeedingSync().filter { it.accountId == account.id }) {
+                    val result: SyncResult = if (pending.sourceId.isNullOrBlank()) {
+                        val created = createContact(account, pending)
+                        if (created.success) SyncResult.success()
+                        else SyncResult.failure(created.errorMessage ?: "Contact write failed")
+                    } else {
+                        updateContact(account, pending)
+                    }
+                    if (!result.success) {
+                        return@withContext SyncResult.failure(
+                            result.errorMessage ?: "Contact write failed"
+                        )
+                    }
+                }
+
                 val contacts = fetchContactsFromServer(account)
                 updateProgress(account.id, null, SyncStage.FETCHING_HEADERS, 0, contacts.size)
 
@@ -85,7 +101,8 @@ class ContactSyncEngineImpl(
     }
 
     private suspend fun fetchContactsFromServer(account: Account): List<UnifiedContact> = withContext(Dispatchers.IO) {
-        val carddavUrl = account.serverConfig.carddavUrl ?: return@withContext emptyList()
+        val carddavUrl = account.serverConfig.carddavUrl
+            ?: throw IllegalStateException("Missing CardDAV URL")
         val auth = crypto.decryptAuthConfig(account.authConfig)
         val client = okhttp3.OkHttpClient.Builder()
             .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
@@ -93,10 +110,12 @@ class ContactSyncEngineImpl(
             .build()
         val dav = newCardDav(carddavUrl, auth, client)
         val books = dav.discoverAddressBooks()
-        if (books.isEmpty()) return@withContext emptyList()
+        if (books.isEmpty()) throw IllegalStateException("No address books discovered")
         val out = mutableListOf<UnifiedContact>()
         for (book in books) {
-            val items = dav.listAddressBookItems(book.path)
+            val items = dav.listAddressBookItems(book.path).getOrElse {
+                throw IllegalStateException(it.message ?: "Address book listing failed")
+            }
             for (entry in items) {
                 val res = dav.fetchVCard(entry.href) ?: continue
                 val uid = entry.href.substringAfterLast('/').substringBeforeLast('.')
@@ -111,6 +130,19 @@ class ContactSyncEngineImpl(
         return CalDAVClient(url, auth.username ?: "", auth.passwordEncrypted ?: "", client, bearer)
     }
 
+    private fun resolveContactHref(baseUrl: String, serverId: String, bookPath: String?): String? {
+        val raw = serverId.trim()
+        if (raw.startsWith("http://", true) || raw.startsWith("https://", true)) return raw
+        val name = raw.removeSuffix(".vcf").trimStart('/')
+        if (name.isBlank()) return null
+        if (name.contains('/')) {
+            val base = if (baseUrl.endsWith('/')) baseUrl else "$baseUrl/"
+            return runCatching { java.net.URI(base).resolve(name).toString() }.getOrNull()
+        }
+        val book = bookPath?.trimEnd('/')?.ifBlank { null } ?: return null
+        return "$book/$name.vcf"
+    }
+
     override suspend fun fetchContact(account: Account, serverId: String): UnifiedContact? = withContext(Dispatchers.IO) {
         val carddavUrl = account.serverConfig.carddavUrl ?: return@withContext null
         val auth = crypto.decryptAuthConfig(account.authConfig)
@@ -119,13 +151,13 @@ class ContactSyncEngineImpl(
             .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
             .build()
         val dav = newCardDav(carddavUrl, auth, client)
-        // ponytail: resolve the href via URI().resolve() (matches CalDAVClient) so a
-        // full/absolute serverId is used verbatim and a relative one is joined to
-        // carddavUrl WITHOUT doubling the path (naive concat "$base/$id" doubled it
-        // when serverId already carried a path prefix).
-        val href = if (serverId.startsWith("http://", true) || serverId.startsWith("https://", true))
-            serverId
-        else java.net.URI(carddavUrl).resolve(serverId.removePrefix("/")).toString()
+        val books = if (serverId.startsWith("http://", true) || serverId.startsWith("https://", true) || serverId.contains('/')) {
+            emptyList()
+        } else {
+            dav.discoverAddressBooks()
+        }
+        val href = resolveContactHref(carddavUrl, serverId, books.firstOrNull()?.path)
+            ?: return@withContext null
         val res = dav.fetchVCard(href) ?: return@withContext null
         val uid = href.substringAfterLast('/').substringBeforeLast('.')
         VCardParser.parse(res.ical, account.id, ContactSource.CARDDAV, uid)
@@ -190,11 +222,13 @@ class ContactSyncEngineImpl(
             .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
             .build()
         val dav = newCardDav(carddavUrl, auth, client)
-        // ponytail: resolve via URI().resolve() (matches CalDAVClient) — never double
-        // the path. serverId may already be an absolute/URL form or a bare id.
-        val href = if (serverId.startsWith("http://", true) || serverId.startsWith("https://", true))
-            serverId
-        else java.net.URI(carddavUrl).resolve(serverId.removeSuffix(".vcf").removePrefix("/")).toString()
+        val books = if (serverId.startsWith("http://", true) || serverId.startsWith("https://", true) || serverId.contains('/')) {
+            emptyList()
+        } else {
+            dav.discoverAddressBooks()
+        }
+        val href = resolveContactHref(carddavUrl, serverId, books.firstOrNull()?.path)
+            ?: return@withContext SyncResult.failure("No address book path")
         if (dav.deleteResource(href)) SyncResult.success(1, emptyList(), emptyList(), listOf(serverId))
         else SyncResult.failure("Contact delete failed")
     }
@@ -217,7 +251,11 @@ class ContactSyncEngineImpl(
                     .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
                     .build()
                 val books = newCardDav(carddavUrl, auth, client).discoverAddressBooks()
-                ConnectionTestResult(true, System.currentTimeMillis() - start, listOf("CardDAV", "${books.size} address book(s)"))
+                if (books.isEmpty()) {
+                    ConnectionTestResult(false, System.currentTimeMillis() - start, emptyList(), "No address books discovered")
+                } else {
+                    ConnectionTestResult(true, System.currentTimeMillis() - start, listOf("CardDAV", "${books.size} address book(s)"))
+                }
             } catch (e: Exception) {
                 ConnectionTestResult(false, 0, emptyList(), e.message)
             }

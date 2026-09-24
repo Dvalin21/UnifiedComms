@@ -3,6 +3,7 @@ package com.unifiedcomms.data.repository
 import com.unifiedcomms.data.db.dao.AccountDao
 import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.model.AccountType
+import com.unifiedcomms.data.model.AuthConfig
 import com.unifiedcomms.security.CryptoManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -13,9 +14,11 @@ class AccountRepositoryImpl(
     private val dao: AccountDao,
     private val crypto: CryptoManager
 ) : AccountRepository {
-    override suspend fun insert(account: Account): Long = dao.insert(account.copy(authConfig = crypto.encryptAuthConfig(account.authConfig)))
+    override suspend fun insert(account: Account): Long =
+        dao.insert(account.copy(authConfig = forStorage(account.authConfig)))
 
-    override suspend fun update(account: Account): Int = dao.update(account.copy(authConfig = crypto.encryptAuthConfig(account.authConfig)))
+    override suspend fun update(account: Account): Int =
+        dao.update(account.copy(authConfig = forStorage(account.authConfig)))
 
     override suspend fun delete(accountId: String): Int = dao.deleteById(accountId)
 
@@ -40,4 +43,7 @@ class AccountRepositoryImpl(
         dao.getTaskSyncAccounts().map { it.filter { a -> a.syncConfig.syncTasks } }
 
     override suspend fun setDefault(accountId: String) = dao.setDefault(accountId)
+
+    private fun forStorage(config: AuthConfig): AuthConfig =
+        crypto.encryptAuthConfig(crypto.decryptAuthConfig(config))
 }

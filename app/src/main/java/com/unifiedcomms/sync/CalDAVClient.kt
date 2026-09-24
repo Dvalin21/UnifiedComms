@@ -11,9 +11,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.xmlpull.v1.XmlPullParser
-import org.xmlpull.v1.XmlPullParserFactory
 import java.io.IOException
-import java.io.StringReader
 import java.net.URI
 import java.util.concurrent.TimeUnit
 import javax.xml.parsers.DocumentBuilderFactory
@@ -35,7 +33,9 @@ class CalDAVClient(
     }
 
     private val auth = if (bearerToken != null) "Bearer $bearerToken" else Credentials.basic(username, password)
-    private val baseUrl: String = serverUrl.trimEnd('/')
+    // Keep the collection slash: URI.resolve treats a base without a trailing
+    // slash as a file and drops the final collection segment for relative hrefs.
+    private val baseUrl: String = serverUrl.trimEnd('/') + "/"
     private val internalClient: OkHttpClient = client.newBuilder()
         .addInterceptor { chain ->
             val req = chain.request().newBuilder()
@@ -75,57 +75,50 @@ class CalDAVClient(
         val props: List<ParsedProp>
     )
 
-    internal fun safeParseMultistatus(xml: String): List<ParsedResponse> {
-        val p = runCatching { XmlPullParserFactory.newInstance().newPullParser() }.getOrNull()
-            ?: throw IllegalStateException("XmlPullParserFactory unavailable: cannot parse CalDAV response")
-        return parseMultistatus(xml, p)
-    }
+    internal fun safeParseMultistatus(xml: String): List<ParsedResponse> =
+        parseMultistatus(xml, null)
 
-    internal fun parseMultistatus(xml: String, parser: XmlPullParser): List<ParsedResponse> {
-        parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
-        parser.setInput(StringReader(xml))
-
-        val responses = mutableListOf<ParsedResponse>()
-        val stack = mutableListOf<ParsedResponse>()
-        val current = mutableListOf<ParsedProp>()
-
-        fun localName(p: XmlPullParser): String = p.name.substringAfter(':')
-
-        while (parser.next() != XmlPullParser.END_DOCUMENT) {
-            when (parser.eventType) {
-                XmlPullParser.START_TAG -> {
-                    when {
-                        localName(parser).equals("response", ignoreCase = true) ->
-                            stack.add(ParsedResponse(href = null, props = emptyList()))
-                        localName(parser).equals("href", ignoreCase = true) ->
-                            current.add(ParsedProp(localName(parser), emptyList(), safeText(parser)))
-                        stack.isNotEmpty() ->
-                            current.add(ParsedProp(localName(parser), emptyList()))
+    internal fun parseMultistatus(
+        xml: String,
+        @Suppress("UNUSED_PARAMETER") parser: XmlPullParser?
+    ): List<ParsedResponse> {
+        val document = parseXml(xml)
+        val responses = byLocalName(document.documentElement, "response")
+        return buildList {
+            for (i in 0 until responses.length) {
+                val response = responses.item(i) ?: continue
+                val props = mutableListOf<ParsedProp>()
+                fun walk(node: org.w3c.dom.Node) {
+                    var child = node.firstChild
+                    while (child != null) {
+                        if (child.nodeType == org.w3c.dom.Node.ELEMENT_NODE) {
+                            val element = child as org.w3c.dom.Element
+                            val name = element.localName ?: element.nodeName.substringAfter(':')
+                            var hasElementChild = false
+                            var probe = element.firstChild
+                            while (probe != null) {
+                                if (probe.nodeType == org.w3c.dom.Node.ELEMENT_NODE) {
+                                    hasElementChild = true
+                                    break
+                                }
+                                probe = probe.nextSibling
+                            }
+                            props += ParsedProp(
+                                localName = name,
+                                children = emptyList(),
+                                text = if (hasElementChild) null else element.textContent?.trim()
+                            )
+                            walk(element)
+                        }
+                        child = child.nextSibling
                     }
                 }
-                XmlPullParser.TEXT, XmlPullParser.CDSECT -> {
-                    val text = parser.text?.trim().orEmpty()
-                    if (text.isNotBlank() && current.isNotEmpty()) {
-                        val last = current.last()
-                        current[current.lastIndex] = last.copy(text = (last.text ?: "") + text)
-                    }
-                }
-                XmlPullParser.END_TAG -> {
-                    if (localName(parser).equals("response", ignoreCase = true) && stack.isNotEmpty()) {
-                        val hrefProp = current.firstOrNull { it.localName.equals("href", ignoreCase = true) }
-                        val built = stack.removeAt(stack.size - 1)
-                            .copy(href = hrefProp?.text, props = current.toList())
-                        responses.add(built)
-                        current.clear()
-                    }
-                }
+                walk(response)
+                val href = byLocalName(response, "href").item(0)?.textContent?.trim()
+                add(ParsedResponse(href = href, props = props))
             }
         }
-        return responses
     }
-
-    private fun safeText(parser: XmlPullParser): String? =
-        if (parser.next() == XmlPullParser.TEXT) parser.text?.trim() else null
 
     // Given a flat list of ParsedProp from a PROPFIND response, find the property
     // named propName and return the text of the next <href> element after it
@@ -195,55 +188,31 @@ class CalDAVClient(
 
     suspend fun discoverCalendars(): List<CalendarInfo> = withTimeout(20_000) {
         withContext(Dispatchers.IO) {
-        // Evidence: user mandate + mailcow manual + stalwart#1796 — for mailcow/SOGo the CalDAV URL
-        // is already the exact calendar collection `.../SOGo/dav/<user>/Calendar/personal/`. Using it
-        // directly avoids the generic principal walk (which can mangle the path via resolve()/URI
-        // joining and return nothing). Only fall back to the walk for non-mailcow / bare-base URLs.
-        if (baseUrl.contains("/SOGo/dav/") && baseUrl.contains("/Calendar/")) {
+            val principal = findPrincipalPath() ?: return@withContext emptyList()
+            val homeSet = findCalendarHomeSet(principal)
+            val target = homeSet ?: principal
             val calendars = mutableListOf<CalendarInfo>()
-            scanForCalendars(baseUrl, calendars)
-            if (calendars.isEmpty()) {
-                // The URL itself is the calendar collection; only expose it if it
-                // actually responds 2xx — a 401/403 means auth failed and must NOT
-                // be reported as a working CalDAV leg (provision would lie).
-                val ok = runCatching {
-                    val xml = """<?xml version="1.0" encoding="utf-8"?>
-<D:propfind xmlns:D="DAV:"><D:prop><D:displayname/></D:prop></D:propfind>""".trimIndent()
-                    propfind(baseUrl, xml, depth = "0")
-                }.isSuccess
-                if (ok) {
-                    val name = baseUrl.trimEnd('/').substringAfterLast('/').ifBlank { "Calendar" }
-                    calendars += CalendarInfo(path = baseUrl, displayName = name, ctag = "", supportsVTODO = false)
-                }
-            }
-            return@withContext calendars
-        }
-        val principal = findPrincipalPath() ?: return@withContext emptyList()
-        val homeSet = findCalendarHomeSet(principal)
-        val target = homeSet ?: principal
-        val calendars = mutableListOf<CalendarInfo>()
-        scanForCalendars(target, calendars)
-        if (calendars.isEmpty()) calendars += CalendarInfo(principal, "Calendar", "", true)
-        calendars
+            scanForCalendars(target, calendars)
+            calendars
         }
     }
 
-    // --- Calendar discovery ported from Hearthboard's proven CalDAVClient
-    // (XmlPullParser flat parser — robust against SOGo's response shapes; the
-    // previous DOM walker mis-handled Harmony's getElementsByTagNameNS). ---
-    private val COMMON_CALDAV_PATHS = listOf(
-        "/SOGo/dav/",
-        "/.well-known/caldav",
-        "/remote.php/dav/",
-        "/caldav/",
-        "/dav/"
-    )
-
+    // Walk up from the configured DAV URL and try the RFC 6764 endpoint. The
+    // collection path is supplied by the server; no provider-specific path is
+    // assumed here.
     private suspend fun findPrincipalPath(): String? {
-        tryFindPrincipalAt(baseUrl)?.let { return it }
         val origin = extractOrigin(baseUrl)
-        for (suffix in COMMON_CALDAV_PATHS) {
-            tryFindPrincipalAt("$origin$suffix")?.let { return it }
+        val candidates = linkedSetOf<String>()
+        var current = baseUrl.trimEnd('/')
+        while (current.startsWith("$origin/")) {
+            candidates += current
+            val slash = current.lastIndexOf('/')
+            if (slash <= origin.length) break
+            current = current.substring(0, slash)
+        }
+        candidates += "$origin/.well-known/caldav"
+        for (candidate in candidates) {
+            tryFindPrincipalAt(candidate)?.let { return it }
         }
         return null
     }
@@ -258,7 +227,7 @@ class CalDAVClient(
             """.trimIndent()
             val resp = propfind(url, xml, depth = "0")
             val r = safeParseMultistatus(resp).firstOrNull()
-            findPropHref("current-user-principal", r) ?: r?.href
+            findPropHref("current-user-principal", r)
         } catch (e: Exception) {
             null
         }
@@ -282,8 +251,8 @@ class CalDAVClient(
     }
 
     private suspend fun scanForCalendars(url: String, result: MutableList<CalendarInfo>, visited: MutableSet<String> = mutableSetOf()) {
-        if (!result.none { it.path == url }) return
-        val normalized = url.trimEnd('/')
+        val normalized = resolve(url.trimEnd('/'))
+        if (!result.none { it.path == normalized }) return
         if (normalized in visited) return
         visited += normalized
 
@@ -378,7 +347,7 @@ class CalDAVClient(
         }
     }
 
-    suspend fun getETagList(calendarPath: String): List<ETagEntry> = withContext(Dispatchers.IO) {
+    suspend fun getETagList(calendarPath: String): Result<List<ETagEntry>> = withContext(Dispatchers.IO) {
         val target = if (calendarPath.startsWith("http://", true) || calendarPath.startsWith("https://", true)) calendarPath else resolve(calendarPath)
         val body = """
             <?xml version="1.0" encoding="UTF-8"?>
@@ -394,16 +363,50 @@ class CalDAVClient(
             .build()
 
         internalClient.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) return@withContext emptyList()
-            val text = resp.body?.string().orEmpty()
-            if (text.isBlank()) return@withContext emptyList()
-            try {
-                val db = parseXml(text)
-                etagEntriesFromMultistatus(db)
-            } catch (e: Exception) {
-                emptyList()
+            if (!resp.isSuccessful) {
+                return@use Result.failure(IOException("PROPFIND failed: HTTP ${resp.code}"))
             }
+            val text = resp.body?.string().orEmpty()
+            parseEtagResponse(text, "PROPFIND")
         }
+    }
+
+    suspend fun getTaskETagList(calendarPath: String): Result<List<ETagEntry>> = withContext(Dispatchers.IO) {
+        val target = if (calendarPath.startsWith("http://", true) || calendarPath.startsWith("https://", true)) calendarPath else resolve(calendarPath)
+        val body = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+              <D:prop><D:getetag/></D:prop>
+              <C:filter>
+                <C:comp-filter name="VCALENDAR">
+                  <C:comp-filter name="VTODO"/>
+                </C:comp-filter>
+              </C:filter>
+            </C:calendar-query>
+        """.trimIndent().toRequestBody(XML_MEDIA_TYPE)
+
+        val req = Request.Builder()
+            .url(target)
+            .post(body)
+            .header("Depth", "1")
+            .build()
+        internalClient.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) {
+                return@use Result.failure(IOException("calendar-query failed: HTTP ${resp.code}"))
+            }
+            parseEtagResponse(resp.body?.string().orEmpty(), "calendar-query")
+        }
+    }
+
+    private fun parseEtagResponse(text: String, operation: String): Result<List<ETagEntry>> = try {
+        val db = parseXml(text)
+        val root = db.documentElement.localName ?: db.documentElement.nodeName.substringAfter(':')
+        if (!root.equals("multistatus", ignoreCase = true)) {
+            throw IOException("$operation returned invalid DAV multistatus")
+        }
+        Result.success(etagEntriesFromMultistatus(db))
+    } catch (e: Exception) {
+        Result.failure(e)
     }
 
     suspend fun fetchItem(@Suppress("UNUSED_PARAMETER") accountId: String, href: String): IcsResource? = withContext(Dispatchers.IO) {
@@ -419,7 +422,7 @@ class CalDAVClient(
         }
     }
 
-    // ponytail: task lists are CalDAV collections that advertise VTODO in their component set.
+    // Task lists are CalDAV collections that advertise VTODO in their component set.
     suspend fun discoverTaskLists(): List<CalendarInfo> = withTimeout(20_000) {
         withContext(Dispatchers.IO) {
             val principal = findPrincipalPath() ?: return@withContext emptyList()
@@ -431,7 +434,7 @@ class CalDAVClient(
     }
 
     private suspend fun scanForTaskLists(url: String, result: MutableList<CalendarInfo>, visited: MutableSet<String> = mutableSetOf()) {
-        val normalized = url.trimEnd('/')
+        val normalized = resolve(url.trimEnd('/'))
         if (normalized in visited) return
         visited += normalized
         val xml = """
@@ -466,7 +469,7 @@ class CalDAVClient(
                     val name = byLocalName(resp, "displayname").item(0)?.textContent?.trim().orEmpty()
                         .ifBlank { subUrl.split("/").lastOrNull { it.isNotBlank() }.orEmpty() }
                     result += CalendarInfo(path = subUrl, displayName = name, supportsVTODO = true)
-                } else if (!isSelf) {
+                } else if (!isSelf && types.contains("collection")) {
                     scanForTaskLists(subUrl, result, visited)
                 }
             }
@@ -513,7 +516,9 @@ class CalDAVClient(
             else -> resolve(href)
         }
         val req = Request.Builder().url(target).delete().build()
-        internalClient.newCall(req).execute().use { resp -> resp.isSuccessful || resp.code == 404 }
+        internalClient.newCall(req).execute().use { resp ->
+            resp.isSuccessful || resp.code == 404
+        }
     }
 
     // ponytail: CardDAV reuses the same DAV plumbing. An addressbook is a collection
@@ -539,14 +544,15 @@ class CalDAVClient(
                 </D:propfind>
             """.trimIndent()
             val resp = propfind(principal, xml, depth = "0")
-            parseHrefsFromPropfind(resp).firstOrNull()
+            val parsed = safeParseMultistatus(resp).firstOrNull()
+            findPropHref("addressbook-home-set", parsed)
         } catch (e: Exception) {
             null
         }
     }
 
     private suspend fun scanForAddressBooks(url: String, result: MutableList<AddressBookInfo>, visited: MutableSet<String> = mutableSetOf()) {
-        val normalized = url.trimEnd('/')
+        val normalized = resolve(url.trimEnd('/'))
         if (normalized in visited) return
         visited += normalized
         val xml = """
@@ -579,7 +585,7 @@ class CalDAVClient(
                     val name = byLocalName(resp, "displayname").item(0)?.textContent?.trim().orEmpty()
                         .ifBlank { subUrl.split("/").lastOrNull { it.isNotBlank() }.orEmpty() }
                     result += AddressBookInfo(path = subUrl, displayName = name)
-                } else if (!isSelf) {
+                } else if (!isSelf && types.contains("collection")) {
                     scanForAddressBooks(subUrl, result, visited)
                 }
             }
@@ -603,7 +609,7 @@ class CalDAVClient(
         return out
     }
 
-    suspend fun listAddressBookItems(addressBookPath: String): List<ETagEntry> = withContext(Dispatchers.IO) {
+    suspend fun listAddressBookItems(addressBookPath: String): Result<List<ETagEntry>> = withContext(Dispatchers.IO) {
         val target = if (addressBookPath.startsWith("http://", true) || addressBookPath.startsWith("https://", true)) addressBookPath else resolve(addressBookPath)
         val xml = """
             <?xml version="1.0" encoding="UTF-8"?>
@@ -613,16 +619,19 @@ class CalDAVClient(
         """.trimIndent().toRequestBody(XML_MEDIA_TYPE)
         val req = Request.Builder().url(target).method("PROPFIND", xml).headers(mapOf("Depth" to "1").toHeaders()).build()
         internalClient.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) return@use emptyList()
+            if (!resp.isSuccessful) {
+                return@use Result.failure(IOException("PROPFIND failed: HTTP ${resp.code}"))
+            }
             val text = resp.body?.string().orEmpty()
-            if (text.isBlank()) return@use emptyList()
             try {
                 val db = parseXml(text)
-                val all = etagEntriesFromMultistatus(db)
-                // ponytail: skip the collection itself (no .vcf extension).
-                all.filter { it.href.endsWith(".vcf", true) }
+                val root = db.documentElement.localName ?: db.documentElement.nodeName.substringAfter(':')
+                if (!root.equals("multistatus", ignoreCase = true)) {
+                    throw IOException("PROPFIND returned invalid DAV multistatus")
+                }
+                Result.success(etagEntriesFromMultistatus(db).filter { it.href.endsWith(".vcf", true) })
             } catch (e: Exception) {
-                emptyList()
+                Result.failure(e)
             }
         }
     }
@@ -651,9 +660,17 @@ class CalDAVClient(
         }
     }
 
-    private fun parseXml(body: String): org.w3c.dom.Document =
-        DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
-            .newDocumentBuilder().parse(body.byteInputStream())
+    private fun parseXml(body: String): org.w3c.dom.Document {
+        val factory = DocumentBuilderFactory.newInstance().apply {
+            isNamespaceAware = true
+            runCatching { isXIncludeAware = false }
+            runCatching { isExpandEntityReferences = false }
+            runCatching { setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
+            runCatching { setFeature("http://xml.org/sax/features/external-general-entities", false) }
+            runCatching { setFeature("http://xml.org/sax/features/external-parameter-entities", false) }
+        }
+        return factory.newDocumentBuilder().parse(body.byteInputStream())
+    }
 
     // Harmony's DOM getElementsByTagNameNS("*", local) is unreliable; walk the tree
     // by local name instead (requires namespace-aware parsing, which parseXml sets).
@@ -689,7 +706,10 @@ class CalDAVClient(
             .header("Depth", depth)
             .build()
         internalClient.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) throw IOException("HTTP ${resp.code}: ${resp.message}")
+            if (!resp.isSuccessful) {
+                Log.w(TAG, "PROPFIND $target failed: HTTP ${resp.code} ${resp.message}")
+                throw IOException("HTTP ${resp.code}: ${resp.message}")
+            }
             resp.body?.string().orEmpty()
         }
     }
@@ -712,22 +732,4 @@ class CalDAVClient(
         }
     }
 
-    private fun parseHrefsFromPropfind(xml: String): List<String> {
-        return try {
-            val factory = XmlPullParserFactory.newInstance().apply { isNamespaceAware = true }
-            val parser = factory.newPullParser()
-            parser.setInput(StringReader(xml))
-            val out = mutableListOf<String>()
-            var event = parser.eventType
-            while (event != XmlPullParser.END_DOCUMENT) {
-                if (event == XmlPullParser.START_TAG && parser.name.equals("href", ignoreCase = true)) {
-                    out += parser.nextText().trim()
-                }
-                event = parser.next()
-            }
-            out
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
 }

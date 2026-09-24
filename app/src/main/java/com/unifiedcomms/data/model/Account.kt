@@ -9,7 +9,6 @@ import com.unifiedcomms.data.db.converters.ServerConfigConverter
 import com.unifiedcomms.data.db.converters.AuthConfigConverter
 import com.unifiedcomms.data.db.converters.SyncConfigConverter
 import com.unifiedcomms.data.db.converters.UIConfigConverter
-import com.unifiedcomms.util.ProviderProfiles
 import kotlinx.datetime.Instant
 import kotlinx.datetime.Clock
 import java.net.InetSocketAddress
@@ -148,20 +147,17 @@ data class ServerConfig(
             pushConfig = PushConfig.Google()
         )
 
-        // resolveSogoHost + sogoHostReachable removed: SOGo web FQDN is now derived from
-        // ProviderProfiles inside MailcowDefaults (single source of truth, no TLS probe).
-
+        // DAV URLs are supplied by autodiscovery or the account form. Never
+        // synthesize a provider path or append a guessed collection here.
+        // `davHost` is retained for source compatibility; when supplied it is a
+        // complete discovered DAV base URL, not a hostname to expand locally.
+        @Suppress("UNUSED_PARAMETER")
         fun MailcowDefaults(serverUrl: String, email: String = "", davHost: String? = null): ServerConfig {
-            val host = serverUrl.removeSuffix("/").removeSuffix("https://").removeSuffix("http://")
-            val domain = email.substringAfter("@").lowercase().trim().takeIf { it.isNotBlank() } ?: host
-            // SOGo web FQDN is per-install. Prefer explicit davHost, then the provider table
-            // (encodes e.g. example.com -> email.<domain>), else mailcow default mail.<domain>.
-            // The bare apex is never valid (wildcard cert excludes it, nginx rejects it).
-            val davHostname = davHost
-                ?: ProviderProfiles.forDomain(domain)?.caldavUrl?.substringAfter("://")?.substringBefore("/")
-            val davBase = davHostname?.let { "https://$it/SOGo/dav/" }
-            val caldavUrl = davBase?.let { base -> if (email.isNotBlank()) "${base}$email/Calendar/personal/" else base }
-            val carddavUrl = davBase?.let { base -> if (email.isNotBlank()) "${base}$email/Contacts/personal/" else base }
+            val host = runCatching { java.net.URI(serverUrl).host }.getOrNull()
+                ?: serverUrl.trim().removePrefix("https://").removePrefix("http://").substringBefore('/')
+            val davBase = davHost?.trim()?.takeIf { it.isNotBlank() }?.let {
+                if (it.endsWith('/')) it else "$it/"
+            }
             return ServerConfig(
                 imapHost = "imap.$host",
                 imapPort = 993,
@@ -169,8 +165,8 @@ data class ServerConfig(
                 smtpHost = "smtp.$host",
                 smtpPort = 587,
                 smtpUseStartTls = true,
-                caldavUrl = caldavUrl,
-                carddavUrl = carddavUrl,
+                caldavUrl = davBase,
+                carddavUrl = davBase,
                 supportsPush = false
             )
         }

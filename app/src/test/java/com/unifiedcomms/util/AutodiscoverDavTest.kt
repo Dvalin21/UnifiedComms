@@ -1,6 +1,8 @@
 package com.unifiedcomms.util
 
+import com.unifiedcomms.data.model.ServerConfig
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -69,11 +71,72 @@ class AutodiscoverDavTest {
     }
 
     @Test
+    fun `relative DAV redirect resolves against its well-known URL`() {
+        assertEquals(
+            "https://mail.example.test/SOGo/dav/user/",
+            Autodiscover.resolveAgainst(
+                "/SOGo/dav/user/",
+                "https://mail.example.test/.well-known/caldav"
+            )
+        )
+    }
+
+    @Test
+    fun `DAV resolution rejects cleartext redirects`() {
+        assertNull(Autodiscover.resolveAgainst("http://mail.example.test/caldav", "https://mail.example.test/.well-known/caldav"))
+    }
+
+    @Test
+    fun `srv response decodes the RDATA header before the target name`() {
+        val packet = srvResponse("imap.example.com", 8443)
+        assertEquals(
+            Triple("imap.example.com", 8443, ""),
+            Autodiscover.parseSrvResponse(packet, packet.size)
+        )
+    }
+
+    @Test
+    fun `mailcow defaults use mail hosts without disabling TLS verification`() {
+        val config = ServerConfig.MailcowDefaults("mail.example.test", "user@mail.example.test")
+
+        assertEquals("imap.mail.example.test", config.imapHost)
+        assertEquals("smtp.mail.example.test", config.smtpHost)
+        assertFalse(config.acceptAllCerts)
+        assertNull(config.caldavUrl)
+    }
+
+    @Test
     fun `old non-namespaced regex form would have failed on this xml`() {
         // Regression guard: the OLD code used Regex("<href>(.*?)</href>") which does
         // NOT match <d:href>. Prove the old pattern returns nothing on this input.
         val oldPattern = Regex("<href>(.*?)</href>", RegexOption.DOT_MATCHES_ALL)
         val oldMatch = oldPattern.find(calendarHomeSetXml)
         assertNull("legacy regex must not match namespaced DAV hrefs", oldMatch)
+    }
+
+    private fun srvResponse(target: String, port: Int): ByteArray {
+        val questionName = dnsName("_caldavs._tcp.example.com")
+        val targetName = dnsName(target)
+        val rdlength = 6 + targetName.size
+        return byteArrayOf(
+            0x12, 0x34,
+            0x81.toByte(), 0x80.toByte(),
+            0, 1, 0, 1, 0, 0, 0, 0
+        ) + questionName + byteArrayOf(0, 33, 0, 1) +
+            byteArrayOf(0xc0.toByte(), 0x0c) +
+            byteArrayOf(0, 33, 0, 1, 0, 0, 0, 0) +
+            byteArrayOf((rdlength ushr 8).toByte(), rdlength.toByte()) +
+            byteArrayOf(0, 0, 0, 0, (port ushr 8).toByte(), port.toByte()) +
+            targetName
+    }
+
+    private fun dnsName(name: String): ByteArray {
+        val out = mutableListOf<Byte>()
+        name.split('.').filter { it.isNotEmpty() }.forEach { label ->
+            out.add(label.length.toByte())
+            out.addAll(label.toByteArray(Charsets.US_ASCII).toList())
+        }
+        out.add(0)
+        return out.toByteArray()
     }
 }

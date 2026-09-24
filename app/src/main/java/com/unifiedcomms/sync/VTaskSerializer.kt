@@ -3,6 +3,7 @@ package com.unifiedcomms.sync
 import android.util.Log
 import com.unifiedcomms.data.model.Task
 import com.unifiedcomms.data.model.TaskStatus
+import com.unifiedcomms.data.model.TimeZoneUtil
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -39,15 +40,19 @@ object VTaskSerializer {
         }}")
 
         task.dueAt?.let { due ->
-            // ponytail: if due.timeZone is malformed, fall back to system default
-            // instead of dropping DUE entirely (#11).
-            val zone = runCatching { ZoneId.of(due.timeZone) }.getOrNull() ?: ZoneId.systemDefault()
-            val zoned = java.time.Instant.ofEpochMilli(due.toInstant().toEpochMilliseconds()).atZone(zone)
-            val fmt = if (due.hasTime) "yyyyMMdd'T'HHmmss" else "yyyyMMdd"
-            // ponytail: a DUE carries its wall-clock zone in due.timeZone, so emit it
-            // as a LOCAL time with a TZID (not a floating Z). Stamping Z masqueraded
-            // the wall-clock as UTC and shifted the due time by the zone offset.
-            sb.appendLine("DUE;TZID=${due.timeZone}:${zoned.format(DateTimeFormatter.ofPattern(fmt))}")
+            val normalizedZone = TimeZoneUtil.normalize(due.timeZone) ?: "UTC"
+            if (due.hasTime) {
+                val zone = runCatching { ZoneId.of(normalizedZone) }.getOrNull() ?: ZoneId.of("UTC")
+                val zoned = java.time.Instant.ofEpochMilli(due.toInstant().toEpochMilliseconds()).atZone(zone)
+                sb.appendLine("DUE;TZID=$normalizedZone:${zoned.format(DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss"))}")
+            } else {
+                val date = due.date ?: due.dateTime?.date
+                if (date != null) {
+                    sb.appendLine("DUE;VALUE=DATE:${date.toString().replace("-", "")}")
+                } else {
+                    Unit
+                }
+            }
         }
 
         val prio = when (task.priority) {

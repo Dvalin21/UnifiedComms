@@ -45,7 +45,6 @@ import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Inbox
@@ -78,7 +77,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.e2ee.ChatSyncManager
-import com.unifiedcomms.ui.chat.ChatListScreen
 import com.unifiedcomms.ui.theme.AccountColors
 import com.unifiedcomms.ui.theme.UnifiedCommsTheme
 import kotlinx.coroutines.flow.combine
@@ -87,11 +85,9 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UnifiedInboxScreen(
-    navController: androidx.navigation.NavController,
     viewModel: MainViewModel,
     onNavigateToEmail: (String, String) -> Unit,
     onEmailClick: (String) -> Unit = {},
-    onNavigateToCalendar: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToAddAccount: () -> Unit,
     onNavigateToSearch: () -> Unit = {},
@@ -107,11 +103,11 @@ fun UnifiedInboxScreen(
     val activeAccounts = accounts.value.filter { it.isActive }.distinctBy { it.id }
     val coroutineScope = rememberCoroutineScope()
 
-    var selectedTab by rememberSaveable { mutableIntStateOf(initialTab?.coerceIn(0, 4) ?: 0) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(initialTab?.coerceIn(0, 3) ?: 0) }
     val pendingTab by viewModel.pendingTab.collectAsStateWithLifecycle()
     LaunchedEffect(pendingTab) {
         pendingTab?.let {
-            selectedTab = it.coerceIn(0, 4)
+            selectedTab = it.coerceIn(0, 3)
             viewModel.clearPendingTab()
         }
     }
@@ -262,8 +258,7 @@ fun UnifiedInboxScreen(
                         NavigationItem("Inbox", Icons.Default.Inbox, 0),
                         NavigationItem("Calendar", Icons.Default.CalendarMonth, 1),
                         NavigationItem("Tasks", Icons.Default.Checklist, 2),
-                        NavigationItem("Chats", Icons.Default.Chat, 3),
-                        NavigationItem("People", Icons.Default.Contacts, 4)
+                        NavigationItem("People", Icons.Default.Contacts, 3)
                     )
                     items.forEach { item ->
                         NavigationBarItem(
@@ -284,20 +279,10 @@ fun UnifiedInboxScreen(
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
             when (selectedTab) {
-                0 -> EmailOverviewScreen(activeAccounts, viewModel, onNavigateToEmail, onEmailClick, onNavigateToAddAccount)
+                0 -> EmailOverviewScreen(activeAccounts, viewModel, onEmailClick, onNavigateToAddAccount)
                 1 -> CalendarScreen(viewModel, onCreateEvent = onCreateEvent, onEventClick = onEventClick)
                 2 -> TasksScreen(viewModel, onCreateTask = onCreateTask, onTaskClick = { onNavigateToTask(it.id) })
-                3 -> ChatListScreen(
-                    viewModel = com.unifiedcomms.ui.chat.ChatViewModel(
-                        messageDao = com.unifiedcomms.UnifiedCommsApplication.getInstance().database.messageDao(),
-                    chatSyncManager = com.unifiedcomms.UnifiedCommsApplication.chatSync,
-                    ),
-                    onNavigateToChat = { peerPhone, peerName ->
-                        navController.navigate("chat_detail/$peerPhone/$peerName")
-                    },
-                    onNavigateToAddPeer = { },
-                )
-                4 -> ContactsScreen(viewModel, onContactClick = onNavigateToContact, onAddContact = onNavigateToContactNew)
+                3 -> ContactsScreen(viewModel, onContactClick = onNavigateToContact, onAddContact = onNavigateToContactNew)
             }
         }
     }
@@ -313,7 +298,6 @@ data class FolderEntry(val name: String, val unread: Int)
 fun EmailOverviewScreen(
     accounts: List<Account>,
     viewModel: MainViewModel,
-    onNavigateToEmail: (String, String) -> Unit,
     onEmailClick: (String) -> Unit = {},
     onAddAccount: () -> Unit = {}
 ) {

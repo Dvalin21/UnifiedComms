@@ -63,7 +63,7 @@ fun ContactsScreen(
     onContactClick: (String) -> Unit,
     onAddContact: () -> Unit
 ) {
-    val contacts by viewModel.getAllContacts().collectAsStateWithLifecycle(initialValue = emptyList())
+    val contacts by viewModel.contactsFlow.collectAsStateWithLifecycle(initialValue = emptyList())
 
     Scaffold(
         topBar = {
@@ -207,17 +207,22 @@ fun ContactEditScreen(
                                 source = if (account != null) ContactSource.CARDDAV else ContactSource.LOCAL,
                                 updatedAt = kotlinx.datetime.Clock.System.now()
                             )
-                            saving = false
-                            val ok: Boolean
-                            val errMsg: String?
-                            if (existing != null) {
-                                val sr = viewModel.updateContact(built)
-                                ok = sr.success; errMsg = sr.errorMessage
-                            } else {
-                                val cr = viewModel.createContact(built)
-                                ok = cr.success; errMsg = cr.error
+                            try {
+                                val ok: Boolean
+                                val errMsg: String?
+                                if (existing != null) {
+                                    val sr = viewModel.updateContact(built)
+                                    ok = sr.success; errMsg = sr.errorMessage
+                                } else {
+                                    val cr = viewModel.createContact(built)
+                                    ok = cr.success; errMsg = cr.error
+                                }
+                                if (ok) onDone() else error = errMsg
+                            } catch (e: Exception) {
+                                error = e.message ?: "Contact save failed"
+                            } finally {
+                                saving = false
                             }
-                            if (ok) onDone() else error = errMsg
                         }
                     }) { Icon(Icons.Default.Save, contentDescription = "Save") }
                 }
