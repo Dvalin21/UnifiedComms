@@ -92,4 +92,7 @@ google-services.json
 # Test
 test-results/
 coverage/
-*.ec
+*.ec/HANDOFF.md
+/r[0-9]*.xml
+/s[0-9]*.xml
+/live_*.png
