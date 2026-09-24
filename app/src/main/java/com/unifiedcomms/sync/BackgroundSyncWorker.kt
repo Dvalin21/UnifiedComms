@@ -18,6 +18,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 
+internal fun shouldRetrySync(result: Result<SyncResult>): Boolean =
+    result.isFailure || result.getOrNull()?.success != true
+
 /**
  * Background sync driver. Reuses the SAME engine stack + SyncManager.performFullSync
  * that the foreground UI uses, so behaviour is identical — only the lifecycle owner
@@ -60,8 +63,9 @@ class BackgroundSyncWorker(
             var failedAccounts = 0
             for (account in accounts) {
                 val result = runCatching { syncManager.performFullSync(account) }
-                if (result.isFailure) {
-                    Log.e("BackgroundSyncWorker", "Account ${account.email} sync failed", result.exceptionOrNull())
+                if (shouldRetrySync(result)) {
+                    result.exceptionOrNull()?.let { Log.e("BackgroundSyncWorker", "Account ${account.email} sync failed", it) }
+                        ?: Log.e("BackgroundSyncWorker", "Account ${account.email} sync failed: ${result.getOrNull()?.errorMessage}")
                     failedAccounts++
                 }
             }

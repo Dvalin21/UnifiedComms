@@ -13,8 +13,9 @@ package com.unifiedcomms.util
  * SRV / .well-known fallback. (LINUS #1 data structures first; #9 no
  * broken windows — no runtime host guessing / TLS probing.)
  *
- * Per-install mailcow SOGo web FQDN is encoded explicitly here
- * (e.g. example.com -> email.<domain>) instead of a live probe.
+ * Mailcow SOGo endpoints are intentionally not hardcoded here: the
+ * install-specific FQDN is resolved by Autodiscover and can be overridden
+ * in the account setup form.
  */
 data class ProviderProfile(
     val imapHost: String? = null,

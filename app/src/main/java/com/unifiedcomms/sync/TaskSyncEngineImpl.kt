@@ -42,18 +42,24 @@ class TaskSyncEngineImpl(
                 val lists = dav.discoverTaskLists()
                 if (lists.isEmpty()) {
                     Log.w("TaskSyncEngineImpl", "No task lists discovered for ${account.email}")
-                    return@withContext SyncResult.success(0, emptyList(), emptyList())
+                    return@withContext SyncResult.failure("No task lists discovered (check CalDAV VTODO support)")
                 }
 
-                val localTasks = taskRepo.getLocalOnly(account.id)
+                val localTasks = taskRepo.getNeedingSync(account.id)
 
                 var synced = 0
                 val newItems = mutableListOf<String>()
                 val updatedItems = mutableListOf<String>()
+                val serverUids = mutableSetOf<String>()
 
                 for (list in lists) {
                     updateProgress(account.id, list.displayName, SyncStage.LISTING_FOLDERS, synced, synced)
-                    val etags = dav.getETagList(list.path)
+                    val etags = dav.getTaskETagList(list.path).getOrElse {
+                        dav.getETagList(list.path).getOrElse { fallback ->
+                            return@withContext SyncResult.failure(fallback.message ?: "Task collection listing failed")
+                        }
+                    }
+                    serverUids += etags.map { entry -> entry.href.substringAfterLast('/').substringBefore('.') }
                     val toFetch = etags.filter { entry ->
                         val existing = taskRepo.getByUid(entry.href.substringAfterLast('/').substringBefore('.'), account.id)
                         existing == null || existing.etag != entry.etag
@@ -81,23 +87,31 @@ class TaskSyncEngineImpl(
                     }
                 }
 
-                // ponytail: push locally-created tasks (isLocalOnly) that the server has never seen.
+                // Push both new local tasks and edits to existing server tasks.
                 for (local in localTasks) {
                     if (local.uid.isBlank()) continue
-                    val listPath = if (local.listId.isNotBlank() && local.listId.contains('/')) local.listId
-                    else lists.firstOrNull()?.path ?: continue
+                    val listPath = resolveListPath(taskRepo, account, dav, local.listId, lists) ?: continue
                     val href = "$listPath/${local.uid}.ics"
                     val etag = dav.putResource(href, VTaskSerializer.toVtodo(local, local.uid))
                     if (etag != null) {
-                        taskRepo.update(local.copy(isLocalOnly = false, needsSync = false, etag = etag))
+                        taskRepo.update(
+                            local.copy(
+                                listId = listPath,
+                                isLocalOnly = false,
+                                needsSync = false,
+                                etag = etag
+                            )
+                        )
                         updatedItems.add(local.id)
+                        serverUids += local.uid
                         synced++
+                    } else {
+                        return@withContext SyncResult.failure("Task write failed for ${local.uid}")
                     }
                 }
 
                 // ponytail: delete tasks that existed locally but vanished server-side during down-sync.
                 // (isLocalOnly tasks are kept — they were just pushed above.)
-                val serverUids = etagsUids(dav, lists)
                 for (list in lists) {
                     val normalizedPath = list.path.trimEnd('/')
                     val tasks = taskRepo.getByList(account.id, normalizedPath).first()
@@ -118,16 +132,6 @@ class TaskSyncEngineImpl(
         }
     }
 
-    private suspend fun etagsUids(dav: CalDAVClient, lists: List<CalDAVClient.CalendarInfo>): Set<String> {
-        val out = mutableSetOf<String>()
-        for (list in lists) {
-            runCatching { dav.getETagList(list.path) }.getOrDefault(emptyList()).forEach { entry ->
-                out += entry.href.substringAfterLast('/').substringBefore('.')
-            }
-        }
-        return out
-    }
-
     override suspend fun syncTaskList(account: Account, taskList: TaskList): SyncResult = syncAccount(account)
 
     override suspend fun fetchTask(account: Account, listId: String, uid: String): Task? {
@@ -136,8 +140,9 @@ class TaskSyncEngineImpl(
             val auth = crypto.decryptAuthConfig(account.authConfig)
             val client = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
             val dav = newCalDav(url, auth, client)
-            val res = dav.fetchItem(account.id, "$listId/$uid.ics") ?: return@withContext null
-            ICalParser.parse(res.ical, account.id, listId, res.href).tasks.firstOrNull()
+            val listPath = resolveListPath(taskRepo, account, dav, listId) ?: return@withContext null
+            val res = dav.fetchItem(account.id, "$listPath/$uid.ics") ?: return@withContext null
+            ICalParser.parse(res.ical, account.id, listPath, res.href).tasks.firstOrNull()
         }
     }
 
@@ -147,9 +152,8 @@ class TaskSyncEngineImpl(
             val auth = crypto.decryptAuthConfig(account.authConfig)
             val client = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
             val dav = newCalDav(url, auth, client)
-            val lists = dav.discoverTaskLists()
-            val listPath = if (task.listId.isNotBlank() && task.listId.contains('/')) task.listId else lists.firstOrNull()?.path
-            listPath ?: return@withContext com.unifiedcomms.sync.CreateResult.failure("No task list")
+            val listPath = resolveListPath(taskRepo, account, dav, task.listId)
+                ?: return@withContext com.unifiedcomms.sync.CreateResult.failure("No task list")
             val uid = task.uid.ifBlank { java.util.UUID.randomUUID().toString() }
             val href = "$listPath/$uid.ics"
             val etag = dav.putResource(href, VTaskSerializer.toVtodo(task, uid))
@@ -164,14 +168,13 @@ class TaskSyncEngineImpl(
             val auth = crypto.decryptAuthConfig(account.authConfig)
             val client = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
             val dav = newCalDav(url, auth, client)
-            val lists = dav.discoverTaskLists()
-            val listPath = if (task.listId.isNotBlank() && task.listId.contains('/')) task.listId else lists.firstOrNull()?.path
-            listPath ?: return@withContext SyncResult.failure("No task list")
+            val listPath = resolveListPath(taskRepo, account, dav, task.listId)
+                ?: return@withContext SyncResult.failure("No task list")
             val uid = task.uid.ifBlank { return@withContext SyncResult.failure("Task has no UID") }
             val href = "$listPath/$uid.ics"
             val etag = dav.putResource(href, VTaskSerializer.toVtodo(task, uid))
                 ?: return@withContext SyncResult.failure("Task write failed")
-            taskRepo.update(task.copy(etag = etag, needsSync = false))
+            taskRepo.update(task.copy(listId = listPath, etag = etag, needsSync = false))
             SyncResult.success()
         }
     }
@@ -182,7 +185,9 @@ class TaskSyncEngineImpl(
             val auth = crypto.decryptAuthConfig(account.authConfig)
             val client = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
             val dav = newCalDav(url, auth, client)
-            val href = "$listId/$uid.ics"
+            val listPath = resolveListPath(taskRepo, account, dav, listId)
+                ?: return@withContext SyncResult.failure("No task list path")
+            val href = "$listPath/$uid.ics"
             if (dav.deleteResource(href)) SyncResult.success() else SyncResult.failure("Task delete failed")
         }
     }
@@ -203,8 +208,12 @@ class TaskSyncEngineImpl(
                 val url = account.serverConfig.caldavUrl ?: return@withContext ConnectionTestResult(false, 0, emptyList(), "Missing CalDAV URL")
                 val auth = crypto.decryptAuthConfig(account.authConfig)
                 val client = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
-                @Suppress("UNUSED_VARIABLE") val lists = newCalDav(url, auth, client).discoverTaskLists()
-                ConnectionTestResult(true, System.currentTimeMillis() - start, listOf("CalDAV VTODO"))
+                val lists = newCalDav(url, auth, client).discoverTaskLists()
+                if (lists.isEmpty()) {
+                    ConnectionTestResult(false, System.currentTimeMillis() - start, emptyList(), "No task lists discovered (check CalDAV VTODO support)")
+                } else {
+                    ConnectionTestResult(true, System.currentTimeMillis() - start, listOf("CalDAV VTODO"))
+                }
             } catch (e: Exception) {
                 ConnectionTestResult(false, 0, emptyList(), e.message)
             }
@@ -218,8 +227,49 @@ class TaskSyncEngineImpl(
             val client = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
             newCalDav(url, auth, client).discoverTaskLists().map { info ->
                 TaskList(id = info.path, accountId = account.id, serverId = info.path, title = info.displayName)
+            }.also { lists ->
+                for (list in lists) {
+                    if (taskRepo.getListByServerId(account.id, list.serverId) == null) {
+                        taskRepo.insertList(list)
+                    }
+                }
             }
         }
+    }
+
+    private suspend fun resolveListPath(
+        repository: TaskRepository,
+        account: Account,
+        dav: CalDAVClient,
+        requested: String,
+        knownLists: List<CalDAVClient.CalendarInfo>? = null
+    ): String? {
+        val lists = knownLists ?: dav.discoverTaskLists()
+        val requestedPath = requested.takeIf { isDavCollectionPath(it) }?.trimEnd('/')
+        if (requestedPath != null) {
+            lists.firstOrNull { sameDavPath(it.path, requestedPath) }
+                ?.let { return it.path.trimEnd('/') }
+        }
+        val repositoryPath = repository.getListById(requested)?.serverId
+            ?: repository.getListByServerId(account.id, requested)?.serverId
+        if (repositoryPath != null && isDavCollectionPath(repositoryPath)) {
+            val normalized = repositoryPath.trimEnd('/')
+            if (lists.any { sameDavPath(it.path, normalized) }) return normalized
+        }
+        return lists.firstOrNull()?.path?.trimEnd('/')
+    }
+
+    private fun isDavCollectionPath(value: String): Boolean =
+        value.startsWith("http://", true) ||
+            value.startsWith("https://", true) ||
+            value.startsWith("/") ||
+            (value.contains('/') && !value.equals("local", ignoreCase = true))
+
+    private fun sameDavPath(left: String, right: String): Boolean = runCatching {
+        java.net.URI(left).normalize().path.trimEnd('/') ==
+            java.net.URI(right).normalize().path.trimEnd('/')
+    }.getOrElse {
+        left.trimEnd('/').equals(right.trimEnd('/'), ignoreCase = true)
     }
 
     private fun updateProgress(accountId: String, folder: String?, stage: SyncStage, current: Int, total: Int) {

@@ -24,6 +24,8 @@ import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.draw.clip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -56,6 +58,15 @@ fun ChatListScreen(
     onNavigateToAddPeer: () -> Unit = {},
 ) {
     val conversations by viewModel.conversations.collectAsStateWithLifecycle()
+
+    // ponytail: start sync when the Chats tab is first shown — user has set
+    // their identity in Settings before reaching here.
+    LaunchedEffect(Unit) {
+        val sync = com.unifiedcomms.UnifiedCommsApplication.chatSync
+        if (sync != null && !sync.isRunning()) {
+            sync.start()
+        }
+    }
 
     Scaffold(
         topBar = {

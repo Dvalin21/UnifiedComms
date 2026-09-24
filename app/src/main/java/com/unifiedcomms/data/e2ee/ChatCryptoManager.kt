@@ -93,4 +93,24 @@ class ChatCryptoManager(private val context: Context) {
             generator.generateKey()
         }
     }
+
+    /** AES-256-GCM encrypt using an externally supplied key (e.g. ECDH-derived). */
+    fun encryptWithKey(plaintext: String, key: SecretKey): String {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        val nonce = ByteArray(12).also { SecureRandom().nextBytes(it) }
+        cipher.init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(128, nonce))
+        val ct = cipher.doFinal(plaintext.toByteArray(Charsets.UTF_8))
+        return Base64.encodeToString(nonce + ct, Base64.NO_WRAP)
+    }
+
+    /** AES-256-GCM decrypt using an externally supplied key (e.g. ECDH-derived). */
+    fun decryptWithKey(ciphertextBase64: String, key: SecretKey): String {
+        val data = Base64.decode(ciphertextBase64, Base64.DEFAULT)
+        if (data.size < 12) throw IllegalArgumentException("Ciphertext too short")
+        val nonce = data.copyOfRange(0, 12)
+        val ct = data.copyOfRange(12, data.size)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, nonce))
+        return String(cipher.doFinal(ct), Charsets.UTF_8)
+    }
 }

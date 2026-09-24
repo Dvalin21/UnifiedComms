@@ -6,6 +6,7 @@ import com.unifiedcomms.security.CryptoManager
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 import org.mockito.kotlin.any
@@ -23,6 +24,7 @@ class AccountRepositoryImplTest {
     fun setUp() {
         dao = mock()
         crypto = mock()
+        whenever(crypto.decryptAuthConfig(any())).thenAnswer { it.arguments[0] }
         whenever(crypto.encryptAuthConfig(any())).thenAnswer { it.arguments[0] }
         repo = AccountRepositoryImpl(dao, crypto)
     }
@@ -58,5 +60,30 @@ class AccountRepositoryImplTest {
         verify(dao).insert(account.copy(authConfig = account.authConfig))
         repo.update(account)
         verify(dao).update(account.copy(authConfig = account.authConfig))
+    }
+
+    @Test
+    fun `update normalizes an already encrypted auth config once`() = runTest {
+        val account = Account.createGoogle("user@example.com")
+        val storedAuth = account.authConfig.copy(passwordEncrypted = "encrypted-secret")
+        val plaintextAuth = storedAuth.copy(passwordEncrypted = "secret")
+        val stored = account.copy(authConfig = storedAuth)
+        whenever(crypto.decryptAuthConfig(storedAuth)).thenReturn(plaintextAuth)
+        whenever(crypto.encryptAuthConfig(plaintextAuth)).thenReturn(storedAuth)
+
+        repo.update(stored)
+
+        verify(crypto).decryptAuthConfig(storedAuth)
+        verify(crypto).encryptAuthConfig(plaintextAuth)
+        verify(dao).update(stored)
+    }
+
+    @Test
+    fun `default account operations delegate to dao`() = runTest {
+        val account = Account.createGoogle("user@example.com")
+        whenever(dao.getDefault()).thenReturn(account)
+        assertEquals(account, repo.getDefault())
+        repo.setDefault(account.id)
+        verify(dao).setDefault(account.id)
     }
 }

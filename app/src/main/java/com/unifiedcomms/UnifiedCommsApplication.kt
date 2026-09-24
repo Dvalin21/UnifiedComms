@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.unifiedcomms.data.db.UnifiedCommsDatabase
 import com.unifiedcomms.data.e2ee.ChatCryptoManager
+import com.unifiedcomms.data.e2ee.ChatKeyManager
 import com.unifiedcomms.data.e2ee.ChatRelayManager
 import com.unifiedcomms.data.e2ee.ChatSyncManager
 import com.unifiedcomms.util.PreferencesManager
@@ -42,16 +43,11 @@ class UnifiedCommsApplication : Application() {
         PreferencesManager.initialize(this)
         database = UnifiedCommsDatabase.getInstance(this)
 
-        // Wire E2EE chat components
-        chatCrypto = ChatCryptoManager(this)
-        chatRelay = ChatRelayManager(this)
-        chatRelay?.loadSavedState()
-        chatSync = ChatSyncManager(
-            context = this,
-            relay = chatRelay!!,
-            crypto = chatCrypto!!,
-            messageDao = database.messageDao(),
-        )
+        // Chat relay is intentionally not initialized or started here. The relay
+        // protocol is not configured for this account set; leaving a default
+        // localhost client running would make an unconfigured feature look active.
+        // The chat route is hidden from the main navigation until it has a real
+        // endpoint, identity, and durable configuration.
 
         initializeNotificationChannels()
         DemoDataSeeder.seedIfNeeded(this, mainCoroutineScope)

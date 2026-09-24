@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -79,13 +80,18 @@ fun AccountSettingsScreen(
 
     val color: AccountColor = viewModel.getAccountColor(account.id)
     val effectiveScope = coroutineScope ?: rememberCoroutineScope()
-    var accountState by remember { mutableStateOf(account) }
-    var syncEmail by remember { mutableStateOf(account.syncConfig.syncEmail) }
-    var syncCalendar by remember { mutableStateOf(account.syncConfig.syncCalendar) }
-    var syncTasks by remember { mutableStateOf(account.syncConfig.syncTasks) }
-    var syncContacts by remember { mutableStateOf(account.syncConfig.syncContacts) }
-    var isActive by remember { mutableStateOf(account.isActive) }
-    var isDefault by remember { mutableStateOf(account.isDefault) }
+    var accountState by remember(account.id) { mutableStateOf(account) }
+    var syncEmail by remember(account.id) { mutableStateOf(account.syncConfig.syncEmail) }
+    var syncCalendar by remember(account.id) { mutableStateOf(account.syncConfig.syncCalendar) }
+    var syncTasks by remember(account.id) { mutableStateOf(account.syncConfig.syncTasks) }
+    var syncContacts by remember(account.id) { mutableStateOf(account.syncConfig.syncContacts) }
+    LaunchedEffect(account) {
+        accountState = account
+        syncEmail = account.syncConfig.syncEmail
+        syncCalendar = account.syncConfig.syncCalendar
+        syncTasks = account.syncConfig.syncTasks
+        syncContacts = account.syncConfig.syncContacts
+    }
 
     UnifiedCommsTheme(darkTheme = darkTheme) {
         Scaffold(
@@ -201,15 +207,18 @@ fun AccountSettingsScreen(
 
                 SettingItem(
                     title = "Default account",
-                    subtitle = if (isDefault) "Yes" else "No",
+                    subtitle = if (accountState.isDefault) "Yes" else "No",
                     icon = Icons.Default.Lock,
                     trailing = {
                         Switch(
-                            checked = isDefault,
-                            onCheckedChange = {
-                                isDefault = it
-                                effectiveScope.launch {
-                                    viewModel.setDefaultAccount(accountState.id)
+                            checked = accountState.isDefault,
+                            enabled = accountState.isActive && !accountState.isDefault,
+                            onCheckedChange = { enabled ->
+                                if (enabled) {
+                                    accountState = accountState.copy(isDefault = true)
+                                    effectiveScope.launch {
+                                        viewModel.setDefaultAccount(accountState.id)
+                                    }
                                 }
                             }
                         )
@@ -218,15 +227,21 @@ fun AccountSettingsScreen(
                 HorizontalDivider()
                 SettingItem(
                     title = "Active",
-                    subtitle = if (isActive) "Enabled" else "Disabled",
+                    subtitle = if (accountState.isActive) "Enabled" else "Disabled",
                     icon = Icons.Default.Lock,
                     trailing = {
                         Switch(
-                            checked = isActive,
-                            onCheckedChange = {
-                                isActive = it
-                                effectiveScope.launch {
-                                    accountState = viewModel.updateAccount(accountState.copy(isActive = it))
+                            checked = accountState.isActive,
+                            onCheckedChange = { enabled ->
+                                if (enabled != accountState.isActive) {
+                                    val requested = accountState.copy(
+                                        isActive = enabled,
+                                        isDefault = if (enabled) accountState.isDefault else false
+                                    )
+                                    accountState = requested
+                                    effectiveScope.launch {
+                                        accountState = viewModel.updateAccount(requested)
+                                    }
                                 }
                             }
                         )

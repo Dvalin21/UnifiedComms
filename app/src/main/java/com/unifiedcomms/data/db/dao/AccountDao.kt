@@ -43,6 +43,9 @@ interface AccountDao {
     @Query("SELECT * FROM accounts WHERE isActive = 1 ORDER BY isDefault DESC, name ASC")
     fun getAllActive(): Flow<List<Account>>
 
+    @Query("SELECT * FROM accounts ORDER BY isDefault DESC, name ASC")
+    fun getAll(): Flow<List<Account>>
+
     @Query("SELECT COUNT(*) FROM accounts")
     suspend fun getCount(): Int
 
@@ -67,10 +70,9 @@ interface AccountDao {
 
     @Transaction
     suspend fun setDefault(accountId: String) {
+        val account = getById(accountId) ?: return
+        if (!account.isActive) return
         clearDefault()
-        val account = getById(accountId)
-        if (account != null) {
-            update(account.copy(isDefault = true, updatedAt = kotlinx.datetime.Clock.System.now()))
-        }
+        update(account.copy(isDefault = true, updatedAt = kotlinx.datetime.Clock.System.now()))
     }
 }

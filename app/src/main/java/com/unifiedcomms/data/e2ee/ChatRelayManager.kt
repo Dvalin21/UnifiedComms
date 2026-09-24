@@ -43,7 +43,8 @@ class ChatRelayManager(private val context: Context) {
         private const val PREFS_NAME = "uc_chat_relay"
         private const val PREF_TOKEN = "bearer_token"
         private const val PREF_RELAY_URL = "relay_url"
-        private const val DEFAULT_RELAY_URL = "http://10.0.2.2:8444"
+        // No implicit relay: chat stays disabled until the user configures an HTTPS endpoint.
+        private const val DEFAULT_RELAY_URL = ""
     }
 
     fun loadSavedState() {

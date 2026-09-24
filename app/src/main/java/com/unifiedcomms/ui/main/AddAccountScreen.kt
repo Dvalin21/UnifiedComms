@@ -93,10 +93,8 @@ private data class Provider(
 )
 
 private val PROVIDERS = listOf(
-    Provider("Google", AccountType.GOOGLE, true, R.drawable.ic_provider_google, 0xFF4285F4),
-    Provider("Outlook", AccountType.OUTLOOK, true, R.drawable.ic_provider_outlook, 0xFF0078D4),
-    Provider("Yahoo", AccountType.YAHOO, true, R.drawable.ic_provider_yahoo, 0xFF6001D2),
-    Provider("iCloud", AccountType.ICLOUD, true, R.drawable.ic_provider_icloud, 0xFF3693F3),
+    // OAuth provider tiles stay hidden until the browser/token callback is wired;
+    // launching a half-implemented flow is worse than offering manual setup.
     Provider("Mailcow", AccountType.MAILCOW, false, R.drawable.ic_provider_mailcow, 0xFF4A6FE3),
     Provider("Exchange", AccountType.EXCHANGE, false, R.drawable.ic_provider_exchange, 0xFF0072C6),
     Provider("ProtonMail", AccountType.PROTONMAIL, false, R.drawable.ic_provider_protonmail, 0xFF8B89ED),
@@ -193,23 +191,28 @@ fun AddAccountScreen(
         autodiscoverFailed = false
         discovering = true
         coroutineScope.launch {
-            val d = Autodiscover.discover(addr)
+            val known = if (selectedProvider?.type == AccountType.MAILCOW) {
+                ServerConfig.MailcowDefaults(addr.substringAfter('@'), addr)
+            } else {
+                null
+            }
+            val d = Autodiscover.discover(addr, known)
             discovering = false
             if (d != null) {
                 autodiscovered = d
-                imapHost = d.imapHost
-                imapPort = d.imapPort
-                imapUseSsl = d.imapSsl
-                smtpHost = d.smtpHost
-                smtpPort = d.smtpPort
-                smtpUseStartTls = d.smtpStartTls
-                // ponytail: NEVER guess a DAV URL. The Autodiscover engine returns the
-                // real principal/home-set URL (or null). Keep it as-is; a guessed
-                // "$server/dav/" is wrong for virtually every provider and is exactly
-                // the "autodiscover returns wrong info" symptom. If null, leave blank
-                // and let the user enter it manually (advanced fields reveal on failure).
-                caldavUrl = d.caldavUrl ?: ""
-                carddavUrl = d.carddavUrl ?: ""
+                if (d.imapHost.isNotBlank()) {
+                    imapHost = d.imapHost
+                    imapPort = d.imapPort
+                    imapUseSsl = d.imapSsl
+                }
+                if (d.smtpHost.isNotBlank()) {
+                    smtpHost = d.smtpHost
+                    smtpPort = d.smtpPort
+                    smtpUseStartTls = d.smtpStartTls
+                }
+                // Never overwrite a known provider default with an empty DAV result.
+                if (d.caldavUrl != null) caldavUrl = d.caldavUrl
+                if (d.carddavUrl != null) carddavUrl = d.carddavUrl
                 showAdvanced = false
             } else {
                 // autodiscover failed -> reveal advanced for manual entry
@@ -232,9 +235,8 @@ fun AddAccountScreen(
             else -> null
         }
         if (known == null) { runDiscovery(); return }
-        // ponytail: Mailcow/SOGo often serves a self-signed/internal-CA cert the client
-        // rejects, which breaks auth. Auto-accept certs for Mailcow ONLY (not others).
-        if (p.type == AccountType.MAILCOW) acceptAllCerts = true
+        // TLS trust must remain an explicit user choice. Do not silently accept
+        // self-signed certificates for a mail provider.
         imapHost = known.imapHost ?: ""
         imapPort = known.imapPort
         imapUseSsl = known.imapUseSsl
@@ -243,6 +245,12 @@ fun AddAccountScreen(
         smtpUseStartTls = known.smtpUseStartTls
         caldavUrl = known.caldavUrl ?: ""
         carddavUrl = known.carddavUrl ?: ""
+        // Mailcow CalDAV/CardDAV URLs need network discovery (SOGo FQDN is per-install).
+        // Trigger autodiscover to find them; if it fails the user enters them manually.
+        if (p.type == AccountType.MAILCOW && known.caldavUrl == null) {
+            runDiscovery()
+            return
+        }
         autodiscovered = Autodiscover.Discovered(
             imapHost = known.imapHost ?: "",
             imapPort = known.imapPort,
@@ -319,6 +327,7 @@ fun AddAccountScreen(
                             selected = selectedProvider == p,
                             onClick = {
                                 selectedProvider = p
+                                acceptAllCerts = false
                                 if (p.oauth) {
                                     // hand off to the OAuth activity which owns the browser flow
                                     ctx.startActivity(
@@ -452,42 +461,35 @@ fun AddAccountScreen(
                         if (trimmed.isBlank() || password.isBlank()) {
                             error = "Email and password are required."; return@Button
                         }
-                        // ponytail: only treat email as configured when the user (or
-                        // autodiscover) actually supplied an IMAP host. The bare domain is
-                        // NOT an email host — using it forced syncEmail=true on every
-                        // CalDAV-only account and blocked saving. A calendar-only (SOGo)
-                        // account must save on CalDAV success alone.
+                        if (!trimmed.contains('@') || trimmed.substringAfter('@').isBlank()) {
+                            error = "Enter a valid email address."; return@Button
+                        }
                         val advancedImapHost = imapHost.trim().ifBlank { null }
                         val advancedSmtpHost = smtpHost.trim().ifBlank { null }
-                        val server = advancedImapHost ?: trimmed.substringAfter("@")
-                        // Require an IMAP host ONLY when the user picked an email-capable
-                        // provider and hasn't entered one. CalDAV/CardDAV accounts skip this.
                         val type = provider.type
                         val wantsEmail = type != AccountType.GENERIC_CALDAV_CARDDAV
-                        if (wantsEmail && advancedImapHost == null && autodiscovered == null) {
+                        val discoveredImapHost = autodiscovered?.imapHost?.trim()?.ifBlank { null }
+                        val discoveredSmtpHost = autodiscovered?.smtpHost?.trim()?.ifBlank { null }
+                        if (wantsEmail && advancedImapHost == null && discoveredImapHost == null) {
                             error = "Enter server settings under Advanced."; return@Button
                         }
                         saving = true
                         error = null
                         coroutineScope.launch {
-                            // ponytail: never let the UI wedge on "Saving…". RFC 8314 §5.1 —
-                            // prove the connection before persisting, but ALWAYS reset `saving`
-                            // and surface the real error, whatever happens. A throw or a slow
-                            // server test used to leave `saving=true` forever with no message.
+                            // Prove the connection before persisting, but ALWAYS reset `saving`
+                            // and surface the real error, whatever happens.
                             try {
-                                // Mailcow/SOGo CalDAV/CardDAV URLs are deterministic from host+email
-                                // (exact principal path). Prefill them so calendar/contacts sync is
-                                // enabled by default. The SOGo web FQDN is per-install and comes from
-                                // ProviderProfiles (this install serves SOGo on email.<domain>, not mail.<domain>).
+                                // Use the address domain, not an already-expanded IMAP host, when
+                                // deriving mailcow's imap./smtp. names.
                                 val mailcowDav = if (type == AccountType.MAILCOW)
-                                    ServerConfig.MailcowDefaults(server, trimmed) else null
+                                    ServerConfig.MailcowDefaults(trimmed.substringAfter('@'), trimmed) else null
                                 val calUrl = caldavUrl.trim().ifBlank { mailcowDav?.caldavUrl }
                                 val cardUrl = carddavUrl.trim().ifBlank { mailcowDav?.carddavUrl }
                                 val serverConfig = ServerConfig(
-                                    imapHost = advancedImapHost ?: server,
+                                    imapHost = advancedImapHost ?: discoveredImapHost,
                                     imapPort = imapPort,
                                     imapUseSsl = imapUseSsl,
-                                    smtpHost = advancedSmtpHost ?: server,
+                                    smtpHost = advancedSmtpHost ?: discoveredSmtpHost,
                                     smtpPort = smtpPort,
                                     smtpUseStartTls = smtpUseStartTls,
                                     caldavUrl = calUrl,
@@ -500,38 +502,21 @@ fun AddAccountScreen(
                                     accountType = type,
                                     serverConfig = serverConfig,
                                     authConfig = AuthConfig.AppPassword(trimmed, password),
-                                    // ponytail: only enable the sync legs the user actually
-                                    // configured. A CalDAV/CardDAV account with no IMAP host must
-                                    // NOT be blocked by the email gate; a blank DAV URL means that
-                                    // leg is off (user enters it manually). This is what lets a
-                                    // calendar/contacts-only account save when IMAP isn't set.
                                     syncConfig = SyncConfig.Defaults().copy(
-                                        syncEmail = advancedImapHost != null || server.isNotBlank(),
-                                        syncCalendar = true,
-                                        syncContacts = true,
-                                        syncTasks = true
+                                        syncEmail = wantsEmail && serverConfig.imapHost != null,
+                                        syncCalendar = calUrl != null,
+                                        syncContacts = cardUrl != null,
+                                        syncTasks = calUrl != null
                                     ),
                                     uiConfig = UIConfig.Defaults()
                                 )
                                 val draft = account
-                                // Hard overall bound (concurrent tests finish in ~20s; 45s is
-                                // headroom). WithTimeoutCancellationException is caught below.
                                 val provision = withTimeout(45_000) { viewModel.provisionAccount(draft) }
-                                // Block only if the user actually configured email AND it
-                                // failed. A CalDAV/CardDAV-only account (syncEmail=false) is
-                                // NOT blocked by the IMAP test — it saves on DAV success.
                                 if (draft.syncConfig.syncEmail && !provision.emailOk) {
                                     error = "Email: ${provision.emailError ?: "IMAP login failed"}"
                                     return@launch
                                 }
-                                // Disable any DAV sync legs that failed to connect (honest,
-                                // not silent — the user is told which failed after save).
-                                // ponytail: keep the user's sync intent. Do NOT silently disable
-                                // calendar/contacts on a failed DAV probe — that was the root
-                                // cause of "calendar/contacts default OFF". Surface DAV failure as
-                                // a non-blocking note (davNotes below); let sync retry later.
-                                val withSync = draft
-                                runCatching { viewModel.addAccount(withSync) }
+                                runCatching { viewModel.addAccount(draft) }
                                     .onFailure { e ->
                                         error = "Could not save account: ${e.message ?: e::class.simpleName}"
                                         return@launch
@@ -546,15 +531,9 @@ fun AddAccountScreen(
                                         add("Tasks: ${provision.tasksError ?: "connection failed"}")
                                 }
                                 if (davNotes.isNotEmpty()) {
-                                    error = "Saved (email only — DAV disabled):\n" + davNotes.joinToString("\n")
+                                    error = "Saved with DAV warnings:\n" + davNotes.joinToString("\n")
                                 }
-                                // Background sync kicks in via SyncManager observers; trigger an
-                                // immediate sync so the inbox populates without another tap.
-                                // ponytail: run on ViewModel scope — the composable scope is
-                                // cancelled when the user leaves this screen, which would
-                                // abort the in-flight sync and leave every folder empty.
-                                viewModel.syncAccountAsync(withSync)
-                                // Auto-return to the inbox on successful save (user requirement).
+                                viewModel.syncAccountAsync(draft)
                                 kotlinx.coroutines.delay(700)
                                 onComplete()
                             } catch (e: TimeoutCancellationException) {

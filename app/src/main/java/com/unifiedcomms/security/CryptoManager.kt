@@ -7,6 +7,9 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 
+private const val GCM_IV_SIZE = 12
+private const val GCM_TAG_SIZE = 16
+
 class CryptoManagerImpl(private val context: android.content.Context) : CryptoManager {
     private val masterKeyAlias = "_androidx_security_master_key_"
     private val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
@@ -21,9 +24,9 @@ class CryptoManagerImpl(private val context: android.content.Context) : CryptoMa
     }
 
     override fun decrypt(encrypted: ByteArray): ByteArray {
-        if (encrypted.size < 12) throw IllegalArgumentException("Ciphertext too short for AES/GCM")
-        val iv = encrypted.copyOfRange(0, 12)
-        val ciphertext = encrypted.copyOfRange(12, encrypted.size)
+        if (encrypted.size < GCM_IV_SIZE) throw IllegalArgumentException("Ciphertext too short for AES/GCM")
+        val iv = encrypted.copyOfRange(0, GCM_IV_SIZE)
+        val ciphertext = encrypted.copyOfRange(GCM_IV_SIZE, encrypted.size)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         val secretKey = getOrCreateKey()
         val spec = javax.crypto.spec.GCMParameterSpec(128, iv)
@@ -31,11 +34,6 @@ class CryptoManagerImpl(private val context: android.content.Context) : CryptoMa
         return cipher.doFinal(ciphertext)
     }
 
-    // ponytail: the EncryptionScreen toggle writes "encryption_enabled" but nothing
-    // honoured it (#19). Honor it: when disabled, leave auth values in plaintext (no GCM
-    // blob) so the toggle is a real control. Default is ON (secure); existing encrypted
-    // data stays readable while ON. Disabling mid-life leaves previously-encrypted values
-    // as blobs (edge case) — re-enable restores decryption.
     private fun encryptionEnabled(): Boolean =
         runCatching { com.unifiedcomms.util.PreferencesManager.getInstance().getBoolean("encryption_enabled", true) }.getOrElse { true }
 
@@ -52,7 +50,6 @@ class CryptoManagerImpl(private val context: android.content.Context) : CryptoMa
 
     @Suppress("PARAMETER_NAME_CHANGED_ON_OVERRIDE")
     override fun decryptAuthConfig(config: com.unifiedcomms.data.model.AuthConfig): com.unifiedcomms.data.model.AuthConfig {
-        if (!encryptionEnabled()) return config
         return config.copy(
             passwordEncrypted = decryptField(config.passwordEncrypted),
             clientKey = decryptField(config.clientKey),
@@ -62,24 +59,25 @@ class CryptoManagerImpl(private val context: android.content.Context) : CryptoMa
         )
     }
 
-    // Invariant (LINUS #9 "no broken windows" / 10-rules #1 "data structures first"):
-    // every value reaching decryptField is a GCM blob (Base64 IV[12] + ciphertext).
-    // Persisted accounts are encrypted at rest by AccountRepositoryImpl; pre-persist
-    // drafts are encrypted at the engine boundary in SyncManager.provision. A non-blob
-    // input is therefore a real bug — fail loudly instead of silently returning a
-    // (possibly corrupted) raw secret. This ends the repeated "decryptField tolerates
-    // raw" patches: the boundary is now unambiguous.
     private fun decryptField(value: String?): String? {
         if (value == null) return null
         val raw = runCatching { android.util.Base64.decode(value, android.util.Base64.DEFAULT) }
-            .getOrElse { throw IllegalArgumentException("decryptField: not a GCM blob (base64 decode failed)") }
-        if (raw.size < 12) throw IllegalArgumentException("decryptField: value too short for AES/GCM")
-        return String(decrypt(raw), Charsets.UTF_8)
+            .getOrNull() ?: return value
+        if (raw.size < GCM_IV_SIZE + GCM_TAG_SIZE) return value
+        return runCatching { String(decrypt(raw), Charsets.UTF_8) }.getOrDefault(value)
     }
 
     private fun encryptField(value: String): String {
+        if (isEncryptedField(value)) return value
         val bytes = value.toByteArray(Charsets.UTF_8)
         return android.util.Base64.encodeToString(encrypt(bytes), android.util.Base64.NO_WRAP)
+    }
+
+    private fun isEncryptedField(value: String): Boolean {
+        val raw = runCatching { android.util.Base64.decode(value, android.util.Base64.DEFAULT) }
+            .getOrNull() ?: return false
+        if (raw.size < GCM_IV_SIZE + GCM_TAG_SIZE) return false
+        return runCatching { decrypt(raw) }.isSuccess
     }
 
     @Throws(java.security.UnrecoverableKeyException::class)

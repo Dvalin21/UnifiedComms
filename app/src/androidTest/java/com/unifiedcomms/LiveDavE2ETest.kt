@@ -21,64 +21,63 @@ import com.unifiedcomms.data.repository.ContactRepositoryImpl
 import com.unifiedcomms.data.repository.TaskRepositoryImpl
 import com.unifiedcomms.security.CryptoManagerImpl
 import com.unifiedcomms.sync.CalendarSyncEngineImpl
+import com.unifiedcomms.util.Autodiscover
 import com.unifiedcomms.sync.ContactSyncEngineImpl
 import com.unifiedcomms.sync.TaskSyncEngineImpl
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.UUID
 import kotlinx.datetime.LocalDateTime
 
 /**
- * LIVE end-to-end verification of the CalDAV/CardDAV sync engines against the REAL
- * SOGo/mailcow server at email.example.com (example.com install).
+ * LIVE end-to-end verification of the CalDAV/CardDAV sync engines against the
+ * real server. The account URL and collection paths come from the account's
+ * sync/autodiscovery state; this test does not construct a provider hostname or
+ * collection path.
  *
- * This is the "Live E2E" follow-up to the mock-based ContactSyncE2ETest /
- * CalendarSyncE2ETest / TaskSyncE2ETest. Those prove the engine parses + round-trips
- * against a local mock that mirrors real-server quirks. THIS proves the same code
- * path works against the actual provider — real TLS, real SOGo principal walk,
- * real vCard/VEVENT/VTODO PUT/GET/DELETE.
- *
- * Credentials are NEVER hardcoded. Supply them at test runtime:
- *   -e user "...@example.com"   (optional; defaults to testbox@example.com)
- *   -e password "..."                (REQUIRED — test errors clearly if absent)
- *
- * NOTE: the account LOCKS after >2 wrong passwords in 2 minutes. Enter the correct
- * password. Do not run repeatedly with a bad guess.
- *
- * Run (after ./gradlew :app:assembleDebug :app:assembleAndroidTest + install both APKs
- * on emulator-5556):
- *   adb -s emulator-5556 shell am instrument -w -r \
- *     -e user testbox@example.com -e password '...' \
- *     -e class com.unifiedcomms.LiveDavE2ETest \
- *     com.unifiedcomms.debug.test/androidx.test.runner.AndroidJUnitRunner
+ * Use -e user ... and either -e useExisting true (use the account already
+ * logged into the app) or -e password ... for a fresh test account.
  */
 class LiveDavE2ETest : kotlinx.coroutines.CoroutineScope {
     override val coroutineContext = kotlinx.coroutines.Dispatchers.IO
-
-    companion object {
-        // Verified against the live server (2026-07-22): /.well-known/caldav ->
-        // 301 -> https://email.example.com/SOGo/dav/ ; /SOGo/dav/<user> returns
-        // 401 (valid principal). The /dav/SOGo/<user> form is REJECTED (404).
-        private const val DAV_BASE = "https://email.example.com/SOGo/dav/"
-        private const val USER_DEFAULT = "testbox@example.com"
-    }
 
     private fun password(): String =
         InstrumentationRegistry.getArguments().getString("password")
             ?: error("Supply the live test password via instrumentation arg: -e password \"...\"")
 
     private fun user(): String =
-        InstrumentationRegistry.getArguments().getString("user") ?: USER_DEFAULT
+        InstrumentationRegistry.getArguments().getString("user")
+            ?: error("Supply the live test user via instrumentation arg: -e user \"...\"")
 
-    private fun liveAccount(): Account {
+    private fun useExistingAccount(): Boolean =
+        InstrumentationRegistry.getArguments().getString("useExisting") == "true"
+
+    private suspend fun liveAccount(): Account {
         val u = user()
-        val caldavUrl = "${DAV_BASE}$u/Calendar/personal/"
-        val carddavUrl = "${DAV_BASE}$u/Contacts/personal/"
+        if (useExistingAccount()) {
+            val app = InstrumentationRegistry.getInstrumentation()
+                .targetContext.applicationContext as Application
+            val db = (app as UnifiedCommsApplication).database
+            val source = db.accountDao().getAll().first()
+                .firstOrNull { it.email.equals(u, ignoreCase = true) && it.isActive && !it.id.startsWith("live-dav-") }
+                ?: error("No active logged-in account found for $u")
+            return source.copy(
+                id = "live-dav-${UUID.randomUUID().toString().take(8)}",
+                name = "Live DAV ($u)",
+                isDefault = false
+            )
+        }
+        val discovered = Autodiscover.discover(u)
+            ?: error("Autodiscover did not find DAV services for $u")
+        val caldavUrl = discovered.caldavUrl ?: error("CalDAV URL was not discovered")
+        val carddavUrl = discovered.carddavUrl ?: error("CardDAV URL was not discovered")
         return Account(
             id = "live-dav-${UUID.randomUUID().toString().take(8)}",
-            name = "Live SOGo ($u)",
+            name = "Live DAV ($u)",
             email = u,
             accountType = AccountType.MAILCOW,
             serverConfig = ServerConfig(
@@ -90,6 +89,16 @@ class LiveDavE2ETest : kotlinx.coroutines.CoroutineScope {
             syncConfig = SyncConfig.Defaults(),
             uiConfig = UIConfig.Defaults()
         )
+    }
+
+    @After
+    fun cleanupLiveAccounts() = runBlocking {
+        val app = InstrumentationRegistry.getInstrumentation()
+            .targetContext.applicationContext as Application
+        val db = (app as UnifiedCommsApplication).database
+        db.accountDao().getAll().first()
+            .filter { it.id.startsWith("live-dav-") }
+            .forEach { db.accountDao().deleteById(it.id) }
     }
 
     // ---- CONTACTS (CardDAV) ----
@@ -155,7 +164,8 @@ class LiveDavE2ETest : kotlinx.coroutines.CoroutineScope {
         val conn = engine.testConnection(stored)
         assertTrue("CalDAV testConnection failed: ${conn.errorMessage}", conn.success)
 
-        val coll = stored.serverConfig.caldavUrl!!
+        val coll = engine.getCalendars(stored).firstOrNull()?.id
+            ?: error("No calendar collection discovered")
         val seedUid = "${account.id}-seed"
         val seed = CalendarEvent(
             accountId = account.id,
@@ -208,7 +218,8 @@ class LiveDavE2ETest : kotlinx.coroutines.CoroutineScope {
         val conn = engine.testConnection(stored)
         assertTrue("Task DAV testConnection failed: ${conn.errorMessage}", conn.success)
 
-        val calUrl = stored.serverConfig.caldavUrl!!
+        val taskList = engine.getTaskLists(stored).firstOrNull()
+            ?: error("No VTODO list discovered")
         val seedUid = "${account.id}-seed"
         val seed = Task(
             uid = seedUid,
@@ -216,7 +227,7 @@ class LiveDavE2ETest : kotlinx.coroutines.CoroutineScope {
             description = "live dav e2e",
             status = TaskStatus.NEEDS_ACTION,
             accountId = account.id,
-            listId = ""
+            listId = taskList.id
         )
         val seedRes = engine.createTask(stored, seed)
         assertTrue("createTask failed: ${seedRes.errorMessage}", seedRes.success)
@@ -225,10 +236,10 @@ class LiveDavE2ETest : kotlinx.coroutines.CoroutineScope {
         assertTrue("task syncAccount failed: ${sync.errorMessage}", sync.success)
         assertTrue("downloaded task missing in Room", taskRepo.getByUid(seedUid, account.id) != null)
 
-        val del = engine.deleteTask(stored, calUrl, seedUid)
+        val del = engine.deleteTask(stored, taskList.id, seedUid)
         assertTrue("deleteTask failed: ${del.errorMessage}", del.success)
         engine.syncAccount(stored)
-        assertTrue("deleted task still fetchable", engine.fetchTask(stored, calUrl, seedUid) == null)
+        assertTrue("deleted task still fetchable", engine.fetchTask(stored, taskList.id, seedUid) == null)
 
         accountRepo.delete(account.id)
     }

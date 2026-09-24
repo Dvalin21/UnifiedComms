@@ -79,17 +79,6 @@ abstract class UnifiedCommsDatabase : RoomDatabase() {
                             builder.fallbackToDestructiveMigration()
                         }
                     }
-                    .addCallback(object : Callback() {
-                        override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
-                            super.onCreate(db)
-                            // Create indexes for performance
-                            db.execSQL("CREATE INDEX IF NOT EXISTS idx_emails_thread ON emails(threadId)")
-                            db.execSQL("CREATE INDEX IF NOT EXISTS idx_events_start ON calendar_events(startAt)")
-                            db.execSQL("CREATE INDEX IF NOT EXISTS idx_tasks_due ON tasks(dueAt)")
-                            db.execSQL("CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversationId)")
-                            db.execSQL("CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts(displayName)")
-                        }
-                    })
                     .build()
                 INSTANCE = instance
                 instance

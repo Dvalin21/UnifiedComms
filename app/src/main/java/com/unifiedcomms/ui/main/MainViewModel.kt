@@ -32,17 +32,21 @@ import com.unifiedcomms.sync.TaskSyncEngineImpl
 import com.unifiedcomms.data.model.CalendarInviteMessage
 import com.unifiedcomms.data.model.AttendeeStatus
 import com.unifiedcomms.data.model.UnifiedContact
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.datetime.Clock
 
 class MainViewModel(
     private val app: UnifiedCommsApplication = UnifiedCommsApplication.getInstance()
 ) : ViewModel() {
 
-    private val accountRepo: AccountRepository = AccountRepositoryImpl(app.database.accountDao(), com.unifiedcomms.security.CryptoManagerImpl(app))
+    private val accountDao = app.database.accountDao()
+    private val allAccounts: Flow<List<Account>> = accountDao.getAll()
+    private val accountRepo: AccountRepository = AccountRepositoryImpl(accountDao, com.unifiedcomms.security.CryptoManagerImpl(app))
     private val emailRepo: EmailRepository = EmailRepositoryImpl(app.database.emailDao())
     private val calendarRepo: CalendarRepository = CalendarRepositoryImpl(
         app.database.calendarEventDao(),
@@ -55,10 +59,12 @@ class MainViewModel(
     private val contactRepo: ContactRepository = ContactRepositoryImpl(app.database.contactDao())
     private val crypto = com.unifiedcomms.security.CryptoManagerImpl(app)
     private val emailSyncEngine = EmailSyncEngineImpl(emailRepo, accountRepo, crypto, viewModelScope)
+    private val calendarSyncEngine = CalendarSyncEngineImpl(calendarRepo, accountRepo, crypto, viewModelScope)
+    private val taskSyncEngine = TaskSyncEngineImpl(taskRepo, accountRepo, crypto, viewModelScope)
     private val syncManager: SyncManager = SyncManager(
         emailSyncEngine,
-        CalendarSyncEngineImpl(calendarRepo, accountRepo, crypto, viewModelScope),
-        TaskSyncEngineImpl(taskRepo, accountRepo, crypto, viewModelScope),
+        calendarSyncEngine,
+        taskSyncEngine,
         ContactSyncEngineImpl(contactRepo, accountRepo, crypto, viewModelScope),
         accountRepo,
         viewModelScope,
@@ -87,7 +93,7 @@ class MainViewModel(
 
     private fun loadAccounts() {
         viewModelScope.launch {
-            accountRepo.getAllActive().collect { accounts ->
+            allAccounts.collect { accounts ->
                 _accounts.value = accounts
             }
         }
@@ -95,31 +101,35 @@ class MainViewModel(
 
     fun getActiveAccounts(): List<Account> = _accounts.value.filter { it.isActive }
 
-    fun getDefaultAccount(): Account? = _accounts.value.find { it.isDefault }
+    fun getDefaultAccount(): Account? = _accounts.value.find { it.isActive && it.isDefault }
 
     fun getAccountById(accountId: String): Account? = _accounts.value.find { it.id == accountId }
 
     suspend fun addAccount(account: Account) {
-        // First account becomes the default (root cause of "Default account OFF").
-        val toInsert = if (_accounts.value.isEmpty()) account.copy(isDefault = true) else account
+        val toInsert = if (getActiveAccounts().isEmpty()) {
+            account.copy(isDefault = account.isActive)
+        } else {
+            account
+        }
         accountRepo.insert(toInsert)
-        loadAccounts()
+        if (toInsert.isDefault) accountRepo.setDefault(toInsert.id)
     }
 
     suspend fun removeAccount(accountId: String) {
         // Delete associated data and account
         accountRepo.delete(accountId)
-        loadAccounts()
     }
 
     suspend fun setDefaultAccount(accountId: String) {
-        accountRepo.setDefault(accountId)
+        if (accountRepo.getById(accountId)?.isActive == true) {
+            accountRepo.setDefault(accountId)
+        }
     }
 
     suspend fun updateAccount(account: Account): Account {
-        accountRepo.update(account)
-        loadAccounts()
-        return _accounts.value.find { it.id == account.id } ?: account
+        val normalized = if (account.isActive) account else account.copy(isDefault = false)
+        accountRepo.update(normalized)
+        return normalized
     }
 
     suspend fun syncAllAccounts() {
@@ -217,6 +227,122 @@ class MainViewModel(
 
     suspend fun getTaskById(taskId: String): Task? = taskRepo.getById(taskId)
 
+    /**
+     * Persist an event locally, then push it to CalDAV when the account has a real
+     * collection path. A failed network write stays in Room with needsSync=true;
+     * the next account sync retries it instead of losing the user's edit.
+     */
+    suspend fun saveEvent(event: CalendarEvent): SyncResult {
+        val account = getAccountById(event.accountId) ?: accountRepo.getById(event.accountId)
+            ?: return SyncResult.failure("Account not found")
+        return runCatching {
+            val existing = calendarRepo.getEventById(event.id)
+            val calendarId = when {
+                isServerPath(event.calendarId) -> event.calendarId
+                else -> calendarRepo.getCalendarById(event.calendarId)?.serverId ?: event.calendarId
+            }
+            val candidate = event.copy(calendarId = calendarId, needsSync = true)
+            val canPush = account.syncConfig.syncCalendar &&
+                !account.serverConfig.caldavUrl.isNullOrBlank() && isServerPath(candidate.calendarId)
+            if (!canPush) {
+                persistPendingEvent(candidate, existing == null)
+                SyncResult.success()
+            } else {
+                val result = if (existing == null || candidate.isLocalOnly || candidate.etag.isNullOrBlank()) {
+                    calendarSyncEngine.createEvent(account, candidate).asSyncResult()
+                } else {
+                    calendarSyncEngine.updateEvent(account, candidate)
+                }
+                if (result.success) {
+                    result
+                } else {
+                    persistPendingEvent(candidate.copy(isLocalOnly = true, etag = null), existing == null)
+                    result
+                }
+            }
+        }.getOrElse {
+            SyncResult.failure("Event saved locally; pending sync: ${it.message ?: it::class.simpleName}")
+        }
+    }
+
+    /** Persist a task locally, then push VTODO when a task-list path is known. */
+    suspend fun saveTask(task: Task): SyncResult {
+        val account = getAccountById(task.accountId) ?: accountRepo.getById(task.accountId)
+            ?: return SyncResult.failure("Account not found")
+        return runCatching {
+            val existing = taskRepo.getById(task.id)
+            val listPath = resolveTaskListPath(account, task.listId)
+            val candidate = task.copy(listId = listPath ?: task.listId, needsSync = true)
+            val canPush = account.syncConfig.syncTasks &&
+                !account.serverConfig.caldavUrl.isNullOrBlank() && isServerPath(candidate.listId)
+            if (!canPush) {
+                persistPendingTask(candidate, existing == null)
+                SyncResult.success()
+            } else if (existing == null || candidate.isLocalOnly || candidate.etag.isNullOrBlank()) {
+                val created = taskSyncEngine.createTask(account, candidate)
+                val result = created.asSyncResult()
+                if (result.success) {
+                    taskRepo.insert(
+                        candidate.copy(
+                            uid = created.uid ?: candidate.uid,
+                            etag = created.etag,
+                            isLocalOnly = false,
+                            needsSync = false
+                        )
+                    )
+                    result
+                } else {
+                    persistPendingTask(candidate.copy(isLocalOnly = true, etag = null), true)
+                    result
+                }
+            } else {
+                val result = taskSyncEngine.updateTask(account, candidate)
+                if (result.success) {
+                    result
+                } else {
+                    persistPendingTask(candidate.copy(isLocalOnly = true, etag = null), false)
+                    result
+                }
+            }
+        }.getOrElse {
+            SyncResult.failure("Task saved locally; pending sync: ${it.message ?: it::class.simpleName}")
+        }
+    }
+
+    suspend fun setTaskCompleted(task: Task, completed: Boolean): SyncResult = saveTask(
+        task.copy(
+            status = if (completed) com.unifiedcomms.data.model.TaskStatus.COMPLETED
+            else com.unifiedcomms.data.model.TaskStatus.NEEDS_ACTION,
+            completedAt = if (completed) com.unifiedcomms.data.model.TaskDateTime.fromInstant(Clock.System.now()) else null,
+            percentComplete = if (completed) 100 else 0,
+            needsSync = true
+        )
+    )
+
+    private suspend fun persistPendingEvent(event: CalendarEvent, isNew: Boolean) {
+        val pending = event.copy(isLocalOnly = true, needsSync = true, etag = null)
+        if (isNew) calendarRepo.insertEvent(pending) else calendarRepo.updateEvent(pending)
+    }
+
+    private suspend fun persistPendingTask(task: Task, isNew: Boolean) {
+        val pending = task.copy(isLocalOnly = true, needsSync = true, etag = null)
+        if (isNew) taskRepo.insert(pending) else taskRepo.update(pending)
+    }
+
+    private suspend fun resolveTaskListPath(account: Account, requested: String): String? {
+        if (isServerPath(requested)) return requested
+        taskRepo.getListById(requested)?.serverId?.let { if (isServerPath(it)) return it }
+        taskRepo.getListByServerId(account.id, requested)?.serverId?.let { if (isServerPath(it)) return it }
+        if (!account.syncConfig.syncTasks || account.serverConfig.caldavUrl.isNullOrBlank()) return null
+        return taskSyncEngine.getTaskLists(account).firstOrNull()?.serverId
+    }
+
+    private fun isServerPath(value: String): Boolean =
+        value.startsWith("http://", true) || value.startsWith("https://", true) || value.contains('/')
+
+    private fun com.unifiedcomms.sync.CreateResult.asSyncResult(): SyncResult =
+        if (success) SyncResult.success() else SyncResult.failure(errorMessage ?: "Remote write failed")
+
     fun getAccountColor(accountId: String): com.unifiedcomms.ui.theme.AccountColor {
         return com.unifiedcomms.ui.theme.AccountColors.getColorForAccount(accountId)
     }
@@ -233,6 +359,7 @@ class MainViewModel(
     val calendarRepository: CalendarRepository = calendarRepo
     val taskRepository: TaskRepository = taskRepo
     val contactRepository: ContactRepository = contactRepo
+    val contactsFlow: Flow<List<UnifiedContact>> = contactRepo.getUnifiedCommsContacts()
     val contactSyncEngine: ContactSyncEngine = ContactSyncEngineImpl(contactRepo, accountRepo, crypto, viewModelScope)
     val syncManagerInstance: SyncManager = syncManager
 
@@ -254,7 +381,7 @@ class MainViewModel(
     }
 
     /** All contacts across accounts (for the Contacts tab). */
-    fun getAllContacts() = contactRepo.getUnifiedCommsContacts()
+    fun getAllContacts(): Flow<List<UnifiedContact>> = contactsFlow
 
     /**
      * Create a contact on its owning account (CardDAV server + local row). For a
@@ -266,8 +393,19 @@ class MainViewModel(
         val account = contact.accountId?.let { getAccountById(it) }
         return if (account != null) {
             val r = contactSyncEngine.createContact(account, contact)
-            if (r.success) ContactOpResult(true, r.uid, r.etag)
-            else ContactOpResult(false, error = r.errorMessage)
+            if (r.success) {
+                ContactOpResult(true, r.uid, r.etag)
+            } else {
+                contactRepo.insert(
+                    contact.copy(
+                        accountId = account.id,
+                        source = com.unifiedcomms.data.model.ContactSource.LOCAL,
+                        isLocalOnly = true,
+                        needsSync = true
+                    )
+                )
+                ContactOpResult(true, error = "Saved locally; CardDAV sync pending: ${r.errorMessage ?: "write failed"}")
+            }
         } else {
             contactRepo.insert(contact.copy(needsSync = false))
             ContactOpResult(true)
@@ -276,8 +414,22 @@ class MainViewModel(
 
     suspend fun updateContact(contact: UnifiedContact): SyncResult {
         val account = contact.accountId?.let { getAccountById(it) }
-        return if (account != null) contactSyncEngine.updateContact(account, contact)
-        else { contactRepo.update(contact.copy(needsSync = false)); SyncResult.success() }
+        return if (account != null && contact.sourceId.isNullOrBlank()) {
+            val created = contactSyncEngine.createContact(account, contact)
+            if (created.success) {
+                SyncResult.success()
+            } else {
+                contactRepo.update(contact.copy(isLocalOnly = true, needsSync = true))
+                SyncResult.failure("Saved locally; CardDAV sync pending: ${created.errorMessage ?: "write failed"}")
+            }
+        } else if (account != null) {
+            val result = contactSyncEngine.updateContact(account, contact)
+            if (!result.success) contactRepo.update(contact.copy(needsSync = true))
+            result
+        } else {
+            contactRepo.update(contact.copy(needsSync = false))
+            SyncResult.success()
+        }
     }
 
     suspend fun deleteContact(contact: UnifiedContact): SyncResult {

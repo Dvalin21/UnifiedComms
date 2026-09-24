@@ -1003,14 +1003,14 @@ fun CreateEventScreen(
                                     ?: viewModel.getActiveAccounts().firstOrNull()
                                     ?: return@launch
                                 val calId = runCatching {
-                                    viewModel.calendarRepository.getCalendarsByAccount(acct.id).first().firstOrNull()?.id
+                                    viewModel.calendarRepository.getCalendarsByAccount(acct.id).first().firstOrNull()?.serverId
                                 }.getOrNull() ?: acct.id
                                 val base = existingEvent
                                 val (sh, sm) = if (base?.startAt?.dateTime != null) base.startAt.dateTime!!.hour to base.startAt.dateTime!!.minute else 9 to 0
                                 val (eh, em) = if (base?.endAt?.dateTime != null) base.endAt.dateTime!!.hour to base.endAt.dateTime!!.minute else 10 to 0
                                 val event = com.unifiedcomms.data.model.CalendarEvent(
-                                    accountId = acct.id,
-                                    calendarId = calId,
+                                    accountId = base?.accountId ?: acct.id,
+                                    calendarId = base?.calendarId ?: calId,
                                     uid = base?.uid ?: java.util.UUID.randomUUID().toString(),
                                     title = title,
                                     description = description.takeIf { it.isNotBlank() },
@@ -1042,7 +1042,7 @@ fun CreateEventScreen(
                                     color = com.unifiedcomms.data.model.EventColor.fromInt(selectedColor.toInt()),
                                     isLocalOnly = base?.isLocalOnly ?: true
                                 )
-                                if (base != null) viewModel.calendarRepository.updateEvent(event) else viewModel.calendarRepository.insertEvent(event)
+                                viewModel.saveEvent(event)
                                 onSave()
                             }
                         }

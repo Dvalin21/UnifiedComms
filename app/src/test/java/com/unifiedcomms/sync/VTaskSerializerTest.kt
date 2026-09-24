@@ -6,6 +6,7 @@ import com.unifiedcomms.data.model.TaskPriority
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -29,7 +30,8 @@ class VTaskSerializerTest {
     @Test
     fun `serialized VTODO contains required fields`() {
         val vtodo = VTaskSerializer.toVtodo(mkTask("u1", "Buy milk", TaskStatus.NEEDS_ACTION, TaskPriority.HIGH, null))
-        assertTrue("has BEGIN/END", vtodo.startsWith("BEGIN:VTODO") && vtodo.trimEnd().endsWith("END:VTODO"))
+        assertTrue("has VCALENDAR envelope", vtodo.startsWith("BEGIN:VCALENDAR") && vtodo.trimEnd().endsWith("END:VCALENDAR"))
+        assertTrue("has VTODO envelope", vtodo.contains("BEGIN:VTODO") && vtodo.contains("END:VTODO"))
         assertTrue("has UID", vtodo.contains("UID:u1"))
         assertTrue("has SUMMARY", vtodo.contains("SUMMARY:Buy milk"))
         assertTrue("has STATUS", vtodo.contains("STATUS:NEEDS-ACTION"))
@@ -57,6 +59,21 @@ class VTaskSerializerTest {
         val vtodo = VTaskSerializer.toVtodo(mkTask("u4", "Timed", TaskStatus.NEEDS_ACTION, TaskPriority.NONE, due))
         assertTrue("DUE carries TZID=UTC", vtodo.contains("DUE;TZID=UTC:20260715T052000"))
         assertTrue("DUE has no floating Z", !vtodo.contains("DUE:20260715T052000Z"))
+    }
+
+    @Test
+    fun `date-only due uses RFC DATE value`() {
+        val task = mkTask("u-date", "All day", TaskStatus.NEEDS_ACTION, TaskPriority.NONE, null).copy(
+            dueAt = com.unifiedcomms.data.model.TaskDateTime(
+                date = kotlinx.datetime.LocalDate(2026, 9, 15),
+                hasTime = false
+            )
+        )
+
+        val vtodo = VTaskSerializer.toVtodo(task)
+
+        assertTrue(vtodo.contains("DUE;VALUE=DATE:20260915"))
+        assertFalse(vtodo.contains("DUE;TZID="))
     }
 
     @Test

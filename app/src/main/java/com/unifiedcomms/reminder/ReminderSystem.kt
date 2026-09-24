@@ -1,5 +1,6 @@
 package com.unifiedcomms.reminder
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlarmManager
 import android.app.PendingIntent
@@ -60,6 +61,7 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         }
     }
 
+    @SuppressLint("MissingPermission")
     private fun showNotification(context: Context, eventId: String) {
         val notification = NotificationCompat.Builder(context, "reminders")
             .setSmallIcon(R.drawable.ic_notification_reminder)
@@ -78,7 +80,8 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
             )
             .build()
 
-        if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
             NotificationManagerCompat.from(context).notify(eventId.hashCode(), notification)
         }
     }
