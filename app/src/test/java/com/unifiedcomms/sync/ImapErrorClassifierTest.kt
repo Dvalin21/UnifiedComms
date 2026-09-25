@@ -1,7 +1,9 @@
 package com.unifiedcomms.sync
 
+import com.unifiedcomms.data.model.AccountType
 import javax.mail.AuthenticationFailedException
 import javax.net.ssl.SSLHandshakeException
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -30,5 +32,28 @@ class ImapErrorClassifierTest {
             SSLHandshakeException("unable to find valid certification path to requested target")
         )
         assertTrue("expected TLS classification, got: $m", m.contains("TLS/certificate"))
+    }
+
+    @Test
+    fun mailcowAuthFailure_namesTheAppPasswordRequirement() {
+        val m = classifyImapError(
+            AuthenticationFailedException("[AUTHENTICATIONFAILED] Authentication failed."),
+            AccountType.MAILCOW
+        )
+        assertTrue("expected the app-password hint, got: $m", m.contains("app password"))
+    }
+
+    @Test
+    fun mailcowHint_isOnlyAddedForAuthFailuresOnMailcow() {
+        assertFalse(
+            "a timeout is not a credential problem",
+            classifyImapError(javax.mail.MessagingException("timeout 60000"), AccountType.MAILCOW)
+                .contains("app password")
+        )
+        assertFalse(
+            "other providers get the plain message",
+            classifyImapError(AuthenticationFailedException("nope"), AccountType.GENERIC_IMAP_SMTP)
+                .contains("app password")
+        )
     }
 }
