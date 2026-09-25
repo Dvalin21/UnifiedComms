@@ -156,7 +156,7 @@ class EmailSyncEngineImpl(
                 // Report honest failure: a failed folder is a real error, not partial success.
                 // The caller (SyncManager) decides whether to surface it; masking it as
                 // success hides real problems (dead Sent folder, auth expiry mid-sync).
-                return@withContext SyncResult.failure(e.message ?: "Unknown error", totalFailed)
+                return@withContext SyncResult.failure(classifyImapError(e, account.accountType), totalFailed)
             }
         }
     }
@@ -1567,7 +1567,7 @@ class EmailSyncEngineImpl(
                 store.close()
                 ConnectionTestResult(true, System.currentTimeMillis() - start, listOf("IMAP"))
             } catch (e: Exception) {
-                ConnectionTestResult(false, 0, emptyList(), classifyImapError(e))
+                ConnectionTestResult(false, 0, emptyList(), classifyImapError(e, account.accountType))
             }
         }
     }

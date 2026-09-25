@@ -622,7 +622,15 @@ private fun AdvancedServerFields(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = acceptAllCerts, onCheckedChange = onAcceptAllCertsChange)
                 Spacer(modifier = Modifier.padding(start = 8.dp))
-                Text("Accept all certificates (self-signed IMAP)", fontSize = 14.sp)
+                Column {
+                    Text("Accept all certificates", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text(
+                        "Disables certificate verification — anyone on the network path can " +
+                            "read and alter your mail. Only for your own self-signed server.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
             }
         }
         OutlinedTextField(
