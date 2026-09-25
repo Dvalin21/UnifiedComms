@@ -40,8 +40,8 @@ class UiReproScreenshotTest : kotlinx.coroutines.CoroutineScope {
         InstrumentationRegistry.getArguments().getString("password")
             ?: error("Supply live password via: -e password \"...\"")
 
-    private val user = "testbox@example.com"
-    private val DAV = "https://email.example.com/SOGo/dav/"
+    private val user = LiveTestConfig.user
+    private val DAV = LiveTestConfig.davUrl
 
     @Test
     fun uiRepro(): Unit = runBlocking {
@@ -65,8 +65,8 @@ class UiReproScreenshotTest : kotlinx.coroutines.CoroutineScope {
             email = user,
             accountType = AccountType.MAILCOW,
             serverConfig = ServerConfig(
-                imapHost = "imap.example.com", imapPort = 993, imapUseSsl = true, acceptAllCerts = true,
-                smtpHost = "smtp.example.com", smtpPort = 587, smtpUseStartTls = true,
+                imapHost = LiveTestConfig.imapHost, imapPort = 993, imapUseSsl = true, acceptAllCerts = true,
+                smtpHost = LiveTestConfig.smtpHost, smtpPort = 587, smtpUseStartTls = true,
                 caldavUrl = "${DAV}$user/Calendar/personal/", carddavUrl = "${DAV}$user/Contacts/personal/"
             ),
             authConfig = AuthConfig.AppPassword(user, password()),

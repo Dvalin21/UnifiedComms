@@ -45,11 +45,11 @@ class LiveAccountTest {
         // clean slate (one-shot, no collect hang)
         db.accountDao().getAllActive().first().forEach { runCatching { db.accountDao().delete(it) } }
 
-        val user = "testbox@example.com"
-        val host = "example.com"
+        val user = LiveTestConfig.user
+        val host = LiveTestConfig.domain
         val draft = Account(
             id = "live-${UUID.randomUUID().toString().take(8)}",
-            name = "Example", email = user, accountType = AccountType.MAILCOW,
+            name = "Mailcow Live", email = user, accountType = AccountType.MAILCOW,
             serverConfig = ServerConfig.MailcowDefaults(host, user).copy(acceptAllCerts = true),
             authConfig = AuthConfig.AppPassword(user, pw ?: "MISSING"),
             syncConfig = SyncConfig.Defaults().copy(syncCalendar = true, syncContacts = true, syncTasks = true),

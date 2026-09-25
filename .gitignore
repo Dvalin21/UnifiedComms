@@ -96,3 +96,10 @@ coverage/
 /r[0-9]*.xml
 /s[0-9]*.xml
 /live_*.png
+
+# Local debugging artifacts — may contain real account data. Never commit.
+/ui*.xml
+/app-release.apk
+/app-debug.apk
+/.hermes/
+HANDOFF.md

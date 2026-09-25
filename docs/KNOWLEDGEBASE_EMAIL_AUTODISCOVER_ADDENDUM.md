@@ -166,7 +166,7 @@ E. DAVx5 — REFERENCE ANDROID CalDAV/CardDAV CLIENT (integration pattern)
 ====================================================================
 F. SYNTHESIS — WHY THE USER'S SPECIFIC FAILURE HAPPENED
 ====================================================================
-User: keith@example.com, servers imap.example.com + smtp.example.com
+User: user@example.com, servers imap.example.com + smtp.example.com
 (both behind SSL certs), CalDAV/CardDAV also hosted. UC pulled ONLY
 mail.example.com and never imap./smtp., then CalDAV/CardDAV were wrong,
 then "Account Saved, but sync failed: No login methods supported."

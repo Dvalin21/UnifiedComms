@@ -31,7 +31,7 @@ import kotlinx.datetime.LocalDate
 import java.util.UUID
 
 /**
- * REPRO: add the REAL example account with known-good URLs, run the real
+ * REPRO: add the REAL live account with known-good URLs, run the real
  * sync engines, then read back Room + screenshot the UI. Proves which LAYER is
  * broken for: (1) email body blank, (3) calendar not syncing, (6) biometric lock.
  *
@@ -44,8 +44,8 @@ class RealAccountReproTest : kotlinx.coroutines.CoroutineScope {
         InstrumentationRegistry.getArguments().getString("password")
             ?: error("Supply live password via: -e password \"...\"")
 
-    private val user = "testbox@example.com"
-    private val DAV = "https://email.example.com/SOGo/dav/"
+    private val user = LiveTestConfig.user
+    private val DAV = LiveTestConfig.davUrl
 
     private fun account(): Account {
         val u = user
@@ -55,11 +55,11 @@ class RealAccountReproTest : kotlinx.coroutines.CoroutineScope {
             email = u,
             accountType = AccountType.MAILCOW,
             serverConfig = ServerConfig(
-                imapHost = "imap.example.com",
+                imapHost = LiveTestConfig.imapHost,
                 imapPort = 993,
                 imapUseSsl = true,
                 acceptAllCerts = true,
-                smtpHost = "smtp.example.com",
+                smtpHost = LiveTestConfig.smtpHost,
                 smtpPort = 587,
                 smtpUseStartTls = true,
                 caldavUrl = "${DAV}$u/Calendar/personal/",

@@ -49,8 +49,8 @@ class AutodiscoverTest {
      */
     @Test
     fun mailcowSogoResolves(): Unit = runBlocking {
-        val d = withContext(Dispatchers.IO) { Autodiscover.discover("someone@example.com") }
-        assertNotNull("example.com autodiscover returned null", d)
+        val d = withContext(Dispatchers.IO) { Autodiscover.discover("someone@${LiveTestConfig.domain}") }
+        assertNotNull("autodiscover returned null", d)
         assertTrue("Expected imap. host, got ${d?.imapHost}", d?.imapHost?.startsWith("imap.") == true)
         assertTrue("Expected smtp. host, got ${d?.smtpHost}", d?.smtpHost?.startsWith("smtp.") == true)
         assertTrue("Expected SOGo CalDAV URL, got ${d?.caldavUrl}",

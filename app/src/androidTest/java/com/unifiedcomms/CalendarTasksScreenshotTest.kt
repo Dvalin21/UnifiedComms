@@ -33,11 +33,9 @@ import java.util.UUID
 class CalendarTasksScreenshotTest {
     @get:Rule val composeTestRule = createAndroidComposeRule<MainActivity>()
 
-    private fun password(): String =
-        InstrumentationRegistry.getArguments().getString("password")
-            ?: error("Supply live password via: -e password '...'")
+    private fun password(): String = LiveTestConfig.password()
 
-    private val user = "testbox@example.com"
+    private val user = LiveTestConfig.user
 
     private fun shot(name: String) {
         val f = File("/sdcard/Download", name)
@@ -64,9 +62,9 @@ class CalendarTasksScreenshotTest {
             email = user,
             accountType = AccountType.MAILCOW,
             serverConfig = ServerConfig(
-                imapHost = "imap.example.com", imapPort = 993, imapUseSsl = true, acceptAllCerts = true,
-                smtpHost = "smtp.example.com", smtpPort = 587, smtpUseStartTls = true,
-                caldavUrl = "https://email.example.com/SOGo/dav/$user/Calendar/personal/"
+                imapHost = LiveTestConfig.imapHost, imapPort = 993, imapUseSsl = true, acceptAllCerts = true,
+                smtpHost = LiveTestConfig.smtpHost, smtpPort = 587, smtpUseStartTls = true,
+                caldavUrl = "${LiveTestConfig.davUrl}$user/Calendar/personal/"
             ),
             authConfig = AuthConfig.AppPassword(user, password()),
             syncConfig = SyncConfig.Defaults().copy(syncEmail = false, syncCalendar = true, syncTasks = true, syncContacts = false),
