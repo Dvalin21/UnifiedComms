@@ -18,6 +18,7 @@ interface EmailSyncEngine {
     // The Chat folder is excluded so it never appears in the mail folder list.
     suspend fun listFolders(account: Account): List<String>
     suspend fun sendEmail(account: Account, email: Email): SendResult
+    suspend fun setFlags(account: Account, folder: String, uid: String, flags: com.unifiedcomms.data.model.EmailFlags): SyncResult
     suspend fun moveToFolder(account: Account, uids: List<String>, fromFolder: String, toFolder: String): SyncResult
     suspend fun deleteMessages(account: Account, folder: String, uids: List<String>): SyncResult
     fun observeSyncProgress(accountId: String): Flow<SyncProgress>

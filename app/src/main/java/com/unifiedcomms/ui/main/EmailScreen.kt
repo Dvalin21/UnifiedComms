@@ -2,16 +2,21 @@ package com.unifiedcomms.ui.main
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Forward
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.AttachFile
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Event
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.MarkEmailRead
+import androidx.compose.material.icons.filled.MarkEmailUnread
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -27,10 +32,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -40,13 +50,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -56,8 +69,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
-import android.webkit.WebView
 import android.content.Intent
 import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
@@ -72,6 +83,8 @@ import com.unifiedcomms.data.model.EmailAddress
 import com.unifiedcomms.data.model.EmailRecipients
 import com.unifiedcomms.data.model.AttendeeStatus
 import com.unifiedcomms.data.model.CalendarInviteMessage
+import com.unifiedcomms.ui.theme.AccountColors
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
@@ -101,21 +114,25 @@ fun EmailScreen(
     val emails by viewModel.emailRepository
         .getByAccountAndFolder(accountId, resolvedFolder, 100, 0)
         .collectAsStateWithLifecycle(initialValue = emptyList())
-    val messages = emails.map { it.toEmailMessage() }
-    // ponytail: tint the email avatar with the owning account color so a unified inbox is
-    // scannable by account at a glance. Fall back to theme primary when the account is gone.
-    val accountColor by remember {
-        derivedStateOf { viewModel.accounts.value.firstOrNull { it.id == accountId }?.uiConfig?.color }
+    val messages = emails.map { it.toEmailMessage(resolvedFolder) }
+    LaunchedEffect(accountId, resolvedFolder) {
+        if (!resolvedFolder.equals("INBOX", ignoreCase = true) && emails.isEmpty()) {
+            viewModel.syncFolder(accountId, resolvedFolder)
+        }
     }
-    val avatarColor = remember(accountColor) { Color(accountColor ?: 0xFF2196F3.toInt()) }
+    // Match the unified inbox's stable per-account palette instead of every folder
+    // row falling back to Material blue.
+    val avatarColor = remember(accountId) { AccountColors.getColorForAccount(accountId).container }
+    val folderTitle = if (resolvedFolder.equals("INBOX", ignoreCase = true)) "Inbox" else resolvedFolder
 
     var deleteTarget by remember { mutableStateOf<EmailMessage?>(null) }
+    var actionError by remember { mutableStateOf<String?>(null) }
     val coroutineScope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { androidx.compose.material3.Text("Unified Inbox", fontWeight = FontWeight.Bold) },
+                title = { androidx.compose.material3.Text(folderTitle, fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Back")
@@ -126,12 +143,10 @@ fun EmailScreen(
                 }
             )
         },
-        floatingActionButton = {
-            androidx.compose.material3.FloatingActionButton(onClick = onCompose) {
-                Icon(Icons.Default.Add, contentDescription = "Compose")
-            }
-        }
     ) { innerPadding ->
+        actionError?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+        }
         if (messages.isEmpty()) {
             Column(
                 modifier = Modifier.fillMaxSize().padding(innerPadding).padding(top = 96.dp, bottom = 96.dp),
@@ -159,7 +174,7 @@ fun EmailScreen(
         } else {
         LazyColumn(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
             items(messages) { message ->
-                var localMessage by remember(message.id) { mutableStateOf(message) }
+                val localMessage = message
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -169,7 +184,7 @@ fun EmailScreen(
                 ) {
                     Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(modifier = Modifier.size(40.dp).background(avatarColor, CircleShape), contentAlignment = Alignment.Center) {
-                            Text(text = (localMessage.from.firstOrNull()?.uppercase() ?: "?"), fontWeight = FontWeight.Bold, color = Color.White)
+                            Text(text = localMessage.initials, fontWeight = FontWeight.Bold, color = Color.White)
                         }
                         Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -182,19 +197,45 @@ fun EmailScreen(
                         }
                         IconButton(onClick = {
                                 coroutineScope.launch {
-                                    viewModel.emailRepository.markAsRead(listOf(message.id))
+                                    emails.firstOrNull { it.id == message.id }?.let { model ->
+                                        val result = viewModel.setEmailFlags(
+                                            model,
+                                            model.flags.copy(isRead = !model.flags.isRead)
+                                        )
+                                        actionError = if (result.success) null else result.errorMessage
+                                    }
                                 }
-                            }) { Icon(Icons.Default.Email, contentDescription = "Toggle read") }
-                            IconButton(onClick = {
-                                coroutineScope.launch {
-                                    viewModel.deleteEmails(listOf(message.id), resolvedFolder)
-                                }
-                            }) { Icon(Icons.Default.Delete, contentDescription = "Delete") }
+                            }) {
+                                Icon(
+                                    if (localMessage.isUnread) Icons.Default.MarkEmailRead else Icons.Default.MarkEmailUnread,
+                                    contentDescription = if (localMessage.isUnread) "Mark read" else "Mark unread"
+                                )
+                            }
+                            IconButton(onClick = { deleteTarget = message }) {
+                                Icon(Icons.Default.Delete, contentDescription = "Delete")
+                            }
                     }
                 }
                 HorizontalDivider()
             }
         }
+        }
+        deleteTarget?.let { target ->
+            AlertDialog(
+                onDismissRequest = { deleteTarget = null },
+                title = { Text("Delete email?") },
+                text = { Text(target.subject) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        deleteTarget = null
+                        coroutineScope.launch {
+                            val result = viewModel.deleteEmails(listOf(target.id), resolvedFolder)
+                            actionError = if (result.success) null else result.errorMessage
+                        }
+                    }) { Text("Delete") }
+                },
+                dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancel") } }
+            )
         }
     }
 }
@@ -206,7 +247,7 @@ data class EmailMessage(
     val body: String,
     val time: String,
     val isUnread: Boolean,
-    val accountColor: Color
+    val initials: String
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -214,15 +255,47 @@ data class EmailMessage(
 fun ComposeEmailScreen(
     accountId: String,
     viewModel: MainViewModel,
-    onSend: () -> Unit
+    onSend: () -> Unit,
+    mode: String? = null,
+    sourceEmailId: String? = null
 ) {
-    var to by remember { mutableStateOf("") }
-    var cc by remember { mutableStateOf("") }
-    var bcc by remember { mutableStateOf("") }
-    var subject by remember { mutableStateOf("") }
-    var body by remember { mutableStateOf("") }
+    var to by rememberSaveable { mutableStateOf("") }
+    var cc by rememberSaveable { mutableStateOf("") }
+    var bcc by rememberSaveable { mutableStateOf("") }
+    var subject by rememberSaveable { mutableStateOf("") }
+    var body by rememberSaveable { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    var sourceEmail by remember { mutableStateOf<Email?>(null) }
     val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(sourceEmailId) {
+        if (sourceEmailId.isNullOrBlank()) return@LaunchedEffect
+        val source = viewModel.emailRepository.getById(sourceEmailId) ?: return@LaunchedEffect
+        sourceEmail = source
+        when (mode) {
+            "reply" -> {
+                to = source.sender.email
+                subject = if (source.subject.startsWith("Re:", ignoreCase = true)) source.subject else "Re: ${source.subject}"
+                body = buildString {
+                    appendLine()
+                    appendLine("On ${source.receivedAt}, ${source.sender} wrote:")
+                    appendLine()
+                    append(squashBlankLines(source.bodyText.orEmpty()).lines().joinToString("\n") { ">$it" })
+                }
+            }
+            "forward" -> {
+                subject = if (source.subject.startsWith("Fwd:", ignoreCase = true)) source.subject else "Fwd: ${source.subject}"
+                body = buildString {
+                    appendLine()
+                    appendLine("Forwarded message:")
+                    appendLine("From: ${source.sender}")
+                    appendLine("Subject: ${source.subject}")
+                    appendLine()
+                    append(squashBlankLines(source.bodyText.orEmpty()))
+                }
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -235,9 +308,18 @@ fun ComposeEmailScreen(
                 },
                 actions = {
                     IconButton(onClick = {
-                        if (to.isNotBlank()) {
-                            coroutineScope.launch {
-                                val from = viewModel.getDefaultAccount()?.email.orEmpty()
+                        if (to.isBlank()) {
+                            error = "Enter at least one recipient"
+                            return@IconButton
+                        }
+                        coroutineScope.launch {
+                                val account = viewModel.getAccountById(accountId)
+                                    ?: viewModel.getDefaultAccount()
+                                val from = account?.email.orEmpty()
+                                if (from.isBlank()) {
+                                    error = "Sender account is unavailable"
+                                    return@launch
+                                }
                                 val sender = EmailAddress(name = from.substringBefore("@"), email = from)
                                 // Evidence: JavaMail InternetAddress ctor with a bare address as the
                                 // display NAME produces an invalid RCPT TO -> 501 5.1.3. Parse with
@@ -261,7 +343,11 @@ fun ComposeEmailScreen(
                                     folder = "Sent",
                                     uid = java.util.UUID.randomUUID().toString(),
                                     messageId = "<${java.util.UUID.randomUUID()}@unifiedcomms.local>",
-                                    threadId = java.util.UUID.randomUUID().toString(),
+                                    threadId = sourceEmail?.threadId ?: java.util.UUID.randomUUID().toString(),
+                                    inReplyTo = if (mode == "reply") sourceEmail?.messageId else null,
+                                    references = if (mode == "reply") {
+                                        sourceEmail?.references.orEmpty() + listOfNotNull(sourceEmail?.messageId)
+                                    } else emptyList(),
                                     sender = sender,
                                     recipients = recipients,
                                     subject = subject,
@@ -275,13 +361,20 @@ fun ComposeEmailScreen(
                                     error = result.errorMessage ?: "Send failed"
                                 }
                             }
-                        }
-                    }) { Icon(Icons.AutoMirrored.Default.Send, contentDescription = "Send") }
+                }) { Icon(Icons.AutoMirrored.Default.Send, contentDescription = "Send") }
                 }
             )
         }
     ) { innerPadding ->
-        Column(modifier = Modifier.padding(innerPadding).padding(16.dp).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(
+            modifier = Modifier
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .imePadding()
+                .padding(16.dp)
+                .fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
             TextField(value = to, onValueChange = { to = it }, label = { Text("To") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
             TextField(value = cc, onValueChange = { cc = it }, label = { Text("CC") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
             TextField(value = bcc, onValueChange = { bcc = it }, label = { Text("BCC") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
@@ -294,20 +387,27 @@ fun ComposeEmailScreen(
     }
 }
 
-private fun Email.toEmailMessage(): EmailMessage {
+private fun Email.toEmailMessage(folder: String): EmailMessage {
     val formatter = java.time.format.DateTimeFormatter.ofPattern("h:mm a")
     val ldt = java.time.LocalDateTime.ofInstant(
         java.time.Instant.ofEpochMilli(receivedAt.toEpochMilliseconds()),
         java.time.ZoneId.systemDefault()
     )
+    val outgoing = folder.equals("Sent", ignoreCase = true) || folder.equals("Drafts", ignoreCase = true)
+    val contact = if (outgoing) recipients.to.firstOrNull() else sender
+    val from = if (outgoing) {
+        contact?.let { "To: ${it.name ?: it.email}" } ?: "No recipient"
+    } else {
+        contact?.name ?: contact?.email.orEmpty()
+    }
     return EmailMessage(
         id = id,
-        from = sender.name ?: sender.email,
+        from = from,
         subject = subject,
-        body = bodyText.orEmpty().stripHtml().take(120),
+        body = preview.ifBlank { bodyText.orEmpty() }.stripHtml().take(120),
         time = formatter.format(ldt),
         isUnread = isUnread(),
-        accountColor = Color.Unspecified
+        initials = contact?.getInitials() ?: "?"
     )
 }
 
@@ -316,18 +416,29 @@ private fun Email.toEmailMessage(): EmailMessage {
 fun EmailDetailScreen(
     emailId: String,
     viewModel: MainViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onReply: (Email) -> Unit = {},
+    onForward: (Email) -> Unit = {}
 ) {
     val coroutineScope = rememberCoroutineScope()
     var email by remember { mutableStateOf<Email?>(null) }
+    var actionError by remember { mutableStateOf<String?>(null) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    var moreOpen by remember { mutableStateOf(false) }
 
     LaunchedEffect(emailId) {
         coroutineScope.launch {
             val loaded = viewModel.emailRepository.getById(emailId)
-            if (loaded != null && loaded.isUnread()) {
-                viewModel.emailRepository.markAsRead(listOf(emailId))
-            }
             email = loaded
+            if (loaded != null && loaded.isUnread()) {
+                // Render cached content immediately; the IMAP flag write must not
+                // block opening a message when the network is unavailable.
+                coroutineScope.launch {
+                    val updated = loaded.copy(flags = loaded.flags.copy(isRead = true))
+                    val result = viewModel.setEmailFlags(loaded, updated.flags)
+                    if (result.success) email = updated else actionError = result.errorMessage
+                }
+            }
         }
     }
 
@@ -337,22 +448,97 @@ fun EmailDetailScreen(
                 title = { Text(email?.subject ?: "Email", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Back") }
+                },
+                actions = {
+                    email?.let { message ->
+                        IconButton(onClick = { onReply(message) }) {
+                            Icon(Icons.AutoMirrored.Filled.Reply, contentDescription = "Reply")
+                        }
+                        IconButton(onClick = { onForward(message) }) {
+                            Icon(Icons.AutoMirrored.Filled.Forward, contentDescription = "Forward")
+                        }
+                        Box {
+                            IconButton(onClick = { moreOpen = true }) {
+                                Icon(Icons.Default.MoreVert, contentDescription = "More email actions")
+                            }
+                            DropdownMenu(
+                                expanded = moreOpen,
+                                onDismissRequest = { moreOpen = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(if (message.flags.isFlagged) "Remove star" else "Star") },
+                                    leadingIcon = {
+                                        Icon(
+                                            if (message.flags.isFlagged) Icons.Default.Star else Icons.Default.StarBorder,
+                                            contentDescription = null
+                                        )
+                                    },
+                                    onClick = {
+                                        moreOpen = false
+                                        coroutineScope.launch {
+                                            val updated = message.copy(flags = message.flags.copy(isFlagged = !message.flags.isFlagged))
+                                            val result = viewModel.setEmailFlags(message, updated.flags)
+                                            if (result.success) email = updated else actionError = result.errorMessage
+                                        }
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(if (message.flags.isRead) "Mark unread" else "Mark read") },
+                                    leadingIcon = {
+                                        Icon(
+                                            if (message.flags.isRead) Icons.Default.MarkEmailUnread else Icons.Default.MarkEmailRead,
+                                            contentDescription = null
+                                        )
+                                    },
+                                    onClick = {
+                                        moreOpen = false
+                                        coroutineScope.launch {
+                                            val updated = message.copy(flags = message.flags.copy(isRead = !message.flags.isRead))
+                                            val result = viewModel.setEmailFlags(message, updated.flags)
+                                            if (result.success) email = updated else actionError = result.errorMessage
+                                        }
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Archive") },
+                                    leadingIcon = { Icon(Icons.Default.Archive, contentDescription = null) },
+                                    onClick = {
+                                        moreOpen = false
+                                        coroutineScope.launch {
+                                            val result = viewModel.moveEmails(listOf(message.id), message.folder, "Archive")
+                                            if (result.success) onBack() else actionError = result.errorMessage
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                        IconButton(onClick = { confirmDelete = true }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Delete email")
+                        }
+                    }
                 }
             )
         }
     ) { innerPadding ->
         val e = email
+        actionError?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
         if (e == null) {
             Column(modifier = Modifier.fillMaxSize().padding(innerPadding).padding(16.dp)) {
                 Text("Email not found", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
-            android.util.Log.e("INVITEUI", "INVITE_NULL=${e.invite == null} subject='${e.subject.take(40)}' hasHtml=${!e.bodyHtml.isNullOrBlank()} hasText=${!e.bodyText.isNullOrBlank()}")
-            if (e.invite != null) android.util.Log.e("INVITEUI", "INVITE_PARSED title='${e.invite.eventTitle.take(30)}' start=${e.invite.startAt} tz='${e.invite.timezone}'")
             val context = LocalContext.current
             LazyColumn(modifier = Modifier.padding(innerPadding).fillMaxSize().padding(16.dp)) {
                 item {
-                    Text(e.sender.toString(), fontWeight = FontWeight.Bold)
+                    val senderName = e.sender.name?.takeIf { it.isNotBlank() }
+                    Text(senderName ?: e.sender.email, fontWeight = FontWeight.Bold)
+                    if (senderName != null && e.sender.email.isNotBlank()) {
+                        Text(
+                            e.sender.email,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(e.subject, style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(4.dp))
@@ -375,29 +561,16 @@ fun EmailDetailScreen(
                     // is the actionable surface. The raw body (HTML/ICS blob starting with
                     // "OpenGroupware_org" / BEGIN:VCALENDAR) is noise — don't render it.
                     if (e.invite == null) {
-                        // ponytail: render HTML when available (GMail/Samsung-style),
-                        // fall back to plaintext. WebView is the correct renderer for
-                        // arbitrary email HTML; JS is disabled and no network access.
-                        if (!e.bodyHtml.isNullOrBlank()) {
-                            val html = e.bodyHtml
-                            AndroidView(
-                                modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp, max = 600.dp),
-                                factory = { ctx ->
-                                    WebView(ctx).apply {
-                                        settings.javaScriptEnabled = false
-                                        settings.blockNetworkImage = false
-                                        settings.blockNetworkLoads = true
-                                        isVerticalScrollBarEnabled = false
-                                        isHorizontalScrollBarEnabled = false
-                                    }.also { wv ->
-                                        wv.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
-                                    }
-                                },
-                                update = { wv -> wv.loadDataWithBaseURL(null, html, "text/html", "utf-8", null) }
-                            )
-                        } else {
-                            Text(e.bodyText ?: "(no content)", style = MaterialTheme.typography.bodyLarge)
-                        }
+                        // ponytail: render the plaintext body in Compose. A WebView needs a
+                        // fixed height (Compose cannot measure WebView content), which left a
+                        // 600dp empty block on short messages, and it cannot follow the theme.
+                        // HTML is only a fallback, stripped to text. Restore the WebView only if
+                        // inline images or CSS layout become a requirement.
+                        val body = e.bodyText?.takeIf { it.isNotBlank() }
+                            ?: e.bodyHtml?.takeIf { it.isNotBlank() }
+                                ?.let { android.text.Html.fromHtml(it, android.text.Html.FROM_HTML_MODE_LEGACY).toString() }
+                            ?: "(no content)"
+                        Text(squashBlankLines(body), style = MaterialTheme.typography.bodyLarge)
                     }
                     if (e.attachments.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(16.dp))
@@ -419,14 +592,31 @@ fun EmailDetailScreen(
                 }
             }
         }
+        if (confirmDelete) {
+            AlertDialog(
+                onDismissRequest = { confirmDelete = false },
+                title = { Text("Delete email?") },
+                text = { Text(email?.subject ?: "") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        confirmDelete = false
+                        email?.let { message ->
+                            coroutineScope.launch {
+                                val result = viewModel.deleteEmails(listOf(message.id), message.folder)
+                                if (result.success) onBack() else actionError = result.errorMessage
+                            }
+                        }
+                    }) { Text("Delete") }
+                },
+                dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } }
+            )
+        }
     }
 }
 
 @Composable
 private fun AttachmentRow(attachment: com.unifiedcomms.data.model.Attachment, onOpen: () -> Unit) {
-    val sizeLabel = if (attachment.sizeBytes > 0) {
-        "  ·  %.1f KB".format(attachment.sizeBytes / 1024.0)
-    } else ""
+    val sizeLabel = if (attachment.sizeBytes > 0) "  ·  ${formatAttachmentSize(attachment.sizeBytes)}" else ""
     Surface(
         shape = RoundedCornerShape(8.dp),
         color = MaterialTheme.colorScheme.surfaceVariant,
@@ -559,6 +749,26 @@ private fun StatusRow(labelPrefix: String, result: String?, successColor: androi
         softWrap = false
     )
 }
+
+private fun formatAttachmentSize(bytes: Long): String {
+    val units = arrayOf("B", "KB", "MB", "GB")
+    var value = bytes.toDouble()
+    var unit = 0
+    while (value >= 1024 && unit < units.lastIndex) {
+        value /= 1024
+        unit++
+    }
+    return if (unit == 0) "${value.toLong()} ${units[unit]}" else "%.1f %s".format(value, units[unit])
+}
+
+// ponytail: mail bodies arrive with CR-only line breaks and runs of blank lines
+// (quoted headers, trailing <br><br>&nbsp;). Compose only breaks on \n, so normalize
+// and collapse 3+ blank lines to one, the way mail clients render quoted text.
+// Upgrade to collapsible quote blocks if the squashed quote ever needs to be hidden.
+internal fun squashBlankLines(raw: String): String =
+    raw.replace(Regex("\r\n?"), "\n")
+        .trimEnd('\n', ' ', '\u00A0')
+        .replace(Regex("\n{3,}"), "\n\n")
 
 private fun openFile(context: android.content.Context, path: String, mimeType: String) {
     runCatching {

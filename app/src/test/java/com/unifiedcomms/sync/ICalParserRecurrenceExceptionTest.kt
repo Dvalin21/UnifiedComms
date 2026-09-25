@@ -29,6 +29,7 @@ class ICalParserRecurrenceExceptionTest {
         val res = ICalParser.parse(exdateIcal, "a", "/cal/c", "/cal/c/standup.ics")
         assertEquals(1, res.events.size)
         val ev = res.events.first()
+        assertEquals("/cal/c/standup.ics", ev.serverHref)
         assertEquals(1, ev.recurrenceExceptions.size)
         val ex = ev.recurrenceExceptions.first()
         assertTrue(ex.isDeleted)

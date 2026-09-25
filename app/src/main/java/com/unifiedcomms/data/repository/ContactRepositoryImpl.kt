@@ -33,7 +33,8 @@ class ContactRepositoryImpl(private val dao: ContactDao) : ContactRepository {
 
     override fun getFavorites(): Flow<List<UnifiedContact>> = dao.getFavorites()
 
-    override fun search(query: String, limit: Int): Flow<List<UnifiedContact>> = dao.search(query, limit)
+    override fun search(query: String, limit: Int): Flow<List<UnifiedContact>> =
+        dao.search("%${query.trim()}%", limit)
 
     override suspend fun getNeedingSync(): List<UnifiedContact> = dao.getNeedingSync()
 

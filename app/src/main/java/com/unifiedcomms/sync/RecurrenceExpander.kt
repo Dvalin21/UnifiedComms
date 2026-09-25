@@ -241,6 +241,7 @@ object RecurrenceExpander {
             recurrenceId = master.uid,
             uid = master.uid,
             startAt = EventDateTime.fromInstant(startInstant, tz, allDay),
+            startAtMs = startInstant.toEpochMilliseconds(),
             endAt = EventDateTime.fromInstant(endInstant, tz, allDay),
             recurrenceRule = null,
             isLocalOnly = false,

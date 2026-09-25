@@ -1,7 +1,10 @@
 package com.unifiedcomms.sync
 
 import android.util.Log
+import com.unifiedcomms.data.model.AttendeeRole
+import com.unifiedcomms.data.model.AttendeeStatus
 import com.unifiedcomms.data.model.CalendarEvent
+import com.unifiedcomms.data.model.EventAttendee
 import com.unifiedcomms.data.model.EventColor
 import com.unifiedcomms.data.model.RecurrenceException
 import com.unifiedcomms.data.model.Task
@@ -17,7 +20,7 @@ object ICalParser {
 
     data class ParseResult(val events: List<CalendarEvent>, val tasks: List<Task>)
 
-    fun parse(ical: String, accountId: String, calendarPath: String, etag: String, defaultColor: String = ""): ParseResult {
+    fun parse(ical: String, accountId: String, calendarPath: String, resourceHref: String, defaultColor: String = ""): ParseResult {
         val tasks = mutableListOf<Task>()
         val lines = unfoldLines(ical)
         val veventBlocks = mutableListOf<List<String>>()
@@ -39,11 +42,11 @@ object ICalParser {
                 else -> i++
             }
         }
-        vtodoBlocks.mapNotNull { parseVTodo(it, accountId, calendarPath, etag) }.toCollection(tasks)
+        vtodoBlocks.mapNotNull { parseVTodo(it, accountId, calendarPath, resourceHref) }.toCollection(tasks)
         // ponytail: group sibling VEVENTs by UID so a RECURRENCE-ID override (same UID,
         // no RRULE) is attached to its master as a RecurrenceException instead of being
         // emitted as a phantom standalone event. EXDATEs are folded into the master too.
-        val events = mergeVEvents(veventBlocks, accountId, calendarPath, etag, defaultColor)
+        val events = mergeVEvents(veventBlocks, accountId, calendarPath, resourceHref, defaultColor)
         return ParseResult(events, tasks)
     }
 
@@ -51,10 +54,10 @@ object ICalParser {
         blocks: List<List<String>>,
         accountId: String,
         calendarPath: String,
-        etag: String,
+        resourceHref: String,
         defaultColor: String = ""
     ): List<CalendarEvent> {
-        val parsed = blocks.mapNotNull { parseVEventWithRecurrenceId(it, accountId, calendarPath, etag, defaultColor) }
+        val parsed = blocks.mapNotNull { parseVEventWithRecurrenceId(it, accountId, calendarPath, resourceHref, defaultColor) }
         val byUid = parsed.groupBy { it.event.uid }
         val out = mutableListOf<CalendarEvent>()
         for ((_, group) in byUid) {
@@ -86,10 +89,10 @@ object ICalParser {
         lines: List<String>,
         accountId: String,
         calendarPath: String,
-        etag: String,
+        resourceHref: String,
         defaultColor: String = ""
     ): ParsedVEvent? {
-        val event = parseVEvent(lines, accountId, calendarPath, etag, defaultColor) ?: return null
+        val event = parseVEvent(lines, accountId, calendarPath, resourceHref, defaultColor) ?: return null
         val map = parseProperties(lines)
         // ponytail: RECURRENCE-ID carries params (TZID); look it up by prefix, not exact key.
         val ridEntry = map.entries.firstOrNull { it.key.startsWith("RECURRENCE-ID") }
@@ -97,7 +100,7 @@ object ICalParser {
         return ParsedVEvent(event, rid)
     }
 
-    private fun parseVEvent(lines: List<String>, accountId: String, calendarPath: String, etag: String, defaultColor: String = ""): CalendarEvent? {
+    private fun parseVEvent(lines: List<String>, accountId: String, calendarPath: String, resourceHref: String, defaultColor: String = ""): CalendarEvent? {
         val map = parseProperties(lines)
         return try {
             val uid = map["UID"] ?: return null
@@ -122,8 +125,10 @@ object ICalParser {
                 "TENTATIVE" -> com.unifiedcomms.data.model.EventStatus.TENTATIVE
                 else -> com.unifiedcomms.data.model.EventStatus.CONFIRMED
             }
-            val colorHex = map["X-APPLE-COLOR"] ?: map["COLOR"] ?: map["X-MICROSOFT-CALENDAR-CALCOLOR"] ?: ""
-            val organizerEmail = extractEmail(map.entries.firstOrNull { it.key.startsWith("ORGANIZER") }?.value)
+            val colorHex = (map["X-APPLE-COLOR"] ?: map["COLOR"] ?: map["X-MICROSOFT-CALENDAR-CALCOLOR"])
+                ?.trim()?.takeIf { it.isNotEmpty() }.orEmpty()
+            val organizer = parseOrganizer(lines)
+            val attendees = parseAttendees(lines)
             // ponytail: EXDATE lines delete specific occurrences (server-side cancellation /
             // reschedule). Merge them into recurrenceExceptions as deleted overrides.
             val exdates = extractExdates(lines)
@@ -148,12 +153,18 @@ object ICalParser {
                 timezone = startTzId?.let { com.unifiedcomms.data.model.TimeZoneUtil.normalize(it) } ?: ZoneId.systemDefault().id,
                 recurrenceRule = map["RRULE"]?.let { com.unifiedcomms.data.model.RecurrenceRule.parse(it) },
                 recurrenceExceptions = exdates,
-                color = if (colorHex.isNotBlank()) EventColor(colorHex, if (isLightColor(colorHex)) "#000000" else "#FFFFFF")
-                    else if (defaultColor.isNotBlank()) EventColor(defaultColor, if (isLightColor(defaultColor)) "#000000" else "#FFFFFF")
-                    else EventColor.Default(),
-                organizer = organizerEmail?.let { com.unifiedcomms.data.model.EventAttendee(email = it) },
-                etag = etag,
-                status = status
+                color = if (colorHex.isNotBlank()) {
+                    EventColor(colorHex, if (isLightColor(colorHex)) "#000000" else "#FFFFFF", isExplicit = true)
+                } else if (defaultColor.isNotBlank()) {
+                    EventColor(defaultColor, if (isLightColor(defaultColor)) "#000000" else "#FFFFFF", isExplicit = false)
+                } else {
+                    EventColor.Default().copy(isExplicit = false)
+                },
+                organizer = organizer,
+                attendees = attendees,
+                serverHref = resourceHref,
+                status = status,
+                isCancelled = status == com.unifiedcomms.data.model.EventStatus.CANCELLED
             )
         } catch (t: Throwable) {
             Log.w(TAG, "Failed to parse VEVENT; calendarPath=$calendarPath accountId=$accountId", t)
@@ -161,41 +172,100 @@ object ICalParser {
         }
     }
 
-    private fun parseVTodo(lines: List<String>, accountId: String, calendarPath: String, etag: String): Task? {
+    private fun parseVTodo(lines: List<String>, accountId: String, calendarPath: String, resourceHref: String): Task? {
         val map = parseProperties(lines)
         return try {
             val uid = map["UID"] ?: return null
-            val summary = map["SUMMARY"] ?: "(No title)"
+            val summary = unescapeText(map["SUMMARY"] ?: "(No title)")
             val status = when ((map["STATUS"] ?: "").uppercase()) {
                 "COMPLETED" -> TaskStatus.COMPLETED
                 "IN-PROCESS" -> TaskStatus.IN_PROCESS
                 "CANCELLED" -> TaskStatus.CANCELLED
                 else -> TaskStatus.NEEDS_ACTION
             }
-            val dueMs = map.entries.firstOrNull { it.key.startsWith("DUE") }?.let { parseDateTime(it.key, it.value) }
+            val due = map.entries.firstOrNull { it.key.startsWith("DUE") }?.let { parseTaskDateTime(it.key, it.value) }
+            val completed = map.entries.firstOrNull { it.key.startsWith("COMPLETED") }?.let { parseTaskDateTime(it.key, it.value) }
             val priorityNum = map["PRIORITY"]?.toIntOrNull() ?: 0
             val priority = when {
-                priorityNum in 1..4 -> TaskPriority.HIGH
+                priorityNum == 1 -> TaskPriority.URGENT
+                priorityNum in 2..4 -> TaskPriority.HIGH
                 priorityNum == 5 -> TaskPriority.MEDIUM
                 priorityNum in 6..9 -> TaskPriority.LOW
                 else -> TaskPriority.NONE
             }
+            val categories = map["CATEGORIES"]
+                ?.split(",")
+                ?.map { unescapeText(it) }
+                ?.filter { it.isNotBlank() }
+                .orEmpty()
 
             Task(
                 accountId = accountId,
                 listId = calendarPath,
                 uid = uid,
                 title = summary,
-                description = map["DESCRIPTION"] ?: "",
+                description = map["DESCRIPTION"]?.let(::unescapeText),
+                location = map["LOCATION"]?.let(::unescapeText),
                 status = status,
                 priority = priority,
-                dueAt = dueMs?.let { com.unifiedcomms.data.model.TaskDateTime.fromInstant(kotlinx.datetime.Instant.fromEpochMilliseconds(it)) },
-                etag = etag
+                dueAt = due,
+                completedAt = completed,
+                percentComplete = map["PERCENT-COMPLETE"]?.toIntOrNull()
+                    ?: if (status == TaskStatus.COMPLETED) 100 else 0,
+                categories = categories,
+                serverHref = resourceHref,
+                // TaskSyncEngine overwrites this with the real ETag after listing.
+                etag = resourceHref
             )
         } catch (t: Throwable) {
             Log.w(TAG, "Failed to parse VTODO; calendarPath=$calendarPath accountId=$accountId", t)
             null
         }
+    }
+
+    private fun parseTaskDateTime(key: String, value: String): com.unifiedcomms.data.model.TaskDateTime? {
+        val clean = value.trim()
+        val tz = tzIdFromKey(key) ?: if (clean.endsWith("Z", ignoreCase = true)) "UTC" else ZoneId.systemDefault().id
+        val propertyName = key.substringBefore(';').uppercase()
+        val dateOnly = (propertyName == "DUE" || propertyName == "COMPLETED") &&
+            key.contains("VALUE=DATE", ignoreCase = true) && !key.contains("DATE-TIME", ignoreCase = true)
+        return if (dateOnly) {
+            val date = java.time.LocalDate.parse(clean.take(8), DateTimeFormatter.BASIC_ISO_DATE)
+            com.unifiedcomms.data.model.TaskDateTime(
+                date = kotlinx.datetime.LocalDate(date.year, date.monthValue, date.dayOfMonth),
+                timeZone = tz,
+                hasTime = false
+            )
+        } else {
+            val millis = parseDateTime(key, clean, tz)
+            com.unifiedcomms.data.model.TaskDateTime.fromInstant(
+                kotlinx.datetime.Instant.fromEpochMilliseconds(millis),
+                com.unifiedcomms.data.model.TimeZoneUtil.toKtxZone(tz),
+                hasTime = true
+            )
+        }
+    }
+
+    private fun unescapeText(value: String): String {
+        val out = StringBuilder(value.length)
+        var escaped = false
+        for (char in value) {
+            if (escaped) {
+                out.append(
+                    when (char) {
+                        'n', 'N' -> '\n'
+                        else -> char
+                    }
+                )
+                escaped = false
+            } else if (char == '\\') {
+                escaped = true
+            } else {
+                out.append(char)
+            }
+        }
+        if (escaped) out.append('\\')
+        return out.toString()
     }
 
     private fun parseProperties(lines: List<String>): Map<String, String> {
@@ -254,8 +324,74 @@ object ICalParser {
 
     private fun extractEmail(value: String?): String? {
         if (value.isNullOrBlank()) return null
-        return value.removePrefix("mailto:").trim().ifBlank { null }
+        val normalized = value.trim().let {
+            if (it.startsWith("mailto:", ignoreCase = true)) it.substring(7) else it
+        }
+        return normalized.trim().takeIf { it.contains('@') }
     }
+
+    private fun parseOrganizer(lines: List<String>): EventAttendee? {
+        val line = lines.firstOrNull { propertyLine(it)?.first?.let { key ->
+            propertyName(key).equals("ORGANIZER", ignoreCase = true)
+        } == true } ?: return null
+        val (rawKey, rawValue) = propertyLine(line) ?: return null
+        val email = extractEmail(rawValue) ?: return null
+        return EventAttendee(
+            email = email,
+            name = parameter(rawKey, "CN")?.let(::unescapeText),
+            status = AttendeeStatus.ACCEPTED,
+            role = AttendeeRole.ORGANIZER,
+            rsvp = false
+        )
+    }
+
+    private fun parseAttendees(lines: List<String>): List<EventAttendee> = buildList {
+        for (line in lines) {
+            val (rawKey, rawValue) = propertyLine(line) ?: continue
+            if (!propertyName(rawKey).equals("ATTENDEE", ignoreCase = true)) continue
+            val email = extractEmail(rawValue) ?: continue
+            val role = when (parameter(rawKey, "ROLE")?.uppercase()) {
+                "CHAIR" -> AttendeeRole.CHAIR
+                "OPT-PARTICIPANT" -> AttendeeRole.OPT_PARTICIPANT
+                "NON-PARTICIPANT" -> AttendeeRole.NON_PARTICIPANT
+                else -> AttendeeRole.REQ_PARTICIPANT
+            }
+            val status = when (parameter(rawKey, "PARTSTAT")?.uppercase()) {
+                "ACCEPTED" -> AttendeeStatus.ACCEPTED
+                "DECLINED" -> AttendeeStatus.DECLINED
+                "TENTATIVE" -> AttendeeStatus.TENTATIVE
+                "DELEGATED" -> AttendeeStatus.DELEGATED
+                "COMPLETED" -> AttendeeStatus.COMPLETED
+                "IN-PROCESS" -> AttendeeStatus.IN_PROCESS
+                else -> AttendeeStatus.NEEDS_ACTION
+            }
+            add(
+                EventAttendee(
+                    email = email,
+                    name = parameter(rawKey, "CN")?.let(::unescapeText),
+                    status = status,
+                    role = role,
+                    rsvp = parameter(rawKey, "RSVP")?.equals("TRUE", ignoreCase = true) ?: true
+                )
+            )
+        }
+    }
+
+    private fun propertyLine(line: String): Pair<String, String>? {
+        val idx = line.indexOf(':')
+        if (idx <= 0) return null
+        return line.substring(0, idx).trim() to line.substring(idx + 1).trim()
+    }
+
+    private fun propertyName(rawKey: String): String = rawKey.substringBefore(';').trim()
+
+    private fun parameter(rawKey: String, name: String): String? = rawKey.split(';')
+        .drop(1)
+        .firstOrNull { it.substringBefore('=').trim().equals(name, ignoreCase = true) }
+        ?.substringAfter('=', "")
+        ?.trim()
+        ?.removeSurrounding("\"")
+        ?.takeIf { it.isNotBlank() }
 
     private fun isLightColor(hex: String): Boolean {
         val clean = hex.removePrefix("#")

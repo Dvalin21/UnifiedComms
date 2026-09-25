@@ -127,7 +127,7 @@ interface ContactDao {
     @Query("SELECT * FROM contacts WHERE isFavorite = 1 ORDER BY displayName ASC")
     fun getFavorites(): Flow<List<UnifiedContact>>
 
-    @Query("SELECT * FROM contacts WHERE (displayName LIKE :query OR EXISTS (SELECT 1 FROM json_each(contacts.emails) WHERE value = :query) OR EXISTS (SELECT 1 FROM json_each(contacts.phoneNumbers) WHERE value = :query)) LIMIT :limit")
+    @Query("SELECT * FROM contacts WHERE (displayName LIKE :query OR EXISTS (SELECT 1 FROM json_each(contacts.emails) WHERE value LIKE :query) OR EXISTS (SELECT 1 FROM json_each(contacts.phoneNumbers) WHERE value LIKE :query)) LIMIT :limit")
     fun search(query: String, limit: Int): Flow<List<UnifiedContact>>
 
     @Query("SELECT * FROM contacts WHERE needsSync = 1")

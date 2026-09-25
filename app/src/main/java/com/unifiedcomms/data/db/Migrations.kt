@@ -117,6 +117,56 @@ object Migrations {
             db.execSQL("DROP TABLE IF EXISTS conversations")
         }
     }
+
+    /** Persist the exact CalDAV item href returned by the server. */
+    val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            if (!db.columnExists("calendar_events", "serverHref")) {
+                db.execSQL("ALTER TABLE calendar_events ADD COLUMN serverHref TEXT")
+            }
+        }
+    }
+
+    /** Persist the exact CalDAV VTODO item href returned by the server. */
+    val MIGRATION_6_7 = object : Migration(6, 7) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            if (!db.columnExists("tasks", "serverHref")) {
+                db.execSQL("ALTER TABLE tasks ADD COLUMN serverHref TEXT")
+            }
+        }
+    }
+
+    /**
+     * Re-fetch calendar resources after fixing RFC5545 UNTIL parsing. Older rows
+     * could contain a recurrence rule with a missing UNTIL boundary, which made
+     * expired series render forever and duplicate newer replacements.
+     */
+    val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "UPDATE calendar_events SET etag = NULL " +
+                    "WHERE serverHref IS NOT NULL OR calendarId LIKE '%/%'"
+            )
+        }
+    }
+
+    /** Apply the recurrence cache refresh to databases that already reached version 8. */
+    val MIGRATION_8_9 = object : Migration(8, 9) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "UPDATE calendar_events SET etag = NULL " +
+                    "WHERE (serverHref IS NOT NULL OR calendarId LIKE '%/%') " +
+                    "AND isLocalOnly = 0 AND needsSync = 0"
+            )
+            // Rows upgraded from schema 2/3 may also have a zeroed epoch mirror.
+            // Refresh only server-backed, non-pending rows; pending local edits keep
+            // their ETag and are pushed safely by the next sync.
+            db.execSQL(
+                "UPDATE tasks SET etag = NULL " +
+                    "WHERE isLocalOnly = 0 AND needsSync = 0"
+            )
+        }
+    }
 }
 
 /** True if [table] already has a column named [column]. Used to make migrations idempotent. */

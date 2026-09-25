@@ -85,6 +85,9 @@ data class CalendarEvent(
     @TypeConverters(ConferenceDataConverter::class) val conferenceData: ConferenceData? = null,
     val sequence: Int = 0,
     val iCalUid: String? = null,
+    // Exact href returned by CalDAV. UID-derived href is only a fallback for
+    // locally-created events and rows written before this field existed.
+    val serverHref: String? = null,
     val etag: String? = null,
     @TypeConverters(DateTimeConverter::class) val createdAt: Instant = Clock.System.now(),
     @TypeConverters(DateTimeConverter::class) val updatedAt: Instant = Clock.System.now(),
@@ -139,7 +142,10 @@ data class EventDateTime(
 data class EventColor(
     val background: String, // Hex color
     val foreground: String, // Hex color
-    val calendarId: String? = null // Original calendar color reference
+    // Calendar collection this color was inherited from; null means no collection source.
+    val calendarId: String? = null,
+    // True for a color explicitly set on the event, false for a collection fallback.
+    val isExplicit: Boolean = true
 ) {
     // ponytail: servers send CSS named colors (dodgerblue, gold...) and 8-digit
     // ARGB (#FF0000FF) that Color.parseColor rejects -> it threw -> UI fell back to
@@ -157,9 +163,15 @@ data class EventColor(
     }
 
     companion object {
-        fun Default(): EventColor = EventColor("#2196F3", "#FFFFFF")
+        fun Default(): EventColor = EventColor("#2196F3", "#FFFFFF", isExplicit = true)
+        fun fromCalendar(background: String, foreground: String, calendarId: String): EventColor =
+            EventColor(background, foreground, calendarId, isExplicit = false)
         fun fromInt(background: Int, foreground: Int = -1): EventColor =
-            EventColor(String.format("#%06X", (0xFFFFFF and background)), String.format("#%06X", (0xFFFFFF and foreground)))
+            EventColor(
+                String.format("#%06X", (0xFFFFFF and background)),
+                String.format("#%06X", (0xFFFFFF and foreground)),
+                isExplicit = true
+            )
         @Suppress("UNUSED_PARAMETER")
         fun generate(_accountColor: Int, index: Int): EventColor {
             val colors = listOf(
@@ -247,7 +259,12 @@ data class RecurrenceRule(
         val sb = StringBuilder("FREQ=$freq")
         if (interval > 1) sb.append(";INTERVAL=$interval")
         count?.let { sb.append(";COUNT=$it") }
-        until?.let { sb.append(";UNTIL=${it.toString().replace("-", "").replace(":", "").replace(".", "")}Z") }
+        until?.let {
+            val stamp = java.time.Instant.ofEpochMilli(it.toEpochMilliseconds())
+                .atZone(java.time.ZoneOffset.UTC)
+                .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'"))
+            sb.append(";UNTIL=$stamp")
+        }
         if (bySecond.isNotEmpty()) sb.append(";BYSECOND=${bySecond.joinToString(",")}")
         if (byMinute.isNotEmpty()) sb.append(";BYMINUTE=${byMinute.joinToString(",")}")
         if (byHour.isNotEmpty()) sb.append(";BYHOUR=${byHour.joinToString(",")}")
@@ -292,13 +309,13 @@ data class RecurrenceRule(
 
         private fun parseUntil(v: String): Instant? = runCatching {
             val clean = v.trim()
-            val fmt = if (clean.endsWith("Z")) {
-                java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
-            } else {
+            val utc = clean.endsWith("Z", ignoreCase = true)
+            val value = if (utc) clean.dropLast(1) else clean
+            val ldt = java.time.LocalDateTime.parse(
+                value,
                 java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss")
-            }
-            val ldt = java.time.LocalDateTime.parse(clean.trimEnd('Z'), fmt)
-            val zone = if (clean.endsWith("Z")) java.time.ZoneOffset.UTC else java.time.ZoneId.systemDefault()
+            )
+            val zone = if (utc) java.time.ZoneOffset.UTC else java.time.ZoneId.systemDefault()
             Instant.fromEpochMilliseconds(ldt.atZone(zone).toInstant().toEpochMilli())
         }.getOrNull()
 
@@ -367,7 +384,7 @@ data class EventReminder(
     val isCustom: Boolean = false
 ) {
     companion object {
-        fun Default(): EventReminder = EventReminder(ReminderMethod.NOTIFICATION, 60) // 1 hour default
+        fun Default(minutesBefore: Int = 60): EventReminder = EventReminder(ReminderMethod.NOTIFICATION, minutesBefore)
         fun AtTimeOfEvent(): EventReminder = EventReminder(ReminderMethod.NOTIFICATION, 0)
         fun Custom(minutes: Int): EventReminder = EventReminder(ReminderMethod.NOTIFICATION, minutes, true)
         fun Email(minutes: Int): EventReminder = EventReminder(ReminderMethod.EMAIL, minutes)

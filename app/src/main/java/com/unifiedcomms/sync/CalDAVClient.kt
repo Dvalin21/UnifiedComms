@@ -14,6 +14,9 @@ import org.xmlpull.v1.XmlPullParser
 import java.io.IOException
 import java.net.URI
 import java.util.concurrent.TimeUnit
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import javax.xml.parsers.DocumentBuilderFactory
 import org.w3c.dom.Document
 import org.w3c.dom.Element
@@ -144,6 +147,27 @@ class CalDAVClient(
         }
         val base = baseUrl.trimEnd('/')
         return "$base/$path"
+    }
+
+    private fun isAllowedOrigin(url: String): Boolean {
+        return runCatching {
+            val base = URI(baseUrl)
+            val candidate = URI(url)
+            val resolved = if (candidate.isAbsolute) candidate else base.resolve(candidate)
+            val baseScheme = base.scheme?.lowercase()
+            val candidateScheme = resolved.scheme?.lowercase()
+            (baseScheme == "http" || baseScheme == "https") &&
+                baseScheme == candidateScheme &&
+                base.host?.equals(resolved.host, ignoreCase = true) == true &&
+                effectivePort(base) == effectivePort(resolved) &&
+                resolved.userInfo == null
+        }.getOrDefault(false)
+    }
+
+    private fun effectivePort(uri: java.net.URI): Int = when {
+        uri.port >= 0 -> uri.port
+        uri.scheme.equals("https", ignoreCase = true) -> 443
+        else -> 80
     }
 
     private fun extractOrigin(url: String): String {
@@ -326,6 +350,7 @@ class CalDAVClient(
     }
 
     suspend fun listCalendarItems(calendarPath: String): List<String> = withContext(Dispatchers.IO) {
+        if (!isAllowedOrigin(calendarPath)) return@withContext emptyList()
         val target = if (calendarPath.startsWith("http://", true) || calendarPath.startsWith("https://", true)) calendarPath else resolve(calendarPath)
         val body = """
             <?xml version="1.0" encoding="UTF-8"?>
@@ -348,6 +373,7 @@ class CalDAVClient(
     }
 
     suspend fun getETagList(calendarPath: String): Result<List<ETagEntry>> = withContext(Dispatchers.IO) {
+        if (!isAllowedOrigin(calendarPath)) return@withContext Result.failure(IOException("Cross-origin CalDAV path rejected"))
         val target = if (calendarPath.startsWith("http://", true) || calendarPath.startsWith("https://", true)) calendarPath else resolve(calendarPath)
         val body = """
             <?xml version="1.0" encoding="UTF-8"?>
@@ -371,7 +397,43 @@ class CalDAVClient(
         }
     }
 
+    suspend fun getEventETagList(
+        calendarPath: String,
+        startMs: Long,
+        endMs: Long
+    ): Result<List<ETagEntry>> = withContext(Dispatchers.IO) {
+        if (!isAllowedOrigin(calendarPath)) return@withContext Result.failure(IOException("Cross-origin CalDAV path rejected"))
+        if (endMs <= startMs) return@withContext Result.failure(IllegalArgumentException("Invalid CalDAV time range"))
+        val target = if (calendarPath.startsWith("http://", true) || calendarPath.startsWith("https://", true)) calendarPath else resolve(calendarPath)
+        val body = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+              <D:prop><D:getetag/></D:prop>
+              <C:filter>
+                <C:comp-filter name="VCALENDAR">
+                  <C:comp-filter name="VEVENT">
+                    <C:time-range start="${formatDavTime(startMs)}" end="${formatDavTime(endMs)}"/>
+                  </C:comp-filter>
+                </C:comp-filter>
+              </C:filter>
+            </C:calendar-query>
+        """.trimIndent().toRequestBody(XML_MEDIA_TYPE)
+
+        val req = Request.Builder()
+            .url(target)
+            .post(body)
+            .header("Depth", "1")
+            .build()
+        internalClient.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) {
+                return@use Result.failure(IOException("calendar-query failed: HTTP ${resp.code}"))
+            }
+            parseEtagResponse(resp.body?.string().orEmpty(), "calendar-query")
+        }
+    }
+
     suspend fun getTaskETagList(calendarPath: String): Result<List<ETagEntry>> = withContext(Dispatchers.IO) {
+        if (!isAllowedOrigin(calendarPath)) return@withContext Result.failure(IOException("Cross-origin CalDAV path rejected"))
         val target = if (calendarPath.startsWith("http://", true) || calendarPath.startsWith("https://", true)) calendarPath else resolve(calendarPath)
         val body = """
             <?xml version="1.0" encoding="UTF-8"?>
@@ -398,6 +460,11 @@ class CalDAVClient(
         }
     }
 
+    private fun formatDavTime(epochMs: Long): String =
+        DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
+            .withZone(ZoneOffset.UTC)
+            .format(Instant.ofEpochMilli(epochMs))
+
     private fun parseEtagResponse(text: String, operation: String): Result<List<ETagEntry>> = try {
         val db = parseXml(text)
         val root = db.documentElement.localName ?: db.documentElement.nodeName.substringAfter(':')
@@ -410,6 +477,7 @@ class CalDAVClient(
     }
 
     suspend fun fetchItem(@Suppress("UNUSED_PARAMETER") accountId: String, href: String): IcsResource? = withContext(Dispatchers.IO) {
+        if (!isAllowedOrigin(href)) return@withContext null
         val target = when {
             href.startsWith("http://", true) || href.startsWith("https://", true) -> href
             else -> resolve(href)
@@ -465,7 +533,9 @@ class CalDAVClient(
                     node = node.nextSibling
                 }
                 val comps = componentSetOf(resp)
-                if (types.contains("calendar") && comps.contains("VTODO")) {
+                // RFC 4791: an absent supported-calendar-component-set means
+                // the collection accepts all component types, including VTODO.
+                if (types.contains("calendar") && (comps.isEmpty() || comps.contains("VTODO"))) {
                     val name = byLocalName(resp, "displayname").item(0)?.textContent?.trim().orEmpty()
                         .ifBlank { subUrl.split("/").lastOrNull { it.isNotBlank() }.orEmpty() }
                     result += CalendarInfo(path = subUrl, displayName = name, supportsVTODO = true)
@@ -489,14 +559,23 @@ class CalDAVClient(
         return out
     }
 
-    // ponytail: generic PUT used for task writes (VTODO). Returns server ETag or null on failure.
-    suspend fun putResource(href: String, body: String, contentType: okhttp3.MediaType = ICAL_MEDIA_TYPE): String? = withContext(Dispatchers.IO) {
+    // ponytail: generic PUT used for task/event writes (VTODO/VEVENT). Returns
+    // server ETag or null on failure. When an ETag is supplied, If-Match makes
+    // concurrent remote edits fail instead of being silently overwritten.
+    suspend fun putResource(
+        href: String,
+        body: String,
+        contentType: okhttp3.MediaType = ICAL_MEDIA_TYPE,
+        ifMatch: String? = null
+    ): String? = withContext(Dispatchers.IO) {
+        if (!isAllowedOrigin(href)) return@withContext null
         val target = when {
             href.startsWith("http://", true) || href.startsWith("https://", true) -> href
             else -> resolve(href)
         }
-        val req = Request.Builder().url(target).put(body.toRequestBody(contentType)).build()
-        internalClient.newCall(req).execute().use { resp ->
+        val request = Request.Builder().url(target).put(body.toRequestBody(contentType))
+        if (!ifMatch.isNullOrBlank() && ifMatch != "*") request.header("If-Match", "\"$ifMatch\"")
+        internalClient.newCall(request.build()).execute().use { resp ->
             if (!resp.isSuccessful) {
                 Log.w(TAG, "PUT $target failed: ${resp.code}")
                 return@use null
@@ -511,6 +590,7 @@ class CalDAVClient(
     }
 
     suspend fun deleteResource(href: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isAllowedOrigin(href)) return@withContext false
         val target = when {
             href.startsWith("http://", true) || href.startsWith("https://", true) -> href
             else -> resolve(href)
@@ -610,6 +690,7 @@ class CalDAVClient(
     }
 
     suspend fun listAddressBookItems(addressBookPath: String): Result<List<ETagEntry>> = withContext(Dispatchers.IO) {
+        if (!isAllowedOrigin(addressBookPath)) return@withContext Result.failure(IOException("Cross-origin CardDAV path rejected"))
         val target = if (addressBookPath.startsWith("http://", true) || addressBookPath.startsWith("https://", true)) addressBookPath else resolve(addressBookPath)
         val xml = """
             <?xml version="1.0" encoding="UTF-8"?>
@@ -643,6 +724,7 @@ class CalDAVClient(
     suspend fun putVCard(href: String, body: String): String? = putResource(href, body, VCARD_MEDIA_TYPE)
 
     suspend fun getCTag(calendarPath: String): String = withContext(Dispatchers.IO) {
+        if (!isAllowedOrigin(calendarPath)) return@withContext ""
         val target = if (calendarPath.startsWith("http://", true) || calendarPath.startsWith("https://", true)) calendarPath else resolve(calendarPath)
         val xml = """
             <?xml version="1.0" encoding="UTF-8"?>
@@ -700,6 +782,7 @@ class CalDAVClient(
 
     private suspend fun propfind(url: String, body: String, depth: String = "1"): String = withContext(Dispatchers.IO) {
         val target = resolve(url)
+        if (!isAllowedOrigin(target)) throw IOException("Cross-origin CalDAV path rejected")
         val req = Request.Builder()
             .url(target)
             .method("PROPFIND", body.toRequestBody(XML_MEDIA_TYPE))

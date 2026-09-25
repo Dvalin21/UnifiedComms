@@ -101,6 +101,26 @@ class RecurrenceExpanderTest {
     }
 
     @Test
+    fun `RFC UNTIL with UTC suffix is parsed and stops expired series`() {
+        val rule = RecurrenceRule.parse("FREQ=WEEKLY;UNTIL=20260914T235959Z;BYDAY=MO")
+        assertTrue("RRULE must parse", rule != null)
+        assertEquals(
+            Instant.parse("2026-09-14T23:59:59Z").toEpochMilliseconds(),
+            rule!!.until!!.toEpochMilliseconds()
+        )
+        assertTrue(rule.toRfc5545().contains("UNTIL=20260914T235959Z"))
+
+        val start = epochMs(2025, 12, 8, 19, 0, "America/Chicago")
+        val m = master("expired", start, 3_600_000, rule, "America/Chicago")
+        val out = RecurrenceExpander.expand(
+            m,
+            epochMs(2026, 9, 21, 0, 0, "America/Chicago"),
+            epochMs(2026, 9, 22, 0, 0, "America/Chicago")
+        )
+        assertEquals(0, out.size)
+    }
+
+    @Test
     fun `monthly BYMONTHDAY lands on the 15th`() {
         val start = epochMs(2026, 1, 15, 10, 0, "UTC")
         val rule = RecurrenceRule(freq = RecurrenceFrequency.MONTHLY, byMonthDay = listOf(15))
@@ -142,6 +162,7 @@ class RecurrenceExpanderTest {
         assertEquals("r", inst.recurrenceId)
         assertEquals(true, inst.isInstance())
         assertEquals(null, inst.recurrenceRule)
+        assertEquals(inst.startAt.toInstant().toEpochMilliseconds(), inst.startAtMs)
     }
 
     @Test

@@ -4,6 +4,7 @@ package com.unifiedcomms.ui.main
 
 import android.os.Bundle
 import android.content.Context
+import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
@@ -45,7 +46,9 @@ import androidx.compose.material.icons.Icons
 enum class BiometricLockState { LOCKED, UNLOCKED }
 
 @Composable
-private fun BiometricLockScreen(onUnlocked: () -> Unit) {
+private fun BiometricLockScreen(
+    onUnlocked: () -> Unit
+) {
     val context = LocalContext.current
     val activity = context as? FragmentActivity
     val executor = remember { ContextCompat.getMainExecutor(context) }
@@ -118,7 +121,9 @@ private fun BiometricLockScreen(onUnlocked: () -> Unit) {
                 }
             }
         },
-        confirmButton = {}
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = {}) { Text("Close") }
+        }
     )
 }
 
@@ -126,9 +131,17 @@ class MainActivity : FragmentActivity() {
     // ponytail: expose the VM at class level so instrumented repro tests can add an
     // account IN the app process (Room notifies the app's own Flow) and walk real nav.
     lateinit var vm: MainViewModel
+    private var navigationIntent by mutableStateOf<Intent?>(null)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        navigationIntent = intent
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        navigationIntent = intent
         setContent {
             vm = viewModel()
             val mainPrefs = remember { PreferencesManager.getInstance() }
@@ -152,7 +165,7 @@ class MainActivity : FragmentActivity() {
             val navController = rememberNavController()
             val viewModel: MainViewModel = vm
 
-            val pendingTab = intent?.getStringExtra("navigate_to")?.let { raw ->
+            val pendingTab = navigationIntent?.getStringExtra("navigate_to")?.let { raw ->
                 when (raw) {
                     "inbox", "unified_inbox", "email" -> 0
                     "calendar" -> 1
@@ -169,17 +182,25 @@ class MainActivity : FragmentActivity() {
                 }
             }
 
-            val navigationTarget = intent?.getStringExtra("navigate_to")
+            val navigationTarget = navigationIntent?.getStringExtra("navigate_to")
             LaunchedEffect(navigationTarget) {
                 val target = navigationTarget ?: return@LaunchedEffect
                 when {
+                    target.startsWith("contact_edit/") -> {
+                        navController.navigate("contact_edit/${target.substringAfter('/')}")
+                        navigationIntent?.removeExtra("navigate_to")
+                    }
+                    target.startsWith("email_detail/") -> {
+                        navController.navigate("email_detail/${target.substringAfter('/')}")
+                        navigationIntent?.removeExtra("navigate_to")
+                    }
                     target.startsWith("event_detail/") -> {
                         navController.navigate("event_detail/${target.substringAfter('/')}")
-                        intent?.removeExtra("navigate_to")
+                        navigationIntent?.removeExtra("navigate_to")
                     }
                     target.startsWith("task_detail/") -> {
                         navController.navigate("task_detail/${target.substringAfter('/')}")
-                        intent?.removeExtra("navigate_to")
+                        navigationIntent?.removeExtra("navigate_to")
                     }
                     target.startsWith("email/") -> {
                         val parts = target.split('/', limit = 3)
@@ -187,12 +208,12 @@ class MainActivity : FragmentActivity() {
                             navController.navigate(
                                 "email/${android.net.Uri.encode(parts[1])}/${android.net.Uri.encode(parts[2])}"
                             )
-                            intent?.removeExtra("navigate_to")
+                            navigationIntent?.removeExtra("navigate_to")
                         }
                     }
                     target == "settings" -> {
                         navController.navigate("settings")
-                        intent?.removeExtra("navigate_to")
+                        navigationIntent?.removeExtra("navigate_to")
                     }
                 }
             }
@@ -204,18 +225,30 @@ class MainActivity : FragmentActivity() {
                 }
             }
 
-            val prefs = remember { PreferencesManager.getInstance() }
-            val biometricLockPref = prefs.getBoolean("biometric_lock", false)
-            var biometricLockState by remember {
-                mutableStateOf(if (biometricLockPref) BiometricLockState.LOCKED else BiometricLockState.UNLOCKED)
-            }
+                val prefs = remember { PreferencesManager.getInstance() }
+                val biometricLockPref = prefs.getBoolean("biometric_lock", false)
+                var biometricLockState by remember {
+                    mutableStateOf(if (biometricLockPref) BiometricLockState.LOCKED else BiometricLockState.UNLOCKED)
+                }
                 LaunchedEffect(biometricLockPref) {
                     biometricLockState = if (biometricLockPref) BiometricLockState.LOCKED else BiometricLockState.UNLOCKED
                 }
+                DisposableEffect(lifecycle, biometricLockPref) {
+                    val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                        if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP && biometricLockPref) {
+                            biometricLockState = BiometricLockState.LOCKED
+                        }
+                    }
+                    lifecycle.addObserver(observer)
+                    onDispose { lifecycle.removeObserver(observer) }
+                }
 
                 when (biometricLockState) {
-                    BiometricLockState.LOCKED -> BiometricLockScreen(onUnlocked = { biometricLockState = BiometricLockState.UNLOCKED })
+                    BiometricLockState.LOCKED -> BiometricLockScreen(
+                        onUnlocked = { biometricLockState = BiometricLockState.UNLOCKED }
+                    )
                     BiometricLockState.UNLOCKED -> {
+
                         NavHost(navController, startDestination = "unified_inbox") {
                             composable("unified_inbox") {
                                 UnifiedInboxScreen(
@@ -266,17 +299,40 @@ class MainActivity : FragmentActivity() {
                                 )
                             ) { backStackEntry ->
                                 val emailId = backStackEntry.arguments?.getString("emailId").orEmpty()
-                                EmailDetailScreen(
-                                    emailId = emailId,
-                                    viewModel = viewModel,
-                                    onBack = { navController.popBackStack() }
-                                )
+                                 EmailDetailScreen(
+                                     emailId = emailId,
+                                     viewModel = viewModel,
+                                     onBack = { navController.popBackStack() },
+                                     onReply = { message ->
+                                         navController.navigate("compose_email/${message.accountId}?mode=reply&emailId=${android.net.Uri.encode(message.id)}")
+                                     },
+                                     onForward = { message ->
+                                         navController.navigate("compose_email/${message.accountId}?mode=forward&emailId=${android.net.Uri.encode(message.id)}")
+                                     }
+                                 )
                             }
-                            composable("compose_email/{accountId}") { backStackEntry ->
+                            composable(
+                                route = "compose_email/{accountId}?mode={mode}&emailId={emailId}",
+                                arguments = listOf(
+                                    androidx.navigation.navArgument("accountId") { type = androidx.navigation.NavType.StringType },
+                                    androidx.navigation.navArgument("mode") {
+                                        type = androidx.navigation.NavType.StringType
+                                        nullable = true
+                                        defaultValue = "new"
+                                    },
+                                    androidx.navigation.navArgument("emailId") {
+                                        type = androidx.navigation.NavType.StringType
+                                        nullable = true
+                                        defaultValue = ""
+                                    }
+                                )
+                            ) { backStackEntry ->
                                 val accountId = backStackEntry.arguments?.getString("accountId").orEmpty()
                                 ComposeEmailScreen(
                                     accountId = accountId,
                                     viewModel = viewModel,
+                                    mode = backStackEntry.arguments?.getString("mode"),
+                                    sourceEmailId = backStackEntry.arguments?.getString("emailId"),
                                     onSend = { navController.popBackStack() }
                                 )
                             }
@@ -304,11 +360,12 @@ class MainActivity : FragmentActivity() {
                                 if (event == null) {
                                     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) { Text("Event not found") }
                                 } else {
-                                    EventDetailScreen(
-                                        event = event!!,
-                                        onEdit = { navController.navigate("edit_event/$eventId") },
-                                        onBack = { navController.popBackStack() }
-                                    )
+                                     EventDetailScreen(
+                                         event = event!!,
+                                         onEdit = { navController.navigate("edit_event/$eventId") },
+                                         onBack = { navController.popBackStack() },
+                                         onDelete = { deleted -> viewModel.deleteEvent(deleted).success }
+                                     )
                                 }
                             }
                             composable("tasks") {

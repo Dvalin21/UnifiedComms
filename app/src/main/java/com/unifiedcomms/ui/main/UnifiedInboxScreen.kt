@@ -72,12 +72,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import android.util.Log
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.e2ee.ChatSyncManager
 import com.unifiedcomms.ui.theme.AccountColors
+import com.unifiedcomms.util.PreferencesManager
 import com.unifiedcomms.ui.theme.UnifiedCommsTheme
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
@@ -101,6 +103,7 @@ fun UnifiedInboxScreen(
 ) {
     val accounts = viewModel.accounts.collectAsStateWithLifecycle()
     val activeAccounts = accounts.value.filter { it.isActive }.distinctBy { it.id }
+    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
     var selectedTab by rememberSaveable { mutableIntStateOf(initialTab?.coerceIn(0, 3) ?: 0) }
@@ -117,8 +120,8 @@ fun UnifiedInboxScreen(
     // trigger; email did not. Kick a foreground sync whenever the active-account set
     // appears or changes, so the inbox populates automatically like the calendar does.
     LaunchedEffect(activeAccounts.map { it.id }) {
-        if (activeAccounts.isNotEmpty()) {
-            coroutineScope.launch { viewModel.syncAllAccounts() }
+        if (activeAccounts.isNotEmpty() && PreferencesManager.getInstance().canRunAutomaticSync(context)) {
+            viewModel.syncAllAccounts()
         }
     }
 
@@ -446,27 +449,6 @@ fun EmailOverviewScreen(
                     }
                     }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun FolderChip(label: String, count: Int, color: Color, onClick: () -> Unit) {
-    Surface(
-        modifier = Modifier
-            .padding(vertical = 8.dp, horizontal = 4.dp)
-            .clickable(onClick = { android.util.Log.e("CHIP", "chip clicked: $label"); onClick() })
-            .background(color.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(text = label, fontWeight = FontWeight.Medium, fontSize = 12.sp, maxLines = 1, softWrap = false)
-            if (count > 0) {
-                Text(text = count.toString(), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = color)
-            }
         }
     }
 }

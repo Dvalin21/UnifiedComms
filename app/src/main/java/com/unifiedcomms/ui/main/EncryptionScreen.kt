@@ -47,7 +47,6 @@ fun EncryptionScreen(
 ) {
     val prefs = remember { PreferencesManager.getInstance() }
     var encryptionEnabled by remember { mutableStateOf(prefs.getBoolean("encryption_enabled", true)) }
-    var biometricLock by remember { mutableStateOf(prefs.getBoolean("biometric_lock", false)) }
 
     Surface(modifier = Modifier.fillMaxSize()) {
         UnifiedCommsTheme(darkTheme = darkTheme) {
@@ -83,8 +82,8 @@ fun EncryptionScreen(
                             Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             Spacer(modifier = Modifier.width(16.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(text = "End-to-End Encryption", fontSize = 16.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                                Text(text = "Encrypt data at rest using Android Keystore", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(text = "Credential encryption", fontSize = 16.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                                Text(text = "Protect stored account credentials with Android Keystore", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Switch(
                                 checked = encryptionEnabled,
@@ -96,36 +95,6 @@ fun EncryptionScreen(
                         }
                         HorizontalDivider()
                         Text(text = "Account credentials are protected with AES-GCM and an Android Keystore master key. Existing records are rewrapped when their account is next saved.", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(24.dp)),
-                    shape = RoundedCornerShape(24.dp),
-                    tonalElevation = 2.dp,
-                    color = MaterialTheme.colorScheme.surfaceContainerLow
-                ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Default.Security, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(text = "Biometric Lock", fontSize = 16.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                                Text(text = "Require biometrics to unlock app", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Switch(
-                                checked = biometricLock,
-                                onCheckedChange = {
-                                    biometricLock = it
-                                    prefs.putBoolean("biometric_lock", it)
-                                }
-                            )
-                        }
                     }
                 }
             }

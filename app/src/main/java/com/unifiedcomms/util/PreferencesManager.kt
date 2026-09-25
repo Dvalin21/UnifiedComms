@@ -16,6 +16,14 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.plus
 import java.lang.reflect.Type
 
+internal fun automaticSyncAllowed(
+    autoSync: Boolean,
+    wifiOnly: Boolean,
+    hasUnmeteredNetwork: Boolean,
+    intervalMinutes: Int = 15
+): Boolean =
+    autoSync && intervalMinutes >= 0 && (!wifiOnly || hasUnmeteredNetwork)
+
 class PreferencesManager private constructor(
     private val encryptedPrefs: SharedPreferences,
     private val gson: Gson
@@ -68,11 +76,40 @@ class PreferencesManager private constructor(
     // returned null so the chosen interval never applied. Read the Int directly (#24).
     fun getSyncIntervalMinutes(default: Int = 15): Int {
         val raw = encryptedPrefs.getInt("sync_interval_minutes", default)
-        return if (raw in setOf(15, 30, 60, 180, 360, 720, -1)) raw else default
+        return if (raw in setOf(5, 15, 30, 60, 120, 180, 240, 360, 720, -1)) raw else default
     }
 
     fun putSyncIntervalMinutes(value: Int) {
         encryptedPrefs.edit().putInt("sync_interval_minutes", value).apply()
+    }
+
+    fun getDefaultReminderMinutes(default: Int = 60): Int {
+        val raw = encryptedPrefs.getInt("default_reminder_minutes", default)
+        return if (raw in setOf(0, 5, 10, 15, 30, 60, 120, 1440)) raw else default
+    }
+
+    fun putDefaultReminderMinutes(value: Int) {
+        require(value in setOf(0, 5, 10, 15, 30, 60, 120, 1440)) { "Unsupported reminder interval: $value" }
+        encryptedPrefs.edit().putInt("default_reminder_minutes", value).apply()
+    }
+
+    /** Gate implicit foreground sync; explicit Sync All remains a manual override. */
+    fun canRunAutomaticSync(context: Context): Boolean {
+        val wifiOnly = getBoolean("sync_wifi_only", false)
+        val hasUnmeteredNetwork = if (!wifiOnly) {
+            true
+        } else {
+            val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+            val network = manager?.activeNetwork
+            val capabilities = network?.let { manager.getNetworkCapabilities(it) }
+            capabilities?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED) == true
+        }
+        return automaticSyncAllowed(
+            getBoolean("auto_sync", true),
+            wifiOnly,
+            hasUnmeteredNetwork,
+            getSyncIntervalMinutes(15)
+        )
     }
 
     fun putLong(key: String, value: Long) {

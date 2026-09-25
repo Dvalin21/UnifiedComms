@@ -28,6 +28,7 @@ object VTaskSerializer {
         sb.appendLine("PRODID:-//UnifiedComms//Tasks//EN")
         sb.appendLine("BEGIN:VTODO")
         sb.appendLine("UID:$uid")
+        sb.appendLine("DTSTAMP:${nowUtcStamp()}")
 
         if (task.title.isNotBlank()) sb.appendLine("SUMMARY:${escape(task.title)}")
         task.description?.takeIf { it.isNotBlank() }?.let { sb.appendLine("DESCRIPTION:${escape(it)}") }
@@ -39,7 +40,7 @@ object VTaskSerializer {
             else -> "NEEDS-ACTION"
         }}")
 
-        task.dueAt?.let { due ->
+        task.dueAt?.takeUnless { it.isEmpty() }?.let { due ->
             val normalizedZone = TimeZoneUtil.normalize(due.timeZone) ?: "UTC"
             if (due.hasTime) {
                 val zone = runCatching { ZoneId.of(normalizedZone) }.getOrNull() ?: ZoneId.of("UTC")
@@ -55,8 +56,26 @@ object VTaskSerializer {
             }
         }
 
+        task.completedAt?.takeUnless { it.isEmpty() }?.let { completed ->
+            val normalizedZone = TimeZoneUtil.normalize(completed.timeZone) ?: "UTC"
+            if (completed.hasTime) {
+                val zone = runCatching { ZoneId.of(normalizedZone) }.getOrNull() ?: ZoneId.of("UTC")
+                val zoned = java.time.Instant.ofEpochMilli(completed.toInstant().toEpochMilliseconds()).atZone(zone)
+                sb.appendLine("COMPLETED;TZID=$normalizedZone:${zoned.format(DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss"))}")
+            } else {
+                val date = completed.date ?: completed.dateTime?.date
+                if (date != null) {
+                    sb.appendLine("COMPLETED;VALUE=DATE:${date.toString().replace("-", "")}")
+                } else {
+                    Unit
+                }
+            }
+        }
+        if (task.percentComplete > 0) sb.appendLine("PERCENT-COMPLETE:${task.percentComplete}")
+
         val prio = when (task.priority) {
-            com.unifiedcomms.data.model.TaskPriority.URGENT, com.unifiedcomms.data.model.TaskPriority.HIGH -> 1
+            com.unifiedcomms.data.model.TaskPriority.URGENT -> 1
+            com.unifiedcomms.data.model.TaskPriority.HIGH -> 3
             com.unifiedcomms.data.model.TaskPriority.MEDIUM -> 5
             com.unifiedcomms.data.model.TaskPriority.LOW -> 9
             else -> 0
@@ -69,6 +88,17 @@ object VTaskSerializer {
         sb.appendLine("END:VCALENDAR")
         return sb.toString()
     }
+
+    /** Return the exact server item href when known, otherwise derive one. */
+    fun hrefFor(task: Task): String {
+        task.serverHref?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+        val list = task.listId.trimEnd('/')
+        val uid = task.uid.ifBlank { java.util.UUID.randomUUID().toString() }
+        return "$list/$uid.ics"
+    }
+
+    private fun nowUtcStamp(): String =
+        java.time.Instant.now().atZone(ZoneId.of("UTC")).format(DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'"))
 
     private fun escape(s: String): String = s
         .replace("\\", "\\\\")

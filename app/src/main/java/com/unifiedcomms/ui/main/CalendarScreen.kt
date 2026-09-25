@@ -58,6 +58,7 @@ import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.runtime.Composable
@@ -90,6 +91,7 @@ import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
 import java.time.ZoneId
 import com.unifiedcomms.data.model.CalendarEvent
+import com.unifiedcomms.util.PreferencesManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.LaunchedEffect
@@ -108,8 +110,15 @@ fun CalendarScreen(
     // pattern). Keep a separate selected day so tapping a cell updates the agenda
     // without forcing a view switch.
     var selectedMonthDay by remember { mutableStateOf(java.time.LocalDate.now()) }
+    LaunchedEffect(currentDate.value.withDayOfMonth(1)) {
+        val month = currentDate.value.withDayOfMonth(1)
+        val today = java.time.LocalDate.now()
+        selectedMonthDay = if (today.withDayOfMonth(1) == month) today else month
+    }
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
+    val syncError by viewModel.calendarSyncError.collectAsStateWithLifecycle()
     val activeAccountIds = accounts.filter { it.isActive }.map { it.id }
+    val context = androidx.compose.ui.platform.LocalContext.current
     // ponytail: Room's `accountId IN ()` with an empty list throws; guard it so the
     // Flow never errors on first composition (before accounts emit) and stays empty.
     // Also expand recurring events into the visible window (getUnifiedEvents returned
@@ -132,12 +141,9 @@ fun CalendarScreen(
         if (activeAccountIds.isEmpty()) kotlinx.coroutines.flow.flowOf<List<com.unifiedcomms.data.model.CalendarEvent>>(emptyList())
         else viewModel.calendarRepository.getEventsInRangeUnified(activeAccountIds, eventWindow.first, eventWindow.second)
     val rawEvents by baseFlow.collectAsStateWithLifecycle(initialValue = emptyList())
-    // ponytail: hide legacy imported events (Google/creator UIDs ending in
-    // @google.com). The CalDAV collection still serves them (confirmed: 1224
-    // of 1587 server hrefs are @google.com), but they are not part of the
-    // user's current calendar and must not render. Display-only filter — we
-    // do NOT delete them server-side (don't mess up the calendar).
-    val allEvents = remember(rawEvents) { rawEvents.filter { !isLegacyImported(it) && !isCancelled(it) } }
+    // Render every non-cancelled event returned by the selected calendars.
+    // UID/provider-specific filtering would silently hide legitimate data.
+    val allEvents = remember(rawEvents) { rawEvents.filter { !isCancelled(it) } }
 
     // ponytail: Room already holds every synced event persistently — the user
     // wants calendar STORAGE, not re-streaming on every tab open. The previous
@@ -150,12 +156,12 @@ fun CalendarScreen(
     // display what's stored. Background WorkManager keeps it fresh.
     val accountKey = remember(activeAccountIds) { activeAccountIds.sorted().joinToString(",") }
     LaunchedEffect(accountKey) {
-        if (accountKey.isNotEmpty()) {
-            val firstId = activeAccountIds.firstOrNull()
-            val stored: List<CalendarEvent> = if (firstId != null) {
-                runCatching { viewModel.calendarRepository.getAllEventsForAccount(firstId).first() }.getOrElse { emptyList() }
-            } else emptyList()
-            if (stored.isEmpty()) {
+        if (accountKey.isNotEmpty() && PreferencesManager.getInstance().canRunAutomaticSync(context)) {
+            val needsSync = activeAccountIds.any { id ->
+                runCatching { viewModel.calendarRepository.getAllEventsForAccount(id).first().isEmpty() }
+                    .getOrDefault(true)
+            }
+            if (needsSync) {
                 viewModel.syncCalendarForAccounts(activeAccountIds)
             }
         }
@@ -233,6 +239,9 @@ fun CalendarScreen(
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize().padding(bottom = 72.dp)) {
+                syncError?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
+                }
                 when (selectedView) {
                     CalendarView.DAY -> DayView(date = currentDate.value, events = allEvents, onEventClick = onEventClick, onDateSelected = { currentDate.value = it })
                     CalendarView.WEEK -> WeekView(date = currentDate.value, events = allEvents, onEventClick = onEventClick, onDateSelected = { currentDate.value = it; selectedView = CalendarView.DAY })
@@ -277,7 +286,7 @@ val TriangleEdgeShape = GenericShape { size, _ ->
 @Composable
 fun DayView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick: (String) -> Unit, onDateSelected: (java.time.LocalDate) -> Unit) {
     val HOUR_H = 56.dp
-    val dayEvents = events.filter { !isLegacyImported(it) && !isCancelled(it) && isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), date) }
+    val dayEvents = events.filter { !isCancelled(it) && isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), date) }
     val allDay = dayEvents.filter { it.isAllDay() }
     val timed = dayEvents.filter { !it.isAllDay() }
     val now = java.time.LocalDateTime.now()
@@ -376,8 +385,8 @@ private fun WeekStripRow(date: java.time.LocalDate, events: List<CalendarEvent>,
     ) {
         days.forEachIndexed { i, day ->
             val selected = day == date
-            val hasEvents = events.any { !isLegacyImported(it) && !isCancelled(it) && isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), day) }
-            val dotColor = events.firstOrNull { !isLegacyImported(it) && !isCancelled(it) && isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), day) }
+            val hasEvents = events.any { !isCancelled(it) && isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), day) }
+            val dotColor = events.firstOrNull { !isCancelled(it) && isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), day) }
                 ?.let { runCatching { Color(android.graphics.Color.parseColor(com.unifiedcomms.ui.theme.ColorNormalizer.normalize(it.color.background))) }.getOrNull() }
                 ?: MaterialTheme.colorScheme.primary
             Column(
@@ -441,7 +450,7 @@ fun WeekView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClic
     Column(modifier = Modifier.fillMaxSize()) {
         WeekStripRow(date = date, events = events, onDateSelected = onDateSelected)
         // all-day strip across the week
-        val allDayByDay = days.map { d -> events.filter { !isLegacyImported(it) && !isCancelled(it) && it.isAllDay() && isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), d) } }
+        val allDayByDay = days.map { d -> events.filter { !isCancelled(it) && it.isAllDay() && isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), d) } }
         if (allDayByDay.any { it.isNotEmpty() }) {
             Row(
                 modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
@@ -479,7 +488,7 @@ fun WeekView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClic
             Row(modifier = Modifier.fillMaxSize().horizontalScroll(hscroll).verticalScroll(vscroll)) {
                 days.forEach { d ->
                     val selected = d == date
-                    val dayEvents = events.filter { !isLegacyImported(it) && !isCancelled(it) && !it.isAllDay() && isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), d) }
+                    val dayEvents = events.filter { !isCancelled(it) && !it.isAllDay() && isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), d) }
                     // Box (not Column) so the grid + events overlay at absolute time positions
                     Box(
                         modifier = Modifier.width(110.dp)
@@ -582,7 +591,7 @@ fun MonthView(
                                     ev.startAt.toInstant(com.unifiedcomms.data.model.TimeZoneUtil.toKtxZone(ev.startAt.timeZone)),
                                     cd,
                                     evZone
-                                ) && !isLegacyImported(ev) && !isCancelled(ev)
+                                ) && !isCancelled(ev)
                             }
                         } ?: emptyList()
                         val isToday = cellDate == today
@@ -678,7 +687,7 @@ fun MonthView(
                 ev.startAt.toInstant(com.unifiedcomms.data.model.TimeZoneUtil.toKtxZone(ev.startAt.timeZone)),
                 selectedDay,
                 evZone
-            ) && !isLegacyImported(ev) && !isCancelled(ev)
+            ) && !isCancelled(ev)
         }.sortedBy { ev ->
             ev.startAt.toInstant(com.unifiedcomms.data.model.TimeZoneUtil.toKtxZone(ev.startAt.timeZone)).toEpochMilliseconds()
         }
@@ -783,7 +792,7 @@ private fun rememberCurrentDateTime(): java.time.LocalDateTime {
 fun CurrentTimePanel(events: List<CalendarEvent>) {
     val now = rememberCurrentDateTime()
     val today = java.time.LocalDate.now()
-    val todayCount = events.count { !isLegacyImported(it) && !isCancelled(it) && isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), today) }
+    val todayCount = events.count { !isCancelled(it) && isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), today) }
     val dateFmt = DateTimeFormatter.ofPattern("EEE, MMM d yyyy")
     val timeFmt = DateTimeFormatter.ofPattern("HH:mm")
     Surface(
@@ -856,17 +865,6 @@ private fun isSameDay(instant: kotlinx.datetime.Instant, date: java.time.LocalDa
         .toLocalDate() == date
 }
 
-// ponytail: legacy imported events carry UIDs like "...@google.com" (Google
-// Calendar exports / the original creator's shared calendar). They are not part
-// of the user's current calendar and must be hidden from every view. Display
-// filter only — never delete server-side.
-private fun isLegacyImported(event: com.unifiedcomms.data.model.CalendarEvent): Boolean {
-    return event.uid.endsWith("@google.com", ignoreCase = true)
-}
-
-// ponytail: cancelled events (STATUS:CANCELLED) must not render. Display filter
-// only — never delete server-side. Discontinued/old duplicates are a separate
-// server-hygiene problem.
 private fun isCancelled(event: com.unifiedcomms.data.model.CalendarEvent): Boolean {
     return event.status == com.unifiedcomms.data.model.EventStatus.CANCELLED
 }
@@ -957,14 +955,18 @@ fun CreateEventScreen(
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var location by remember { mutableStateOf("") }
+    var attendeeInput by remember { mutableStateOf("") }
     var selectedDate by remember { mutableStateOf(java.time.LocalDate.now()) }
     var isAllDay by remember { mutableStateOf(false) }
     var selectedColor by remember { mutableStateOf(0xFFE57373) }
+    var colorChanged by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
+    val defaultReminderMinutes = remember { PreferencesManager.getInstance().getDefaultReminderMinutes() }
     // ponytail: edit_event/{eventId} passes an existing event; load it so we UPDATE
     // instead of always INSERTing a new (duplicate) event (#17).
     var existingEvent by remember { mutableStateOf<com.unifiedcomms.data.model.CalendarEvent?>(null) }
+    var saveError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(eventId) {
         if (eventId != null) {
@@ -974,8 +976,10 @@ fun CreateEventScreen(
                 title = ev.title
                 description = ev.description ?: ""
                 location = ev.location ?: ""
+                attendeeInput = ev.attendees.joinToString(", ") { it.email }
                 isAllDay = ev.startAt.isAllDay
                 selectedColor = runCatching { android.graphics.Color.parseColor(com.unifiedcomms.ui.theme.ColorNormalizer.normalize(ev.color.background)) }.getOrNull()?.toLong() ?: selectedColor
+                colorChanged = false
                 selectedDate = ev.startAt.date?.let { java.time.LocalDate.of(it.year, it.monthNumber, it.dayOfMonth) }
                     ?: ev.startAt.dateTime?.date?.let { java.time.LocalDate.of(it.year, it.monthNumber, it.dayOfMonth) }
                     ?: selectedDate
@@ -988,29 +992,64 @@ fun CreateEventScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Create Event") },
+                title = { Text(if (eventId == null) "Create Event" else "Edit Event") },
                 navigationIcon = { IconButton(onClick = onSave) { Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Cancel") } },
                 actions = {
                     IconButton(onClick = {
                         if (title.isNotBlank()) {
                             coroutineScope.launch {
-                                // ponytail: resolve a REAL account + calendar before insert.
-                                // The passed accountId can be "" (accounts flow not yet emitted
-                                // at navigation time), which violates the accountId FK and crashes.
-                                // Fall back to default/active account; abort safely if none exist.
-                                val acct = viewModel.getAccountById(accountId)
+                                saveError = null
+                                // Resolve the account from the event when editing; the
+                                // navigation accountId can be empty during startup.
+                                val base = existingEvent
+                                val acct = base?.accountId?.let { viewModel.getAccountById(it) }
+                                    ?: viewModel.getAccountById(accountId)
                                     ?: viewModel.getDefaultAccount()
                                     ?: viewModel.getActiveAccounts().firstOrNull()
-                                    ?: return@launch
-                                val calId = runCatching {
-                                    viewModel.calendarRepository.getCalendarsByAccount(acct.id).first().firstOrNull()?.serverId
-                                }.getOrNull() ?: acct.id
-                                val base = existingEvent
-                                val (sh, sm) = if (base?.startAt?.dateTime != null) base.startAt.dateTime!!.hour to base.startAt.dateTime!!.minute else 9 to 0
-                                val (eh, em) = if (base?.endAt?.dateTime != null) base.endAt.dateTime!!.hour to base.endAt.dateTime!!.minute else 10 to 0
+                                    ?: run {
+                                        saveError = "No active account"
+                                        return@launch
+                                    }
+                                val attendeeTokens = attendeeInput.split(',', ';', '\n', ' ')
+                                    .map { it.trim() }
+                                    .filter { it.isNotBlank() }
+                                val invalidAttendee = attendeeTokens.firstOrNull {
+                                    !android.util.Patterns.EMAIL_ADDRESS.matcher(it).matches()
+                                }
+                                if (invalidAttendee != null) {
+                                    saveError = "Invalid attendee email: $invalidAttendee"
+                                    return@launch
+                                }
+                                val attendees = attendeeTokens
+                                    .distinctBy { it.lowercase() }
+                                    .map { email ->
+                                        com.unifiedcomms.data.model.EventAttendee(
+                                            email = email,
+                                            rsvp = true
+                                        )
+                                    }
+                                val baseCalendar = base?.calendarId?.takeIf {
+                                    it.startsWith("/", true) || it.startsWith("https://", true) || it.startsWith("http://", true)
+                                }
+                                val discoveredCalendar = runCatching {
+                                    viewModel.calendarRepository.getCalendarsByAccount(acct.id).first()
+                                        .firstOrNull { it.serverId.isNotBlank() }?.serverId
+                                }.getOrNull()
+                                // A missing discovery result is an offline condition,
+                                // not a reason to discard the event. "local" keeps it
+                                // queued until a collection is discovered.
+                                val calId = baseCalendar ?: discoveredCalendar ?: "local"
+                                val startDateTime = base?.startAt?.dateTime
+                                val endDateTime = base?.endAt?.dateTime
+                                val (sh, sm) = if (startDateTime != null) startDateTime.hour to startDateTime.minute else 9 to 0
+                                val (eh, em) = if (endDateTime != null) endDateTime.hour to endDateTime.minute else 10 to 0
+                                val endDate = if (isAllDay) selectedDate.plusDays(1) else selectedDate
+                                val timeZone = base?.startAt?.timeZone
+                                    ?: kotlinx.datetime.TimeZone.currentSystemDefault().id
                                 val event = com.unifiedcomms.data.model.CalendarEvent(
+                                    id = base?.id ?: java.util.UUID.randomUUID().toString(),
                                     accountId = base?.accountId ?: acct.id,
-                                    calendarId = base?.calendarId ?: calId,
+                                    calendarId = calId,
                                     uid = base?.uid ?: java.util.UUID.randomUUID().toString(),
                                     title = title,
                                     description = description.takeIf { it.isNotBlank() },
@@ -1024,26 +1063,46 @@ fun CreateEventScreen(
                                             if (isAllDay) 0 else sm
                                         ),
                                         date = kotlinx.datetime.LocalDate(selectedDate.year, selectedDate.monthValue, selectedDate.dayOfMonth),
-                                        timeZone = kotlinx.datetime.TimeZone.currentSystemDefault().id,
+                                        timeZone = timeZone,
                                         isAllDay = isAllDay
                                     ),
                                     endAt = com.unifiedcomms.data.model.EventDateTime(
                                         dateTime = kotlinx.datetime.LocalDateTime(
-                                            selectedDate.year,
-                                            selectedDate.monthValue,
-                                            selectedDate.dayOfMonth,
+                                            endDate.year,
+                                            endDate.monthValue,
+                                            endDate.dayOfMonth,
                                             if (isAllDay) 0 else eh,
                                             if (isAllDay) 0 else em
                                         ),
-                                        date = kotlinx.datetime.LocalDate(selectedDate.year, selectedDate.monthValue, selectedDate.dayOfMonth),
-                                        timeZone = kotlinx.datetime.TimeZone.currentSystemDefault().id,
+                                        date = kotlinx.datetime.LocalDate(endDate.year, endDate.monthValue, endDate.dayOfMonth),
+                                        timeZone = timeZone,
                                         isAllDay = isAllDay
                                     ),
-                                    color = com.unifiedcomms.data.model.EventColor.fromInt(selectedColor.toInt()),
-                                    isLocalOnly = base?.isLocalOnly ?: true
+                                    color = if (base != null && !colorChanged) {
+                                        base.color
+                                    } else {
+                                        com.unifiedcomms.data.model.EventColor.fromInt(selectedColor.toInt())
+                                    },
+                                    organizer = base?.organizer ?: com.unifiedcomms.data.model.EventAttendee(
+                                        email = acct.email,
+                                        name = acct.name,
+                                        status = com.unifiedcomms.data.model.AttendeeStatus.ACCEPTED,
+                                        role = com.unifiedcomms.data.model.AttendeeRole.ORGANIZER,
+                                        rsvp = false
+                                    ),
+                                    attendees = attendees.map { attendee ->
+                                        base?.attendees?.firstOrNull { it.email.equals(attendee.email, ignoreCase = true) } ?: attendee
+                                    },
+                                    reminders = base?.reminders
+                                        ?: listOf(com.unifiedcomms.data.model.EventReminder.Default(defaultReminderMinutes)),
+                                    serverHref = base?.serverHref,
+                                    etag = base?.etag,
+                                    isLocalOnly = base?.isLocalOnly ?: true,
+                                    needsSync = true
                                 )
-                                viewModel.saveEvent(event)
-                                onSave()
+                                val result = viewModel.saveEvent(event)
+                                if (result.success) onSave()
+                                else saveError = result.errorMessage ?: "Event could not be saved"
                             }
                         }
                     }) { Icon(Icons.Default.Save, contentDescription = "Save") }
@@ -1060,6 +1119,9 @@ fun CreateEventScreen(
                 .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
+            saveError?.let {
+                Text(it, color = MaterialTheme.colorScheme.error)
+            }
             TextField(value = title, onValueChange = { title = it }, label = { Text("Title *") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
             TextField(value = description, onValueChange = { description = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth(), minLines = 3)
             TextField(value = location, onValueChange = { location = it }, label = { Text("Location") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
@@ -1097,12 +1159,23 @@ fun CreateEventScreen(
                         ).padding(4.dp),
                         shape = RoundedCornerShape(16.dp),
                         color = Color(color),
-                        onClick = { selectedColor = color }
+                        onClick = {
+                            selectedColor = color
+                            colorChanged = true
+                        }
                     ) { Spacer(modifier = Modifier.fillMaxSize()) }
                 }
             }
 
-            TextField(value = "", onValueChange = {}, label = { Text("Attendees (comma-separated emails)") }, modifier = Modifier.fillMaxWidth())
+            TextField(
+                value = attendeeInput,
+                onValueChange = { attendeeInput = it },
+                label = { Text("Invite attendees (comma-separated emails)") },
+                supportingText = { Text("Each attendee receives an iTIP invitation and can accept or decline.") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = false,
+                minLines = 2
+            )
         }
     }
 }
@@ -1111,8 +1184,12 @@ fun CreateEventScreen(
 fun EventDetailScreen(
     event: CalendarEvent,
     onEdit: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onDelete: suspend (CalendarEvent) -> Boolean = { false }
 ) {
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var actionError by remember { mutableStateOf<String?>(null) }
+    val coroutineScope = rememberCoroutineScope()
     val fmt = java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy h:mm a")
     val eventTz = kotlinx.datetime.TimeZone.of(event.startAt.timeZone)
     val startZoned = java.time.Instant.ofEpochMilli(event.startAt.toInstant(eventTz).toEpochMilliseconds())
@@ -1148,6 +1225,9 @@ fun EventDetailScreen(
                         }
                         context.startActivity(android.content.Intent.createChooser(intent, "Share event"))
                     }) { Icon(Icons.Default.Share, contentDescription = "Share") }
+                    IconButton(onClick = { showDeleteConfirm = true }) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete event")
+                    }
                 }
             )
         }
@@ -1156,6 +1236,7 @@ fun EventDetailScreen(
             modifier = Modifier.padding(innerPadding).padding(16.dp).fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            actionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
@@ -1179,6 +1260,24 @@ fun EventDetailScreen(
                     }
                 }
             }
+        }
+        if (showDeleteConfirm) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showDeleteConfirm = false },
+                title = { Text("Delete event?") },
+                text = { Text(event.title) },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(onClick = {
+                        showDeleteConfirm = false
+                        coroutineScope.launch {
+                            if (onDelete(event)) onBack() else actionError = "Event could not be deleted"
+                        }
+                    }) { Text("Delete") }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
+                }
+            )
         }
     }
 }

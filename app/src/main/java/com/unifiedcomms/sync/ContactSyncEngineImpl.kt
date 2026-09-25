@@ -6,6 +6,7 @@ import com.unifiedcomms.data.model.UnifiedContact
 import com.unifiedcomms.data.repository.ContactRepository
 import com.unifiedcomms.data.repository.AccountRepository
 import com.unifiedcomms.security.CryptoManager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -66,23 +67,27 @@ class ContactSyncEngineImpl(
                     if (existing == null) {
                         contactRepo.insert(contact.copy(
                             accountId = account.id,
-                            source = account.accountType.let { when(it) {
-                                com.unifiedcomms.data.model.AccountType.GOOGLE -> com.unifiedcomms.data.model.ContactSource.GOOGLE
-                                com.unifiedcomms.data.model.AccountType.EXCHANGE -> com.unifiedcomms.data.model.ContactSource.EXCHANGE
-                                com.unifiedcomms.data.model.AccountType.ICLOUD -> com.unifiedcomms.data.model.ContactSource.ICLOUD
-                                else -> com.unifiedcomms.data.model.ContactSource.CARDDAV
-                            }}
+                            source = sourceFor(account)
                         ))
                         newItems.add(contact.id)
                     } else {
                         contactRepo.update(existing.copy(
+                            accountId = account.id,
+                            source = sourceFor(account),
+                            sourceId = contact.sourceId ?: existing.sourceId,
                             displayName = contact.displayName,
+                            firstName = contact.firstName,
+                            lastName = contact.lastName,
                             emails = contact.emails,
                             phoneNumbers = contact.phoneNumbers,
-                            avatarUrl = contact.avatarUrl,
+                            avatarUrl = contact.avatarUrl ?: existing.avatarUrl,
                             organization = contact.organization,
                             title = contact.title,
                             notes = contact.notes,
+                            addresses = contact.addresses,
+                            websites = contact.websites,
+                            isLocalOnly = false,
+                            needsSync = false,
                             updatedAt = Clock.System.now()
                         ))
                         updatedItems.add(existing.id)
@@ -93,6 +98,8 @@ class ContactSyncEngineImpl(
                 updateProgress(account.id, null, SyncStage.COMPLETED, synced, synced)
                 SyncResult.success(synced, newItems, updatedItems)
 
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 updateProgress(account.id, null, SyncStage.ERROR, 0, 0)
                 SyncResult.failure(e.message ?: "Contact sync failed")
@@ -117,7 +124,8 @@ class ContactSyncEngineImpl(
                 throw IllegalStateException(it.message ?: "Address book listing failed")
             }
             for (entry in items) {
-                val res = dav.fetchVCard(entry.href) ?: continue
+                val res = dav.fetchVCard(entry.href)
+                    ?: throw IllegalStateException("Contact fetch failed: ${entry.href}")
                 val uid = entry.href.substringAfterLast('/').substringBeforeLast('.')
                 out += VCardParser.parse(res.ical, account.id, ContactSource.CARDDAV, uid)
             }
@@ -260,6 +268,13 @@ class ContactSyncEngineImpl(
                 ConnectionTestResult(false, 0, emptyList(), e.message)
             }
         }
+    }
+
+    private fun sourceFor(account: Account): ContactSource = when (account.accountType) {
+        com.unifiedcomms.data.model.AccountType.GOOGLE -> ContactSource.GOOGLE
+        com.unifiedcomms.data.model.AccountType.EXCHANGE -> ContactSource.EXCHANGE
+        com.unifiedcomms.data.model.AccountType.ICLOUD -> ContactSource.ICLOUD
+        else -> ContactSource.CARDDAV
     }
 
     private fun updateProgress(accountId: String, folder: String?, stage: SyncStage, current: Int, total: Int) {

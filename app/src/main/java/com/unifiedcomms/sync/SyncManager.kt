@@ -8,12 +8,11 @@ import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.model.Message
 import com.unifiedcomms.data.repository.AccountRepository
 import com.unifiedcomms.util.NotificationHelper
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.async
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,7 +26,6 @@ class SyncManager(
     private val taskSync: TaskSyncEngine,
     private val contactSync: ContactSyncEngine,
     private val accountRepo: AccountRepository,
-    private val scope: CoroutineScope,
     private val context: Context,
     private val crypto: com.unifiedcomms.security.CryptoManager
 ) : DefaultLifecycleObserver {
@@ -36,42 +34,13 @@ class SyncManager(
 
     private val _syncStates = MutableStateFlow<Map<String, SyncState>>(emptyMap())
     val syncStates: StateFlow<Map<String, SyncState>> = _syncStates
-    private val periodicJobs = mutableMapOf<String, Job>()
 
-    override fun onStart(owner: LifecycleOwner) {
-        scope.launch(Dispatchers.IO) {
-            accountRepo.getAllActive().collect { accounts ->
-                val currentIds = accounts.map { it.id }.toSet()
-                periodicJobs.keys.filter { it !in currentIds }.forEach { cancelPeriodicSync(it) }
-                accounts.forEach { account ->
-                    if (!periodicJobs.containsKey(account.id)) {
-                        schedulePeriodicSync(account)
-                    }
-                }
-            }
-        }
-    }
+    // WorkManager owns the single background cadence. Keeping a second
+    // lifecycle-bound loop here caused duplicate syncs and ignored the global
+    // auto-sync/Wi-Fi/interval preferences.
+    override fun onStart(owner: LifecycleOwner) = Unit
 
-    override fun onStop(owner: LifecycleOwner) {
-        periodicJobs.values.forEach { it.cancel() }
-        periodicJobs.clear()
-    }
-
-    private fun schedulePeriodicSync(account: Account) {
-        val intervalMs = (account.syncConfig.syncIntervalMinutes.coerceAtLeast(5) * 60_000L)
-        val job = scope.launch(Dispatchers.IO) {
-            while (true) {
-                delay(intervalMs)
-                if (_syncStates.value[account.id]?.isSyncing == true) continue
-                performFullSync(account)
-            }
-        }
-        periodicJobs[account.id] = job
-    }
-
-    private fun cancelPeriodicSync(accountId: String) {
-        periodicJobs.remove(accountId)?.cancel()
-    }
+    override fun onStop(owner: LifecycleOwner) = Unit
 
     data class SyncState(
         val accountId: String,
@@ -90,13 +59,18 @@ class SyncManager(
         // receive ciphertext they can decrypt. Skipping this made every UI-added
         // account fail to auth.
         val stored = accountRepo.getById(account.id) ?: account
-        Log.d("SyncManager", "performFullSync start: id=${stored.id} email=${stored.email} syncEmail=${account.syncConfig.syncEmail} syncCal=${account.syncConfig.syncCalendar} syncTasks=${account.syncConfig.syncTasks} caldavUrl=${stored.serverConfig.caldavUrl} imapHost=${stored.serverConfig.imapHost}")
+        Log.d("SyncManager", "performFullSync start: id=${stored.id} email=${stored.email} syncEmail=${stored.syncConfig.syncEmail} syncCal=${stored.syncConfig.syncCalendar} syncTasks=${stored.syncConfig.syncTasks}")
         updateState(stored.id) { it.copy(isSyncing = true, lastError = null) }
         NotificationHelper.showSyncNotification(context, "Syncing ${stored.name}...", -1)
         // ponytail: refresh OAuth token before talking to servers so accounts don't die at expiry.
-        val fresh = runCatching { tokenRefresher.ensureFreshToken(stored) }.getOrElse { error ->
-            updateState(stored.id) { it.copy(isSyncing = false, lastError = error.message) }
-            return SyncResult.failure(error.message ?: "Token refresh failed")
+        val fresh = try {
+            tokenRefresher.ensureFreshToken(stored)
+        } catch (e: CancellationException) {
+            updateState(stored.id) { it.copy(isSyncing = false) }
+            throw e
+        } catch (e: Exception) {
+            updateState(stored.id) { it.copy(isSyncing = false, lastError = e.message) }
+            return SyncResult.failure(e.message ?: "Token refresh failed")
         }
         val maxEmailRetry = 2
         var totalSynced = 0
@@ -110,46 +84,53 @@ class SyncManager(
         // -> "no calendar sync, no task sync". Each leg is wrapped in its own
         // timeout so one stuck leg can't hang the whole sync.
         val jobs = mutableListOf<kotlinx.coroutines.Deferred<Pair<String, SyncResult>>>()
-        val scope = kotlinx.coroutines.CoroutineScope(Dispatchers.IO + kotlinx.coroutines.Job())
+        supervisorScope {
+            if (fresh.syncConfig.syncEmail) {
+                jobs.add(async {
+                    var r = emailSync.syncAccount(fresh)
+                    var attempts = 1
+                    while (!r.success && attempts < maxEmailRetry) { attempts++; r = emailSync.syncAccount(fresh) }
+                    "email" to r
+                })
+            }
+            if (fresh.syncConfig.syncCalendar) {
+                jobs.add(async {
+                    val r = withTimeoutOrNull(120_000) { calendarSync.syncAccount(fresh) }
+                        ?: SyncResult.failure("Calendar sync timed out")
+                    "calendar" to r
+                })
+            }
+            if (fresh.syncConfig.syncTasks) {
+                jobs.add(async {
+                    val r = withTimeoutOrNull(120_000) { taskSync.syncAccount(fresh) }
+                        ?: SyncResult.failure("Task sync timed out")
+                    "tasks" to r
+                })
+            }
+            if (fresh.syncConfig.syncContacts) {
+                jobs.add(async {
+                    val r = withTimeoutOrNull(120_000) { contactSync.syncAccount(fresh) }
+                        ?: SyncResult.failure("Contact sync timed out")
+                    "contacts" to r
+                })
+            }
+            // chatSync removed with the chat feature
 
-        if (account.syncConfig.syncEmail) {
-            jobs.add(scope.async {
-                var r = emailSync.syncAccount(fresh)
-                var attempts = 1
-                while (!r.success && attempts < maxEmailRetry) { attempts++; r = emailSync.syncAccount(fresh) }
-                "email" to r
-            })
-        }
-        if (account.syncConfig.syncCalendar) {
-            jobs.add(scope.async {
-                val r = withTimeoutOrNull(120_000) { calendarSync.syncAccount(fresh) }
-                    ?: SyncResult.failure("Calendar sync timed out")
-                "calendar" to r
-            })
-        }
-        if (account.syncConfig.syncTasks) {
-            jobs.add(scope.async {
-                val r = withTimeoutOrNull(120_000) { taskSync.syncAccount(fresh) }
-                    ?: SyncResult.failure("Task sync timed out")
-                "tasks" to r
-            })
-        }
-        if (account.syncConfig.syncContacts) {
-            jobs.add(scope.async {
-                val r = withTimeoutOrNull(120_000) { contactSync.syncAccount(fresh) }
-                    ?: SyncResult.failure("Contact sync timed out")
-                "contacts" to r
-            })
-        }
-        // chatSync removed with the chat feature
-
-        for (deferred in jobs) {
-            val (leg, result) = runCatching { deferred.await() }.getOrDefault("unknown" to SyncResult.failure("crashed"))
-            Log.d("SyncManager", "$leg leg: success=${result.success} items=${result.itemsSynced} err=${result.errorMessage}")
-            if (!result.success) {
-                failed = true
-                errorMessage = (errorMessage ?: "") + if (errorMessage.isNullOrBlank().not()) "; ${leg.replaceFirstChar { it.uppercase() }} sync failed: ${result.errorMessage}" else "${leg.replaceFirstChar { it.uppercase() }} sync failed: ${result.errorMessage}"
-            } else totalSynced += result.itemsSynced
+            for (deferred in jobs) {
+                val (leg, result) = try {
+                    deferred.await()
+                } catch (e: CancellationException) {
+                    updateState(account.id) { it.copy(isSyncing = false) }
+                    throw e
+                } catch (e: Exception) {
+                    "unknown" to SyncResult.failure(e.message ?: "crashed")
+                }
+                Log.d("SyncManager", "$leg leg: success=${result.success} items=${result.itemsSynced} err=${result.errorMessage}")
+                if (!result.success) {
+                    failed = true
+                    errorMessage = (errorMessage ?: "") + if (errorMessage.isNullOrBlank().not()) "; ${leg.replaceFirstChar { it.uppercase() }} sync failed: ${result.errorMessage}" else "${leg.replaceFirstChar { it.uppercase() }} sync failed: ${result.errorMessage}"
+                } else totalSynced += result.itemsSynced
+            }
         }
 
         updateState(account.id) {
@@ -165,6 +146,10 @@ class SyncManager(
         }
         NotificationHelper.showSyncNotification(context, "Sync completed", 100)
         refreshWidgets()
+        val completedAt = kotlinx.datetime.Clock.System.now()
+        accountRepo.getById(account.id)?.let { stored ->
+            accountRepo.update(stored.copy(lastSyncAt = completedAt, updatedAt = completedAt))
+        }
         return SyncResult.success(totalSynced)
     }
 
@@ -188,6 +173,8 @@ class SyncManager(
             val result = if (folder != null) emailSync.syncFolder(account, folder) else emailSync.syncAccount(account)
             updateState(account.id) { it.copy(isSyncing = false, lastSync = System.currentTimeMillis(), lastError = if (result.success) null else result.errorMessage) }
             result
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             updateState(account.id) { it.copy(isSyncing = false, lastError = e.message) }
             SyncResult.failure(e.message ?: "Email sync failed")
@@ -201,6 +188,8 @@ class SyncManager(
             val result = calendarSync.syncAccount(account)
             updateState(account.id) { it.copy(isSyncing = false, lastSync = System.currentTimeMillis(), lastError = if (result.success) null else result.errorMessage) }
             result
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             updateState(account.id) { it.copy(isSyncing = false, lastError = e.message) }
             SyncResult.failure(e.message ?: "Calendar sync failed")
@@ -214,6 +203,8 @@ class SyncManager(
             val result = taskSync.syncAccount(account)
             updateState(account.id) { it.copy(isSyncing = false, lastSync = System.currentTimeMillis(), lastError = if (result.success) null else result.errorMessage) }
             result
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             updateState(account.id) { it.copy(isSyncing = false, lastError = e.message) }
             SyncResult.failure(e.message ?: "Task sync failed")
@@ -226,6 +217,8 @@ class SyncManager(
             val result = contactSync.syncAccount(account)
             updateState(account.id) { it.copy(isSyncing = false, lastSync = System.currentTimeMillis(), lastError = if (result.success) null else result.errorMessage) }
             result
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             updateState(account.id) { it.copy(isSyncing = false, lastError = e.message) }
             SyncResult.failure(e.message ?: "Contact sync failed")
@@ -256,8 +249,7 @@ class SyncManager(
         "email" to emailSync.testConnection(account),
         "calendar" to calendarSync.testConnection(account),
         "tasks" to taskSync.testConnection(account),
-        "contacts" to contactSync.testConnection(account),
-        "chat" to ConnectionTestResult(true, 0, emptyList(), null)
+        "contacts" to contactSync.testConnection(account)
     )
 
     /**
@@ -282,10 +274,10 @@ class SyncManager(
         // OkHttp, which IS cancellable. Worst case per leg ~20s (OkHttp) / ~15s (IMAP),
         // so the gate settles in ~20s. The UI's own 45s withTimeout is the final backstop.
         return withContext(Dispatchers.IO) {
-            val emailDef = async { if (account.syncConfig.syncEmail) emailSync.testConnection(fresh) else ConnectionTestResult(true, 0, listOf("IMAP"), null) }
-            val calDef = async { if (account.syncConfig.syncCalendar) calendarSync.testConnection(fresh) else ConnectionTestResult(true, 0, listOf("CalDAV"), null) }
-            val conDef = async { if (account.syncConfig.syncContacts) contactSync.testConnection(fresh) else ConnectionTestResult(true, 0, listOf("CardDAV"), null) }
-            val taskDef = async { if (account.syncConfig.syncTasks) taskSync.testConnection(fresh) else ConnectionTestResult(true, 0, listOf("CalDAV VTODO"), null) }
+            val emailDef = async { if (fresh.syncConfig.syncEmail) emailSync.testConnection(fresh) else ConnectionTestResult(true, 0, listOf("IMAP"), null) }
+            val calDef = async { if (fresh.syncConfig.syncCalendar) calendarSync.testConnection(fresh) else ConnectionTestResult(true, 0, listOf("CalDAV"), null) }
+            val conDef = async { if (fresh.syncConfig.syncContacts) contactSync.testConnection(fresh) else ConnectionTestResult(true, 0, listOf("CardDAV"), null) }
+            val taskDef = async { if (fresh.syncConfig.syncTasks) taskSync.testConnection(fresh) else ConnectionTestResult(true, 0, listOf("CalDAV VTODO"), null) }
             val email = emailDef.await()
             val cal = calDef.await()
             val con = conDef.await()
