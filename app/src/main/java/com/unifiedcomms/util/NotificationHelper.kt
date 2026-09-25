@@ -86,7 +86,7 @@ object NotificationHelper {
                     lockscreenVisibility = Notification.VISIBILITY_PRIVATE
                 },
                 NotificationChannel(CHANNEL_ID_MESSAGES, "Messages", NotificationManager.IMPORTANCE_HIGH).apply {
-                    description = "New messages and chat notifications"
+                    description = "New message notifications"
                     enableVibration(true)
                     vibrationPattern = longArrayOf(0, 200, 200, 200)
                     lightColor = Color.MAGENTA

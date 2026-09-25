@@ -114,7 +114,6 @@ class SyncManager(
                     "contacts" to r
                 })
             }
-            // chatSync removed with the chat feature
 
             for (deferred in jobs) {
                 val (leg, result) = try {

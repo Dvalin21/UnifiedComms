@@ -77,7 +77,6 @@ import android.util.Log
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.unifiedcomms.data.model.Account
-import com.unifiedcomms.data.e2ee.ChatSyncManager
 import com.unifiedcomms.ui.theme.AccountColors
 import com.unifiedcomms.util.PreferencesManager
 import com.unifiedcomms.ui.theme.UnifiedCommsTheme

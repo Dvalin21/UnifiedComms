@@ -4,10 +4,6 @@ import android.app.Application
 import android.content.Context
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.unifiedcomms.data.db.UnifiedCommsDatabase
-import com.unifiedcomms.data.e2ee.ChatCryptoManager
-import com.unifiedcomms.data.e2ee.ChatKeyManager
-import com.unifiedcomms.data.e2ee.ChatRelayManager
-import com.unifiedcomms.data.e2ee.ChatSyncManager
 import com.unifiedcomms.util.PreferencesManager
 import com.unifiedcomms.util.DemoDataSeeder
 import com.unifiedcomms.util.NotificationHelper
@@ -25,12 +21,6 @@ class UnifiedCommsApplication : Application() {
 
         fun getInstance(): UnifiedCommsApplication = INSTANCE!!
 
-        @Volatile
-        var chatCrypto: ChatCryptoManager? = null
-        @Volatile
-        var chatRelay: ChatRelayManager? = null
-        @Volatile
-        var chatSync: ChatSyncManager? = null
     }
 
     private val mainScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -42,12 +32,6 @@ class UnifiedCommsApplication : Application() {
         super.onCreate()
         PreferencesManager.initialize(this)
         database = UnifiedCommsDatabase.getInstance(this)
-
-        // Chat relay is intentionally not initialized or started here. The relay
-        // protocol is not configured for this account set; leaving a default
-        // localhost client running would make an unconfigured feature look active.
-        // The chat route is hidden from the main navigation until it has a real
-        // endpoint, identity, and durable configuration.
 
         initializeNotificationChannels()
         DemoDataSeeder.seedIfNeeded(this, mainCoroutineScope)
