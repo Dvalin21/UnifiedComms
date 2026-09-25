@@ -16,7 +16,7 @@ import kotlinx.datetime.TimeZone
  * and by the UI Accept/Decline/Add actions (insert into the calendar).
  *
  * ponytail: invite RSVP addresses from real-world ICS often contain typos
- * (e.g. "user@example.com" with a space). A malformed address
+ * (e.g. "user@exa mple.com" with a space). A malformed address
  * makes the iTIP reply bounce silently, so sanitize before use.
  */
 object InviteMapper {
