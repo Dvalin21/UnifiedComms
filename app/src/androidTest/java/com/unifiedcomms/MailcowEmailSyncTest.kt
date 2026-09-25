@@ -21,15 +21,15 @@ import org.junit.Test
 import java.util.UUID
 
 /**
- * E2E verification against the REAL example.com IMAP/SMTP account.
+ * E2E verification against the REAL live IMAP/SMTP account.
  * Config: IMAP 993 SSL + acceptAllCerts (server cert is *.example.com,
  * which does NOT match bare example.com, so strict verification fails;
  * SMTP 587 STARTTLS. Exercises the exact app code path:
  * testConnection -> sendEmail -> syncAccount -> Room read-back.
  */
-class ExampleEmailSyncTest {
+class MailcowEmailSyncTest {
 
-    private val user = "testbox@example.com"
+    private val user = LiveTestConfig.user
     // ponytail: NEVER hardcode credentials in source. The password is injected at
     // test runtime via instrumentation arg: -e password "...". Read it inside the
     // test (not at class-init) using the correct androidx.test API.
@@ -48,16 +48,16 @@ class ExampleEmailSyncTest {
         val engine = EmailSyncEngineImpl(emailRepo, accountRepo, crypto, this)
 
         val account = Account(
-            id = "example-test",
-            name = "Example Test",
+            id = "mailcow-live-test",
+            name = "Mailcow Live Test",
             email = user,
             accountType = AccountType.GENERIC_IMAP_SMTP,
             serverConfig = ServerConfig(
-                imapHost = "example.com",
+                imapHost = LiveTestConfig.domain,
                 imapPort = 993,
                 imapUseSsl = true,
                 acceptAllCerts = true,
-                smtpHost = "example.com",
+                smtpHost = LiveTestConfig.domain,
                 smtpPort = 587,
                 smtpUseStartTls = true
             ),
@@ -81,11 +81,11 @@ class ExampleEmailSyncTest {
                 accountId = account.id,
                 folder = "SENT",
                 uid = "0",
-                messageId = "<uc-hom-${System.currentTimeMillis()}@example.com>",
+                messageId = "<uc-hom-${System.currentTimeMillis()}@${LiveTestConfig.domain}>",
                 threadId = "uc-hom-test",
                 sender = EmailAddress(null, user),
                 recipients = EmailRecipients(to = listOf(EmailAddress(null, user))),
-                subject = "UnifiedComms Example E2E",
+                subject = "UnifiedComms Live E2E",
                 bodyText = "Sent from the instrumented sync-engine test.",
                 sentAt = kotlinx.datetime.Clock.System.now()
             )

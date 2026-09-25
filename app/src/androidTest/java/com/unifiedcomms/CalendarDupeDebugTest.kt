@@ -223,7 +223,7 @@ class CalendarDupeDebugTest {
         val stale = masters.filter { (it.startAt.dateTime?.year ?: (it.startAt.date?.year ?: 0)) < 2025 }
         Log.e("DIAG", "STALE_OLD_MASTERS=${stale.size} of ${masters.size} weekly masters; recentSince2025=${masters.size - stale.size}")
         // Ground truth: expand the Guitar TH master directly and print actual occurrence weekdays
-        val guitar = all.find { it.title.contains("Guitar") && it.isMaster() && it.recurrenceRule?.byDay?.any { it.day.name == "TH" } == true }
+        val guitar = all.find { it.title.contains(InstrumentationRegistry.getArguments().getString("probeTitle") ?: "Guitar") && it.isMaster() && it.recurrenceRule?.byDay?.any { it.day.name == "TH" } == true }
         if (guitar != null) {
             Log.e("DIAG", "GUITAR_MASTER start=${guitar.startAt.dateTime} tz=${guitar.startAt.timeZone} byDay=${guitar.recurrenceRule?.byDay}")
             val occs = com.unifiedcomms.sync.RecurrenceExpander.expand(guitar, julStart, julEnd)
@@ -234,7 +234,7 @@ class CalendarDupeDebugTest {
             }
         }
         // Ground truth: print repo 'expanded' occurrences for the Guitar TH master (uid 458a)
-        val gUid = all.find { it.title.contains("Guitar") && it.isMaster() && it.recurrenceRule?.byDay?.any { it.day.name == "TH" } == true }?.uid
+        val gUid = all.find { it.title.contains(InstrumentationRegistry.getArguments().getString("probeTitle") ?: "Guitar") && it.isMaster() && it.recurrenceRule?.byDay?.any { it.day.name == "TH" } == true }?.uid
         if (gUid != null) {
             Log.e("DIAG", "REPO_EXPANDED_GUITAR uid=$gUid")
             expanded.filter { it.uid == gUid }.sortedBy { it.startAt.toInstant().toEpochMilliseconds() }.take(6).forEach { ev ->
@@ -254,7 +254,7 @@ class CalendarDupeDebugTest {
             val newestUid = masters.maxByOrNull { it.startAt.toInstant(kotlinx.datetime.TimeZone.of(it.startAt.timeZone)).toEpochMilliseconds() }?.uid ?: masters.first().uid
             for (ev in group) if (ev.uid == newestUid) deduped.add(ev)
         }
-        val guitarDays = deduped.filter { it.title.contains("Guitar") }.map { ev ->
+        val guitarDays = deduped.filter { it.title.contains(InstrumentationRegistry.getArguments().getString("probeTitle") ?: "Guitar") }.map { ev ->
             val zid = java.time.ZoneId.of(com.unifiedcomms.data.model.TimeZoneUtil.normalize(ev.startAt.timeZone) ?: "UTC")
             java.time.Instant.ofEpochMilli(ev.startAt.toInstant(com.unifiedcomms.data.model.TimeZoneUtil.toKtxZone(ev.startAt.timeZone)).toEpochMilliseconds()).atZone(zid).toLocalDateTime().dayOfWeek.name
         }.distinct().sorted()
@@ -270,7 +270,12 @@ class CalendarDupeDebugTest {
         }
         Log.e("DIAG", "ALLDAYS_CHECK_DONE")
         // Full per-master truth: for each key recurring title, dump all masters + their rendered days.
-        val probeTitles = listOf("guitar practice w/bob g4v", "enn  class", "church bible study", "keith praise and worship practice", "men's bible study", "video production  class", "choir zoom with ms andrea", "private ice skating lesson")
+        // ponytail: probe titles are supplied at run time (-e probeTitles "a|b|c") or
+        // default to a synthetic set. Real calendar titles are personal data and must
+        // not be committed.
+        val probeTitles = (InstrumentationRegistry.getArguments()
+            .getString("probeTitles") ?: "weekly sync|dupe check|recurring item")
+            .split("|").map { it.trim() }.filter { it.isNotBlank() }
         for (pt in probeTitles) {
             val ms = all.filter { it.isMaster() && it.title.trim().lowercase() == pt }
             for (m in ms) {
@@ -281,14 +286,14 @@ class CalendarDupeDebugTest {
                 Log.e("DIAG", "PROBE title='$pt' uid=${m.uid.take(10)} acct=${m.accountId.take(10)} byDay=${m.recurrenceRule?.byDay} start=${m.startAt.dateTime} tz=${m.startAt.timeZone} rendered=$occ")
             }
         }
-        // Debug: print surviving Guitar Practice events' uid + day
-        deduped.filter { it.title.contains("Guitar Practice") }.forEach { ev ->
+        // Debug: print surviving probe events' uid + day
+        deduped.filter { it.title.contains(InstrumentationRegistry.getArguments().getString("probeTitle") ?: "Guitar Practice") }.forEach { ev ->
             val zid = java.time.ZoneId.of(com.unifiedcomms.data.model.TimeZoneUtil.normalize(ev.startAt.timeZone) ?: "UTC")
             val d = java.time.Instant.ofEpochMilli(ev.startAt.toInstant(com.unifiedcomms.data.model.TimeZoneUtil.toKtxZone(ev.startAt.timeZone)).toEpochMilliseconds()).atZone(zid).toLocalDateTime().dayOfWeek.name
             Log.e("DIAG", "SURVIVED_GP uid=${ev.uid.take(12)} recId=${ev.recurrenceId?.take(8)} day=$d")
         }
-        // Why aren't the two Guitar masters collapsing? Dump their keys.
-        all.filter { it.title.contains("Guitar") && it.isMaster() }.forEach { m ->
+        // Why aren't the duplicate masters collapsing? Dump their keys.
+        all.filter { it.title.contains(InstrumentationRegistry.getArguments().getString("probeTitle") ?: "Guitar") && it.isMaster() }.forEach { m ->
             Log.e("DIAG", "GUITAR_MASTER title='${m.title}' acct=${m.accountId.take(8)} cal=${m.calendarId.take(20)} uid=${m.uid.take(12)} byDay=${m.recurrenceRule?.byDay} start=${m.startAt.dateTime}")
         }
     }

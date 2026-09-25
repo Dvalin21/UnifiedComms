@@ -139,7 +139,7 @@ L. ANDROID INTEGRATION PATTERN (the DAVx5 / system pattern)
 ====================================================================
 M. THE FIX, MAPPED TO RFC TEXT (so it's defensible)
 ====================================================================
-User's exact failure: keith@example.com.
+User's exact failure: user@example.com.
   Symptom 1: pulled mail.example.com, not imap./smtp.
     Cause: no SRV + heuristic only tried mail.  Fix: heuristic order
     [imap, smtp, pop, pop3, mail] (Thunderbird) + SRV (RFC 6186).

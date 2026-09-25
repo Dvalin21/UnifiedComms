@@ -21,7 +21,7 @@ class ImapProbeTest {
 
     @Test
     fun probeConnect(): Unit {
-        val host = "imap.example.com"
+        val host = LiveTestConfig.imapHost
         val port = 993
         val acceptAll = false // your default from the UI
 
@@ -51,7 +51,7 @@ class ImapProbeTest {
         val t0 = System.currentTimeMillis()
         try {
             Log.e("IMAPPROBE", "calling store.connect (TCP+TLS)...")
-            store.connect(host, port, "probe@example.com", "dummy-password")
+            store.connect(host, port, "probe@${LiveTestConfig.domain}", "dummy-password")
             Log.e("IMAPPROBE", "CONNECT OK in ${System.currentTimeMillis() - t0}ms")
         } catch (e: Exception) {
             val dt = System.currentTimeMillis() - t0

@@ -12,7 +12,7 @@ import javax.mail.Store
 import java.util.Properties
 
 /**
- * Reproduces the app's exact JavaMail IMAPS connect to imap.example.com:993
+ * Reproduces the app's exact JavaMail IMAPS connect to the live IMAP host:993
  * from the DEVICE context (Conscrypt + network). Dummy creds are fine — the
  * failure we care about is at the TCP/TLS layer, before IMAP LOGIN. The exception
  * message reveals the true root cause of the "Couldn't connect, timeout 60000".
@@ -22,7 +22,7 @@ class ImapConnectProbeTest {
 
     @Test
     fun probeImap993(): Unit = runBlocking {
-        val host = "imap.example.com"
+        val host = LiveTestConfig.imapHost
         val tries = listOf(
             Triple("993 SSL", 993, true),
             Triple("143 STARTTLS", 143, false),
@@ -41,7 +41,7 @@ class ImapConnectProbeTest {
                 val session = Session.getInstance(props)
                 val store: Store = session.getStore("imap")
                 Log.e("PROBE", "=== $label : connecting ===")
-                store.connect(host, "probe@example.com", "dummy")
+                store.connect(host, "probe@${LiveTestConfig.domain}", "dummy")
                 Log.e("PROBE", "=== $label : CONNECTED OK (auth would be next) ===")
                 store.close()
             } catch (e: Exception) {

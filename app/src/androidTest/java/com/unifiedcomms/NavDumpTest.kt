@@ -24,8 +24,8 @@ import java.util.UUID
 class NavDumpTest : kotlinx.coroutines.CoroutineScope {
     override val coroutineContext = Dispatchers.IO
 
-    private val user = "testbox@example.com"
-    private val DAV = "https://email.example.com/SOGo/dav/"
+    private val user = LiveTestConfig.user
+    private val DAV = LiveTestConfig.davUrl
 
     @Test
     fun dumpState(): Unit = runBlocking {
@@ -116,8 +116,8 @@ class NavDumpTest : kotlinx.coroutines.CoroutineScope {
             id = "nav-fix-${UUID.randomUUID().toString().take(8)}",
             name = "NavFix ($user)", email = user, accountType = AccountType.MAILCOW,
             serverConfig = ServerConfig(
-                imapHost = "imap.example.com", imapPort = 993, imapUseSsl = true, acceptAllCerts = true,
-                smtpHost = "smtp.example.com", smtpPort = 587, smtpUseStartTls = true,
+                imapHost = LiveTestConfig.imapHost, imapPort = 993, imapUseSsl = true, acceptAllCerts = true,
+                smtpHost = LiveTestConfig.smtpHost, smtpPort = 587, smtpUseStartTls = true,
                 caldavUrl = "${DAV}$user/Calendar/personal/", carddavUrl = "${DAV}$user/Contacts/personal/"
             ),
             authConfig = AuthConfig.AppPassword(user, "repro-dummy"),

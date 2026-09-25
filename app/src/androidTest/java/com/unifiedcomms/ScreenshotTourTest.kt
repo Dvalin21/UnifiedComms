@@ -29,8 +29,8 @@ import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 
 class ScreenshotTourTest {
-    private val user = "testbox@example.com"
-    private val DAV = "https://email.example.com/SOGo/dav/"
+    private val user = LiveTestConfig.user
+    private val DAV = LiveTestConfig.davUrl
 
     @Test
     fun tour(): Unit = runBlocking {
@@ -49,10 +49,10 @@ class ScreenshotTourTest {
 
         val accId = "tour-${UUID.randomUUID().toString().take(8)}"
         val acc = Account(
-            id = accId, name = "Example", email = user, accountType = AccountType.MAILCOW,
+            id = accId, name = "Mailcow Live", email = user, accountType = AccountType.MAILCOW,
             serverConfig = ServerConfig(
-                imapHost = "imap.example.com", imapPort = 993, imapUseSsl = true, acceptAllCerts = true,
-                smtpHost = "smtp.example.com", smtpPort = 587, smtpUseStartTls = true,
+                imapHost = LiveTestConfig.imapHost, imapPort = 993, imapUseSsl = true, acceptAllCerts = true,
+                smtpHost = LiveTestConfig.smtpHost, smtpPort = 587, smtpUseStartTls = true,
                 caldavUrl = "${DAV}$user/Calendar/personal/", carddavUrl = "${DAV}$user/Contacts/personal/"
             ),
             authConfig = AuthConfig.AppPassword(user, "seed-dummy"),
@@ -63,7 +63,7 @@ class ScreenshotTourTest {
 
         val now = Clock.System.now()
         val samples = listOf(
-            Triple("UnifiedComms", "UnifiedComms Example E2E", "Weekly sync test results look good. All folders replicated."),
+            Triple("UnifiedComms", "UnifiedComms Live E2E", "Weekly sync test results look good. All folders replicated."),
             Triple("Test Box", "Collected Address Book", "The shared address book has been created and is now visible."),
             Triple("Alice Morgan", "Q3 Roadmap Review", "Attached the revised roadmap. Please review before Thursday's sync."),
             Triple("Billing", "Invoice #4421 Due", "Your monthly invoice is ready. Amount due 12.00 EUR."),
@@ -73,7 +73,7 @@ class ScreenshotTourTest {
         samples.forEachIndexed { i, (name, subj, body) ->
             emailRepo.insert(Email(
                 accountId = accId, folder = "INBOX", uid = "${i+1}", messageId = "<${(i+1)}@hm>",
-                threadId = "t${(i+1)}", sender = EmailAddress(name, "$name.${i}@example.com"),
+                threadId = "t${(i+1)}", sender = EmailAddress(name, "$name.${i}@${LiveTestConfig.domain}"),
                 recipients = EmailRecipients(to = listOf(EmailAddress("Me", user))),
                 subject = subj, bodyText = body, preview = body.take(80),
                 sentAt = Instant.fromEpochMilliseconds(now.toEpochMilliseconds() - (i + 1) * 37 * 60_000L),
@@ -137,7 +137,7 @@ class ScreenshotTourTest {
             go("People"); shot("uc_people"); go("Inbox")
             tapDesc("Settings", 2200); shot("uc_07_settings")
             tapText("Add Account", 2200); shot("uc_08_add_account"); back()
-            tapText("Example", 2200); shot("uc_account_settings"); back()
+            tapText("Mailcow Live", 2200); shot("uc_account_settings"); back()
             back()
             tapDesc("Search", 1800); shot("uc_09_search"); back()
         }

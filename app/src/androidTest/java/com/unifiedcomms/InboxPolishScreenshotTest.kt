@@ -29,11 +29,9 @@ import java.util.UUID
 class InboxPolishScreenshotTest {
     @get:Rule val composeTestRule = createAndroidComposeRule<MainActivity>()
 
-    private fun password(): String =
-        InstrumentationRegistry.getArguments().getString("password")
-            ?: error("Supply live password via: -e password '...'")
+    private fun password(): String = LiveTestConfig.password()
 
-    private val user = "testbox@example.com"
+    private val user = LiveTestConfig.user
 
     @Test
     fun capturePolishedInbox(): Unit = runBlocking {
@@ -53,8 +51,8 @@ class InboxPolishScreenshotTest {
             email = user,
             accountType = AccountType.MAILCOW,
             serverConfig = ServerConfig(
-                imapHost = "imap.example.com", imapPort = 993, imapUseSsl = true, acceptAllCerts = true,
-                smtpHost = "smtp.example.com", smtpPort = 587, smtpUseStartTls = true
+                imapHost = LiveTestConfig.imapHost, imapPort = 993, imapUseSsl = true, acceptAllCerts = true,
+                smtpHost = LiveTestConfig.smtpHost, smtpPort = 587, smtpUseStartTls = true
             ),
             authConfig = AuthConfig.AppPassword(user, password()),
             syncConfig = SyncConfig.Defaults().copy(syncEmail = true, syncCalendar = false, syncTasks = false, syncContacts = false),
