@@ -29,6 +29,9 @@ class TaskRepositoryImpl(
 
     override suspend fun getByUid(uid: String, accountId: String): Task? = taskDao.getByUid(uid, accountId)
 
+    override suspend fun getByUidAndList(uid: String, accountId: String, listId: String): Task? =
+        taskDao.getByUidAndList(uid, accountId, listId)
+
     override fun getByList(accountId: String, listId: String): Flow<List<Task>> = taskDao.getByList(accountId, listId)
 
     override fun getActiveByAccount(accountId: String, completedStatus: TaskStatus): Flow<List<Task>> =
@@ -43,45 +46,40 @@ class TaskRepositoryImpl(
     override fun getByStatus(accountId: String, status: TaskStatus): Flow<List<Task>> = taskDao.getByStatus(accountId, status)
 
     override fun getDueOnDate(accountId: String, date: Long): Flow<List<Task>> =
-        taskDao.getActiveByAccount(accountId, com.unifiedcomms.data.model.TaskStatus.COMPLETED).map { list: List<Task> ->
-            val dayStart = date - (date % 86_400_000L)
-            val dayEnd = dayStart + 86_400_000L - 1
-            list.filter { task -> task.dueAt?.toInstant()?.toEpochMilliseconds()?.let { it >= dayStart && it <= dayEnd } == true }
+        taskDao.getActiveByAccount(accountId, com.unifiedcomms.data.model.TaskStatus.COMPLETED).map { list ->
+            val target = localDate(date)
+            list.filter { localDueDate(it) == target }
         }
 
     override fun getDueOnDateUnified(accountIds: List<String>, date: Long): Flow<List<Task>> =
-        taskDao.getActiveUnified(accountIds, com.unifiedcomms.data.model.TaskStatus.COMPLETED).map { list: List<Task> ->
-            val dayStart = date - (date % 86_400_000L)
-            val dayEnd = dayStart + 86_400_000L - 1
-            list.filter { task -> task.dueAt?.toInstant()?.toEpochMilliseconds()?.let { it >= dayStart && it <= dayEnd } == true }
+        taskDao.getActiveUnified(accountIds, com.unifiedcomms.data.model.TaskStatus.COMPLETED).map { list ->
+            val target = localDate(date)
+            list.filter { localDueDate(it) == target }
         }
 
     override fun getOverdue(accountId: String, now: Long, completedStatus: TaskStatus): Flow<List<Task>> =
-        taskDao.getActiveByAccount(accountId, com.unifiedcomms.data.model.TaskStatus.COMPLETED).map { list: List<Task> ->
-            list.filter { task -> task.dueAt?.toInstant()?.toEpochMilliseconds()?.let { it < now } == true }
+        taskDao.getActiveByAccount(accountId, completedStatus).map { list ->
+            val today = localDate(now)
+            list.filter { task ->
+                val dueDate = localDueDate(task)
+                dueDate != null && dueDate < today
+            }
         }
 
     override fun getOverdueUnified(accountIds: List<String>, now: Long, completedStatus: TaskStatus): Flow<List<Task>> =
-        taskDao.getActiveUnified(accountIds, com.unifiedcomms.data.model.TaskStatus.COMPLETED).map { list: List<Task> ->
-            list.filter { task -> task.dueAt?.toInstant()?.toEpochMilliseconds()?.let { it < now } == true }
+        taskDao.getActiveUnified(accountIds, completedStatus).map { list ->
+            val today = localDate(now)
+            list.filter { task -> localDueDate(task)?.let { it < today } == true }
         }
 
     override fun getUpcoming(accountId: String, now: Long, end: Long, completedStatus: TaskStatus, limit: Int): Flow<List<Task>> =
-        taskDao.getActiveByAccount(accountId, com.unifiedcomms.data.model.TaskStatus.COMPLETED).map { list: List<Task> ->
-            val maxEpoch = Long.MAX_VALUE
-            list.filter { task: Task ->
-                val ms = task.dueAt?.toInstant()?.toEpochMilliseconds()
-                ms != null && ms >= now && ms <= end
-            }.sortedBy { task: Task -> task.dueAt?.toInstant()?.toEpochMilliseconds() ?: maxEpoch }.take(limit)
+        taskDao.getActiveByAccount(accountId, completedStatus).map { list ->
+            upcoming(list, now, end, limit)
         }
 
     override fun getUpcomingUnified(accountIds: List<String>, now: Long, end: Long, completedStatus: TaskStatus, limit: Int): Flow<List<Task>> =
-        taskDao.getActiveUnified(accountIds, com.unifiedcomms.data.model.TaskStatus.COMPLETED).map { list: List<Task> ->
-            val maxEpoch = Long.MAX_VALUE
-            list.filter { task: Task ->
-                val ms = task.dueAt?.toInstant()?.toEpochMilliseconds()
-                ms != null && ms >= now && ms <= end
-            }.sortedBy { task: Task -> task.dueAt?.toInstant()?.toEpochMilliseconds() ?: maxEpoch }.take(limit)
+        taskDao.getActiveUnified(accountIds, completedStatus).map { list ->
+            upcoming(list, now, end, limit)
         }
 
     override fun getSubtasks(parentId: String): Flow<List<Task>> = taskDao.getSubtasks(parentId)
@@ -120,4 +118,34 @@ class TaskRepositoryImpl(
     override suspend fun updateTaskCount(id: String, count: Int): Int = listDao.updateTaskCount(id, count)
 
     override suspend fun updateCompletedCount(id: String, count: Int): Int = listDao.updateCompletedCount(id, count)
+
+    private fun localDate(epochMs: Long): java.time.LocalDate =
+        java.time.Instant.ofEpochMilli(epochMs).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+
+    private fun localDueDate(task: Task): java.time.LocalDate? {
+        val due = task.dueAt?.takeUnless { it.isEmpty() } ?: return null
+        if (!due.hasTime) {
+            val date = due.date ?: due.dateTime?.date ?: return null
+            return java.time.LocalDate.of(date.year, date.monthNumber, date.dayOfMonth)
+        }
+        val zone = runCatching {
+            java.time.ZoneId.of(com.unifiedcomms.data.model.TimeZoneUtil.normalize(due.timeZone) ?: "UTC")
+        }.getOrDefault(java.time.ZoneId.systemDefault())
+        return java.time.Instant.ofEpochMilli(due.toInstant().toEpochMilliseconds()).atZone(zone).toLocalDate()
+    }
+
+    private fun upcoming(tasks: List<Task>, now: Long, end: Long, limit: Int): List<Task> {
+        val startDate = localDate(now)
+        val endDate = localDate(end)
+        return tasks.filter { task ->
+            val due = task.dueAt?.takeUnless { it.isEmpty() } ?: return@filter false
+            if (due.hasTime) {
+                val instant = due.toInstant().toEpochMilliseconds()
+                instant in now..end
+            } else {
+                val date = localDueDate(task) ?: return@filter false
+                date in startDate..endDate
+            }
+        }.sortedBy { it.dueAt?.toInstant()?.toEpochMilliseconds() ?: Long.MAX_VALUE }.take(limit)
+    }
 }

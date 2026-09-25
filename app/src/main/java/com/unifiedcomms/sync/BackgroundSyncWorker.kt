@@ -11,7 +11,9 @@ import com.unifiedcomms.data.repository.ContactRepositoryImpl
 import com.unifiedcomms.data.repository.EmailRepositoryImpl
 import com.unifiedcomms.data.repository.TaskRepositoryImpl
 import com.unifiedcomms.security.CryptoManagerImpl
+import com.unifiedcomms.reminder.ReminderScheduler
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -47,22 +49,34 @@ class BackgroundSyncWorker(
         val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
         try {
             val syncManager = SyncManager(
-                EmailSyncEngineImpl(emailRepo, accountRepo, crypto, scope),
+                EmailSyncEngineImpl(emailRepo, accountRepo, crypto, scope, calendarRepo),
                 CalendarSyncEngineImpl(calendarRepo, accountRepo, crypto, scope),
                 TaskSyncEngineImpl(taskRepo, accountRepo, crypto, scope),
                 ContactSyncEngineImpl(contactRepo, accountRepo, crypto, scope),
                 accountRepo,
-                scope,
                 applicationContext,
                 crypto
             )
 
             val accounts = accountRepo.getAllActive().first()
-            if (accounts.isEmpty()) return Result.success()
+            if (accounts.isEmpty()) {
+                BackgroundSyncScheduler.scheduleNextShort(applicationContext)
+                return Result.success()
+            }
 
             var failedAccounts = 0
-            for (account in accounts) {
-                val result = runCatching { syncManager.performFullSync(account) }
+            for (snapshot in accounts) {
+                val account = accountRepo.getById(snapshot.id)?.takeIf { it.isActive } ?: continue
+                val result: kotlin.Result<SyncResult> = try {
+                    kotlin.Result.success(syncManager.performFullSync(account))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    kotlin.Result.failure(e)
+                }
+                if (result.isSuccess && result.getOrNull()?.success == true) {
+                    ReminderScheduler(applicationContext, calendarRepo, accountRepo).scheduleReminders(account.id)
+                }
                 if (shouldRetrySync(result)) {
                     result.exceptionOrNull()?.let { Log.e("BackgroundSyncWorker", "Account ${account.email} sync failed", it) }
                         ?: Log.e("BackgroundSyncWorker", "Account ${account.email} sync failed: ${result.getOrNull()?.errorMessage}")
@@ -71,10 +85,13 @@ class BackgroundSyncWorker(
             }
 
             return if (failedAccounts == 0) {
+                BackgroundSyncScheduler.scheduleNextShort(applicationContext)
                 Result.success()
             } else {
                 Result.retry()
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             android.util.Log.e("BackgroundSyncWorker", "Background sync error", e)
             return Result.retry()

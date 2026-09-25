@@ -6,6 +6,7 @@ import com.unifiedcomms.data.model.AuthConfig
 import com.unifiedcomms.data.model.AuthType
 import com.unifiedcomms.data.repository.AccountRepository
 import com.unifiedcomms.security.CryptoManager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
@@ -77,6 +78,8 @@ class OAuthTokenRefresher(
                     // regardless so the returned account is always engine-safe.
                     account.copy(authConfig = crypto.encryptAuthConfig(updatedAuth))
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "token refresh error for ${account.email}", e)
                 account

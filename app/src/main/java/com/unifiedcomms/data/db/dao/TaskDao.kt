@@ -44,6 +44,9 @@ interface TaskDao {
     @Query("SELECT * FROM tasks WHERE uid = :uid AND accountId = :accountId")
     suspend fun getByUid(uid: String, accountId: String): Task?
 
+    @Query("SELECT * FROM tasks WHERE uid = :uid AND accountId = :accountId AND listId = :listId LIMIT 1")
+    suspend fun getByUidAndList(uid: String, accountId: String, listId: String): Task?
+
     @Query("SELECT * FROM tasks WHERE accountId = :accountId AND status = :status ORDER BY dueAtMs ASC")
     fun getByStatus(accountId: String, status: TaskStatus): Flow<List<Task>>
 

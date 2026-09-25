@@ -15,6 +15,7 @@ interface TaskRepository {
     suspend fun deleteById(id: String): Int
     suspend fun getById(id: String): Task?
     suspend fun getByUid(uid: String, accountId: String): Task?
+    suspend fun getByUidAndList(uid: String, accountId: String, listId: String): Task?
     fun getByList(accountId: String, listId: String): Flow<List<Task>>
     fun getActiveByAccount(accountId: String, completedStatus: TaskStatus): Flow<List<Task>>
     fun getActiveUnified(accountIds: List<String>, completedStatus: TaskStatus): Flow<List<Task>>

@@ -101,7 +101,7 @@ class SyncVerificationTest {
         )
 
         val account = existing ?: Account(
-            name = "Example Test",
+            name = "Mailcow Live Test",
             email = accountEmail,
             accountType = AccountType.GENERIC_IMAP_SMTP,
             serverConfig = serverConfig,
@@ -130,7 +130,7 @@ class SyncVerificationTest {
         val contactSync = ContactSyncEngineImpl(contactRepo, accountRepo, crypto, testScope)
         val syncManager = SyncManager(
             emailSync, calendarSync, taskSync, contactSync,
-            accountRepo, testScope, app, crypto
+            accountRepo, app, crypto
         )
 
         Log.i(TAG, "Starting full sync (timeout ~90s)...")

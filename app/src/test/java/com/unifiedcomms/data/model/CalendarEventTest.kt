@@ -1,6 +1,6 @@
 package com.unifiedcomms.data.model
 
-import kotlinx.datetime.Instant
+import com.unifiedcomms.reminder.reminderKey
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
@@ -50,6 +50,31 @@ class CalendarEventTest {
             attendees = listOf(EventAttendee(email = "alice@example.com"))
         )
         assertEquals(AttendeeStatus.NEEDS_ACTION, event.getAttendeeStatus("bob@example.com"))
+    }
+
+    @Test
+    fun `default reminder accepts configured interval`() {
+        assertEquals(15, EventReminder.Default(15).minutesBefore)
+    }
+
+    @Test
+    fun `reminder key uses the master id for an expanded occurrence`() {
+        val event = CalendarEvent(
+            id = "master#3",
+            accountId = "account",
+            calendarId = "calendar",
+            uid = "uid",
+            title = "Recurring",
+            startAt = EventDateTime.fromInstant(
+                kotlinx.datetime.Instant.fromEpochMilliseconds(1_000L),
+                TimeZone.currentSystemDefault()
+            ),
+            endAt = EventDateTime.fromInstant(
+                kotlinx.datetime.Instant.fromEpochMilliseconds(3_600_000L),
+                TimeZone.currentSystemDefault()
+            )
+        )
+        assertEquals("account|master|1000|15", reminderKey(event, 15))
     }
 
     @Test

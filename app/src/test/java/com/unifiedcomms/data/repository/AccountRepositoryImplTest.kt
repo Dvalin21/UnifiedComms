@@ -79,6 +79,12 @@ class AccountRepositoryImplTest {
     }
 
     @Test
+    fun `delete removes the account graph through the transactional dao operation`() = runTest {
+        repo.delete("account-1")
+        verify(dao).deleteAccountGraph("account-1")
+    }
+
+    @Test
     fun `default account operations delegate to dao`() = runTest {
         val account = Account.createGoogle("user@example.com")
         whenever(dao.getDefault()).thenReturn(account)

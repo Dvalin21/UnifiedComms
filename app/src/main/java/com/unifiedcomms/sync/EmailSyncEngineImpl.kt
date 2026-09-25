@@ -13,7 +13,11 @@ import com.unifiedcomms.data.model.EmailRecipients
 import com.unifiedcomms.data.model.SystemLabels
 import com.unifiedcomms.data.repository.EmailRepository
 import com.unifiedcomms.data.repository.AccountRepository
+import com.unifiedcomms.data.repository.CalendarRepository
 import com.unifiedcomms.security.CryptoManager
+import com.unifiedcomms.util.NotificationHelper
+import com.unifiedcomms.util.PreferencesManager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -22,6 +26,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.transform
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import javax.activation.CommandMap
+import javax.activation.MailcapCommandMap
 import java.util.Properties
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
@@ -32,6 +38,8 @@ import javax.mail.Folder
 import javax.mail.Message as JMailMessage
 import javax.mail.FetchProfile
 import javax.mail.Flags
+import javax.mail.Authenticator
+import javax.mail.PasswordAuthentication
 import javax.mail.Message.RecipientType
 import javax.mail.Part
 import javax.mail.Multipart
@@ -40,13 +48,37 @@ import javax.mail.internet.MimeMessage
 import javax.mail.Transport
 import javax.mail.internet.InternetAddress
 import javax.mail.internet.MimeBodyPart
+import javax.mail.search.HeaderTerm
+import javax.mail.search.OrTerm
 import kotlinx.datetime.Clock
+
+internal data class ImapMessageIdentity(val imapUid: String, val messageId: String)
+
+internal fun ensureMailMimeHandlers() {
+    val commandMap = CommandMap.getDefaultCommandMap() as? MailcapCommandMap ?: return
+    commandMap.addMailcap("text/plain;; x-java-content-handler=com.sun.mail.handlers.text_plain")
+    commandMap.addMailcap("text/html;; x-java-content-handler=com.sun.mail.handlers.text_html")
+    commandMap.addMailcap("text/calendar;; x-java-content-handler=com.sun.mail.handlers.text_plain")
+    commandMap.addMailcap("message/rfc822;; x-java-content-handler=com.sun.mail.handlers.message_rfc822")
+    commandMap.addMailcap("multipart/*;; x-java-content-handler=com.sun.mail.handlers.multipart_mixed")
+    CommandMap.setDefaultCommandMap(commandMap)
+}
+
+internal fun matchesLegacyFolderMessage(
+    row: com.unifiedcomms.data.db.dao.EmailSyncUid,
+    serverMessages: Set<ImapMessageIdentity>
+): Boolean {
+    val messageId = row.messageId?.trim().orEmpty()
+    if (messageId.isBlank()) return false
+    return serverMessages.any { it.messageId.trim() == messageId }
+}
 
 class EmailSyncEngineImpl(
     private val emailRepo: EmailRepository,
     private val accountRepo: AccountRepository,
     private val crypto: CryptoManager,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val calendarRepo: CalendarRepository? = null
 ) : EmailSyncEngine {
 
     private val _syncProgress = MutableStateFlow<Map<String, SyncProgress>>(emptyMap())
@@ -87,6 +119,7 @@ class EmailSyncEngineImpl(
                     val folder = store!!.getFolder(folderName)
                     if (!folder.exists()) {
                         Log.w("EmailSyncEngineImpl", "folder does not exist: $folderName")
+                        totalFailed++
                         continue
                     }
                     val folderResult = syncSingleFolder(account, folder)
@@ -98,6 +131,14 @@ class EmailSyncEngineImpl(
 
                 store?.close()
 
+                if (totalFailed > 0) {
+                    updateProgress(account.id, folder = null, SyncStage.ERROR, totalSynced, totalSynced)
+                    return@withContext SyncResult.failure(
+                        "$totalFailed configured folder/message operations failed",
+                        totalFailed
+                    )
+                }
+
                 updateProgress(account.id, folder = null, SyncStage.COMPLETED, totalSynced, totalSynced)
                 return@withContext SyncResult.success(
                     itemsSynced = totalSynced,
@@ -106,6 +147,8 @@ class EmailSyncEngineImpl(
                     deletedItems = deletedItems
                 )
 
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 updateProgress(account.id, folder = null, SyncStage.ERROR, 0, 0)
                 // ponytail: close the store on failure to prevent connection leak.
@@ -122,21 +165,21 @@ class EmailSyncEngineImpl(
         account: Account,
         folder: Folder
     ): Tuple4 {
-        val folderName = folder.name
+        val folderName = folder.fullName
         folder.open(Folder.READ_ONLY)
 
-        val messageCount = folder.messageCount
-        if (messageCount == 0) {
-            folder.close(false)
-            return Tuple4(0, 0, emptyList(), emptyList())
-        }
-
-        // ponytail: UID-based folder reference so reconnects don’t alias by
-        // shifting sequence numbers. Sequence-based fetching is fine for the
-        // capped initial window, but stable identity for idempotency must be
-        // obtained with UIDVALIDITY + UID.
+        // UID-based identity keeps reconnects from aliasing messages after
+        // sequence-number changes. The server's full folder name is also the
+        // local identity; JavaMail's leaf `name` breaks nested folders.
         val uidFolder = folder as? javax.mail.UIDFolder
         val serverUidValidity = uidFolder?.uidValidity?.toString()
+        val MAX_INITIAL_MESSAGES = 300
+        val startUid = if (uidFolder != null) {
+            maxOf(1L, uidFolder.uidNext - MAX_INITIAL_MESSAGES)
+        } else {
+            null
+        }
+        val messageCount = folder.messageCount
         Log.d("EmailSyncEngineImpl", "folder=$folderName total=$messageCount uidValidity=$serverUidValidity")
 
         // Root-cause guard (K-9 proven): when UIDVALIDITY changes we must drop
@@ -153,12 +196,16 @@ class EmailSyncEngineImpl(
             }
         }
 
-        val MAX_INITIAL_MESSAGES = 300
+        if (messageCount == 0) {
+            reconcileDeletedMessages(account.id, folderName, serverUidValidity, startUid, emptySet())
+            folder.close(false)
+            return Tuple4(0, 0, emptyList(), emptyList())
+        }
+
         val messages: Array<JMailMessage> = if (uidFolder != null) {
-            val uidNext = uidFolder.uidNext
-            val startUid = maxOf(1L, uidNext - MAX_INITIAL_MESSAGES)
-            val endUid = maxOf(0L, uidNext - 1)
-            if (endUid >= startUid) uidFolder.getMessagesByUID(startUid, endUid) else emptyArray()
+            val endUid = maxOf(0L, uidFolder.uidNext - 1)
+            val firstUid = startUid ?: 1L
+            if (endUid >= firstUid) uidFolder.getMessagesByUID(firstUid, endUid) else emptyArray()
         } else {
             val startIdx = maxOf(1, messageCount - MAX_INITIAL_MESSAGES + 1)
             folder.getMessages(startIdx, messageCount)
@@ -173,6 +220,8 @@ class EmailSyncEngineImpl(
         var parsedFail = 0
         val newItems = mutableListOf<String>()
         val updatedItems = mutableListOf<String>()
+        val serverUids = mutableSetOf<String>()
+        val hadLocalMessagesBeforeSync = emailRepo.getCount(account.id, folderName) > 0
         val pendingFlagUpdates = mutableListOf<Pair<Email, com.unifiedcomms.data.model.EmailFlags>>()
         val fp = FetchProfile()
         fp.add(FetchProfile.Item.ENVELOPE)
@@ -185,6 +234,33 @@ class EmailSyncEngineImpl(
         // JavaMail parse the body on demand via getContent() — text parts then
         // decode cleanly. This is the canonical JavaMail IMAP body-read path.
         folder.fetch(messages, fp)
+        val serverMessageIdentities = if (uidFolder != null) {
+            messages.mapNotNull { msg ->
+                val imapUid = uidFolder.getUID(msg).toString()
+                msg.getHeader("Message-ID")?.firstOrNull()?.trim()?.takeIf { it.isNotBlank() }
+                    ?.let { ImapMessageIdentity(imapUid, it) }
+            }.toSet()
+        } else {
+            emptySet()
+        }
+        val legacyRows = if (folder.fullName != folder.name) {
+            runCatching { emailRepo.getSyncUids(account.id, folder.name) }.getOrDefault(emptyList())
+        } else {
+            emptyList()
+        }
+        val allServerMessageIdentities = findLegacyServerMessages(
+            folder = folder,
+            uidFolder = uidFolder,
+            candidates = legacyRows,
+            known = serverMessageIdentities
+        )
+        migrateLegacyFolderNames(
+            accountId = account.id,
+            fullName = folder.fullName,
+            leafName = folder.name,
+            serverUidValidity = serverUidValidity,
+            serverMessages = allServerMessageIdentities
+        )
 
         for (msg in messages) {
             if (!folder.isOpen) break
@@ -192,8 +268,18 @@ class EmailSyncEngineImpl(
                 val messageId = msg.getHeader("Message-ID")?.firstOrNull()
                 val imapUid = uidFolder?.getUID(msg)?.toString()
                     ?: "$folderName#${msg.messageNumber}"
-                val email = parseEmail(msg, account.id, folderName, messageId, imapUid)
+                val parsedEmail = parseEmail(msg, account.id, folderName, messageId, imapUid)
+                val email = parsedEmail?.let { parsed ->
+                    val response = parsed.invite
+                    if (response?.method == com.unifiedcomms.data.model.CalendarInviteMessage.InviteMethod.REPLY) {
+                        applyCalendarResponse(account.id, response)
+                        parsed.copy(invite = null)
+                    } else {
+                        parsed
+                    }
+                }
                 if (email != null) {
+                    serverUids += imapUid
                     val stableUid = serverUidValidity ?: email.uidValidity
                     // ponytail: use the lightweight lookup (id/etag/flags only) so
                     // we never load a multi-MB bodyText into the CursorWindow —
@@ -205,14 +291,32 @@ class EmailSyncEngineImpl(
                     if (localKey == null) {
                         emailRepo.insert(email.copy(uidValidity = stableUid, imapUid = imapUid))
                         newItems.add(email.id)
+                        if (hadLocalMessagesBeforeSync && folderName.equals("INBOX", ignoreCase = true) && !email.flags.isRead &&
+                            runCatching { PreferencesManager.getInstance().getBoolean("notif_email", true) }.getOrDefault(true)
+                        ) {
+                            runCatching {
+                                val app = UnifiedCommsApplication.getInstance()
+                                NotificationHelper.showEmailNotification(
+                                    app,
+                                    account.id,
+                                    account.name,
+                                    email.sender.name ?: email.sender.email,
+                                    email.subject,
+                                    email.getSnippet(200),
+                                    email.messageId,
+                                    emailRepo.getUnreadCount(account.id, folderName)
+                                )
+                            }
+                        }
                     } else {
                         // A body can be absent/garbage on first sync yet valid on a
                         // later pass; etag/flags may be unchanged so we MUST still
                         // refresh the body. parseEmail now reliably returns a clean
                         // body, so always write it (never clobber with null).
+                        val mergedFlags = if (localKey.flags != email.flags) localKey.flags else email.flags
                         emailRepo.updateSyncMeta(
                             id = localKey.id,
-                            flags = email.flags,
+                            flags = mergedFlags,
                             labels = email.labels,
                             systemLabels = email.systemLabels,
                             etag = email.etag ?: "",
@@ -221,15 +325,15 @@ class EmailSyncEngineImpl(
                             subject = email.subject,
                             bodyText = email.bodyText,
                             bodyHtml = email.bodyHtml,
-                            preview = email.bodyText?.stripHtml()?.take(200),
-                            attachments = email.attachments
+                            preview = email.preview,
+                            attachments = email.attachments,
+                            invite = email.invite
                         )
-                        // Bidirectional flag sync: push LOCAL flag changes back to IMAP so the
-                        // server agrees with the DB. The DB row was just updated with server
-                        // flags above; here we push the LOCAL flags (user's mark-read/unread)
-                        // to the server. Deferred to post-batch pass to avoid mutating
-                        // READ_ONLY folder state mid-iteration.
-                        pendingFlagUpdates.add(email to email.flags)
+                        // Push the flags that were in Room before this server refresh.
+                        // `email` is the newly parsed server copy; passing it as both
+                        // sides made the diff always empty and silently discarded
+                        // local read/star changes.
+                        pendingFlagUpdates.add(email.copy(id = localKey.id, flags = localKey.flags) to email.flags)
 
                         updatedItems.add(localKey.id)
                     }
@@ -253,14 +357,112 @@ class EmailSyncEngineImpl(
             }
         }
         for ((local, serverFlags) in pendingFlagUpdates) {
-            applyLocalFlagsToServer(folder, local, serverFlags)
+            if (!applyLocalFlagsToServer(folder, local, serverFlags)) {
+                emailRepo.update(local.copy(needsSync = true))
+            }
+        }
+
+        if (parsedFail == 0 && totalFailed == 0) {
+            reconcileDeletedMessages(account.id, folderName, serverUidValidity, startUid, serverUids)
         }
 
         if (folder.isOpen) {
             folder.close(false)
         }
+        totalFailed += parsedFail
         Log.d("EmailSyncEngineImpl", "folder=$folderName done synced=$totalSynced failed=$totalFailed parsedFail=$parsedFail")
         return Tuple4(totalSynced, totalFailed, newItems, updatedItems)
+    }
+
+    private fun findLegacyServerMessages(
+        folder: Folder,
+        uidFolder: javax.mail.UIDFolder?,
+        candidates: List<com.unifiedcomms.data.db.dao.EmailSyncUid>,
+        known: Set<ImapMessageIdentity>
+    ): Set<ImapMessageIdentity> {
+        if (uidFolder == null) return known
+        val messageIds = candidates.mapNotNull { it.messageId?.trim()?.takeIf(String::isNotBlank) }.distinct()
+        if (messageIds.isEmpty()) return known
+        return runCatching {
+            val term = OrTerm(messageIds.map { HeaderTerm("Message-ID", it) }.toTypedArray())
+            val matches = folder.search(term)
+            if (matches.isEmpty()) return@runCatching known
+            val profile = FetchProfile().apply { add(FetchProfile.Item.ENVELOPE) }
+            folder.fetch(matches, profile)
+            val wanted = messageIds.toSet()
+            val found = matches.mapNotNull { message ->
+                val imapUid = uidFolder.getUID(message).toString()
+                message.getHeader("Message-ID")?.firstOrNull()?.trim()
+                    ?.takeIf { it in wanted }
+                    ?.let { ImapMessageIdentity(imapUid, it) }
+            }.toSet()
+            known + found
+        }.getOrElse { error ->
+            Log.w("EmailSyncEngineImpl", "legacy folder Message-ID search failed: ${error.message}")
+            known
+        }
+    }
+
+    // ponytail: rows without a Message-ID stay in the old folder; sequence-derived
+    // UIDs cannot be safely distinguished when a leaf name is shared by two folders.
+    internal suspend fun migrateLegacyFolderNames(
+        accountId: String,
+        fullName: String,
+        leafName: String,
+        serverUidValidity: String?,
+        serverMessages: Set<ImapMessageIdentity>
+    ) {
+        if (fullName == leafName || serverUidValidity.isNullOrBlank() || serverMessages.isEmpty()) return
+        val fullRows = runCatching { emailRepo.getSyncUids(accountId, fullName) }.getOrDefault(emptyList())
+        val fullIds = fullRows.map { it.id }.toSet()
+        val fullUids = fullRows.mapNotNull { it.imapUid }.toSet()
+        val fullMessageIds = fullRows.mapNotNull { it.messageId?.trim() }.toSet()
+        val legacyRows = runCatching { emailRepo.getSyncUids(accountId, leafName) }.getOrDefault(emptyList())
+        val ambiguousMessageIds = legacyRows
+            .mapNotNull { it.messageId?.trim()?.takeIf(String::isNotBlank) }
+            .groupingBy { it }
+            .eachCount()
+            .filterValues { it > 1 }
+            .keys
+        legacyRows
+            .filter { it.id !in fullIds && it.imapUid !in fullUids && it.messageId?.trim() !in fullMessageIds }
+            .filter { it.messageId?.trim() !in ambiguousMessageIds }
+            .filter { matchesLegacyFolderMessage(it, serverMessages) }
+            .forEach { key ->
+                val identity = serverMessages.firstOrNull { candidate ->
+                    candidate.messageId.trim() == key.messageId?.trim() &&
+                        (key.imapUid == candidate.imapUid || key.imapUid?.toLongOrNull() == null)
+                } ?: return@forEach
+                emailRepo.getById(key.id)?.let {
+                    emailRepo.update(
+                        it.copy(
+                            folder = fullName,
+                            uid = identity.imapUid,
+                            messageId = identity.messageId,
+                            uidValidity = serverUidValidity,
+                            imapUid = identity.imapUid
+                        )
+                    )
+                }
+            }
+    }
+
+    private suspend fun reconcileDeletedMessages(
+        accountId: String,
+        folderName: String,
+        uidValidity: String?,
+        startUid: Long?,
+        serverUids: Set<String>
+    ) {
+        if (uidValidity.isNullOrBlank() || startUid == null) return
+        runCatching { emailRepo.getSyncUids(accountId, folderName) }.getOrDefault(emptyList())
+            .filter { it.uidValidity == uidValidity }
+            .forEach { local ->
+                val uid = local.imapUid?.toLongOrNull() ?: return@forEach
+                if (uid >= startUid && uid.toString() !in serverUids) {
+                    emailRepo.deleteById(local.id)
+                }
+            }
     }
 
     private fun connectStoreWithRetry(
@@ -293,25 +495,20 @@ class EmailSyncEngineImpl(
         folder: Folder,
         local: Email,
         serverFlags: com.unifiedcomms.data.model.EmailFlags
-    ) {
+    ): Boolean {
         // Caller must open `folder` in READ_WRITE before invoking this.
-        val diff = local.flags != serverFlags
-        if (!diff) return
-        try {
-            val uidFolder = folder as? javax.mail.UIDFolder ?: return
-            val uidVal = local.imapUid?.toLongOrNull() ?: return
-            val msg = uidFolder.getMessageByUID(uidVal) ?: return
-            if (local.flags.isRead != serverFlags.isRead) {
-                msg.setFlag(Flags.Flag.SEEN, local.flags.isRead)
-            }
-            if (local.flags.isFlagged != serverFlags.isFlagged) {
-                msg.setFlag(Flags.Flag.FLAGGED, local.flags.isFlagged)
-            }
-            if (local.flags.isAnswered != serverFlags.isAnswered) {
-                msg.setFlag(Flags.Flag.ANSWERED, local.flags.isAnswered)
-            }
+        if (local.flags == serverFlags) return true
+        return try {
+            val uidFolder = folder as? javax.mail.UIDFolder ?: return false
+            val uidVal = local.imapUid?.toLongOrNull() ?: return false
+            val msg = uidFolder.getMessageByUID(uidVal) ?: return false
+            if (local.flags.isRead != serverFlags.isRead) msg.setFlag(Flags.Flag.SEEN, local.flags.isRead)
+            if (local.flags.isFlagged != serverFlags.isFlagged) msg.setFlag(Flags.Flag.FLAGGED, local.flags.isFlagged)
+            if (local.flags.isAnswered != serverFlags.isAnswered) msg.setFlag(Flags.Flag.ANSWERED, local.flags.isAnswered)
+            true
         } catch (e: Exception) {
             Log.w("EmailSyncEngineImpl", "flag sync failed uid=${local.imapUid} folder=${local.folder}: ${e.message}")
+            false
         }
     }
 
@@ -429,6 +626,35 @@ class EmailSyncEngineImpl(
         return sb.toString().trim()
     }
 
+    private suspend fun applyCalendarResponse(
+        accountId: String,
+        response: com.unifiedcomms.data.model.CalendarInviteMessage
+    ) {
+        val repo = calendarRepo ?: return
+        val existing = repo.getEventByUid(response.eventUid, accountId) ?: return
+        val coloredExisting = InviteMapper.applyInviteColor(existing, response.color)
+        val changedAttendee = response.attendees.firstOrNull {
+            it.status != com.unifiedcomms.data.model.AttendeeStatus.NEEDS_ACTION &&
+                !it.email.equals(response.organizerEmail, ignoreCase = true)
+        } ?: return
+        val updated = coloredExisting.copy(
+            attendees = coloredExisting.attendees.map { attendee ->
+                if (attendee.email.equals(changedAttendee.email, ignoreCase = true)) {
+                    attendee.copy(
+                        status = changedAttendee.status,
+                        respondedAt = kotlinx.datetime.Clock.System.now(),
+                        comment = changedAttendee.comment
+                    )
+                } else {
+                    attendee
+                }
+            },
+            updatedAt = kotlinx.datetime.Clock.System.now(),
+            needsSync = false
+        )
+        if (updated != existing) repo.updateEvent(updated)
+    }
+
     private fun parseEmail(msg: JMailMessage, accountId: String, folder: String, messageId: String?, uid: String): Email? {
         val email = try {
             val uid = uid
@@ -486,25 +712,32 @@ class EmailSyncEngineImpl(
             // BEGIN:VCALENDAR rather than relying on a separate MIME part (line 877 notes
             // text/calendar is not treated as an attachment). Parse the first VEVENT and store
             // it on the email; EmailDetailScreen renders it as an InviteCard.
-            val invite = runCatching {
+            val parsedInvite = runCatching {
                 val haystack = "${bodyText ?: ""}\n${bodyHtml ?: ""}"
                 val start = haystack.indexOf("BEGIN:VCALENDAR", ignoreCase = true)
                 if (start >= 0) {
                     val end = haystack.indexOf("END:VCALENDAR", ignoreCase = true)
                     val ics = if (end > start) haystack.substring(start, end + "END:VCALENDAR".length) else null
                     ics?.let {
+                        val method = if (ics.lineSequence().any { line -> line.trim().startsWith("METHOD:REPLY", ignoreCase = true) }) {
+                            com.unifiedcomms.data.model.CalendarInviteMessage.InviteMethod.REPLY
+                        } else {
+                            com.unifiedcomms.data.model.CalendarInviteMessage.InviteMethod.REQUEST
+                        }
                         ICalParser.parse(it, accountId, "", "invite-${uid}").events
                             .firstOrNull()
-                            ?.let { ev -> InviteMapper.toInviteMessage(ev) }
+                            ?.let { ev -> InviteMapper.toInviteMessage(ev, method) }
                     }
                 } else null
             }.getOrNull()
-            if (invite != null) android.util.Log.d("INVITE", "extracted invite uid=${invite.eventUid} title='${invite.eventTitle}' start=${invite.startAt}")
+            val isReply = parsedInvite?.method == com.unifiedcomms.data.model.CalendarInviteMessage.InviteMethod.REPLY
+            val invite = parsedInvite
+            val displayBodyText = if (isReply) bodyText?.stripCalendar() else bodyText
 
             // ponytail: strip the embedded VCALENDAR blob before storing the preview,
             // so the inbox row never shows raw "BEGIN:VCALENDAR...". getSnippet() also
             // strips defensively, but the stored value must be clean.
-            val preview = bodyText?.stripCalendar()?.stripHtml()?.take(200) ?: subject
+            val preview = displayBodyText?.stripHtml()?.take(200) ?: subject
             val flags = EmailFlags(
                 isRead = runCatching { msg.isSet(Flags.Flag.SEEN) }.getOrDefault(false),
                 isFlagged = runCatching { msg.isSet(Flags.Flag.FLAGGED) }.getOrDefault(false),
@@ -531,7 +764,7 @@ class EmailSyncEngineImpl(
                 sender = sender,
                 recipients = recipients,
                 subject = subject,
-                bodyText = bodyText,
+                bodyText = displayBodyText,
                 bodyHtml = bodyHtml,
                 preview = preview,
                 sentAt = kotlinx.datetime.Instant.fromEpochMilliseconds(sentAt),
@@ -749,6 +982,11 @@ class EmailSyncEngineImpl(
                         null to (parseRawMultipart(h).second ?: stripMimeHeaders(h))
                     } else null to h
                 }
+                part.isMimeType("text/calendar") -> {
+                    // iTIP invites are proper text/calendar parts, not inline HTML.
+                    // Preserve the decoded payload so parseEmail can build InviteCard.
+                    readText(part) to null
+                }
                 part.isMimeType("message/rfc822") -> {
                     // ponytail: a forwarded/attached email is itself a Part
                     // (MimeMessage). Recurse into it so the inline forward's body
@@ -925,8 +1163,34 @@ class EmailSyncEngineImpl(
     }
 
     override suspend fun fetchMessage(account: Account, folder: String, uid: String): Email? {
-        // Future: per-message fetch by UID
-        return null
+        return withContext(Dispatchers.IO) {
+            var store: Store? = null
+            var imapFolder: Folder? = null
+            try {
+                val numericUid = uid.toLongOrNull() ?: return@withContext null
+                val config = account.serverConfig
+                val auth = crypto.decryptAuthConfig(account.authConfig)
+                store = openImapSession(config).store
+                connectStoreWithRetry(store!!, config, auth)
+                imapFolder = store!!.getFolder(folder)
+                imapFolder!!.open(Folder.READ_ONLY)
+                val message = (imapFolder as javax.mail.UIDFolder).getMessageByUID(numericUid)
+                    ?: return@withContext null
+                parseEmail(
+                    message,
+                    account.id,
+                    imapFolder!!.fullName,
+                    message.getHeader("Message-ID")?.firstOrNull(),
+                    uid
+                )
+            } catch (e: Exception) {
+                Log.w("EmailSyncEngineImpl", "fetchMessage failed folder=$folder uid=$uid: ${e.message}")
+                null
+            } finally {
+                runCatching { imapFolder?.close(false) }
+                runCatching { store?.close() }
+            }
+        }
     }
 
     override suspend fun fetchAttachment(
@@ -938,6 +1202,11 @@ class EmailSyncEngineImpl(
         var store: javax.mail.Store? = null
         var imapFolder: javax.mail.Folder? = null
         try {
+            val maxBytes = account.syncConfig.maxAttachmentSizeMb.toLong().coerceAtLeast(1L) * 1024L * 1024L
+            if (attachment.sizeBytes > 0L && attachment.sizeBytes > maxBytes) {
+                Log.w("EmailSyncEngineImpl", "Attachment exceeds account limit: ${attachment.fileName}")
+                return@withContext null
+            }
             val config = account.serverConfig
             val auth = crypto.decryptAuthConfig(account.authConfig)
             val props = Properties().apply {
@@ -1034,30 +1303,101 @@ class EmailSyncEngineImpl(
         }
     }
 
+    private fun smtpSession(
+        config: com.unifiedcomms.data.model.ServerConfig,
+        auth: com.unifiedcomms.data.model.AuthConfig
+    ): Session {
+        ensureMailMimeHandlers()
+        val props = Properties().apply {
+            put("mail.smtp.host", config.smtpHost)
+            put("mail.smtp.port", config.smtpPort)
+            put("mail.smtp.auth", true)
+            put("mail.smtp.starttls.enable", config.smtpUseStartTls)
+            put("mail.smtp.connectiontimeout", 30000)
+            put("mail.smtp.timeout", 30000)
+        }
+        return Session.getInstance(props, object : Authenticator() {
+            override fun getPasswordAuthentication(): PasswordAuthentication {
+                return if (auth.type == com.unifiedcomms.data.model.AuthType.OAUTH2) {
+                    PasswordAuthentication(auth.username!!, buildXoauth2(auth.username!!, auth.oauthAccessToken.orEmpty()))
+                } else {
+                    PasswordAuthentication(auth.username!!, auth.passwordEncrypted!!)
+                }
+            }
+        })
+    }
+
+    private fun calendarInviteMessage(
+        session: Session,
+        sender: String,
+        recipients: List<String>,
+        event: com.unifiedcomms.data.model.CalendarEvent
+    ): MimeMessage {
+        val multipart = MimeMultipart("mixed")
+        multipart.addBodyPart(MimeBodyPart().apply {
+            setContent(
+                "<p>You are invited to ${event.title}.</p><p>Accept or decline from the UnifiedComms calendar invitation.</p>",
+                "text/html; charset=utf-8"
+            )
+        })
+        multipart.addBodyPart(MimeBodyPart().apply {
+            setContent(
+                VEventSerializer.toInvite(event),
+                "text/calendar; method=REQUEST; charset=UTF-8"
+            )
+            setHeader("Content-Class", "urn:content-classes:calendarmessage")
+        })
+        return MimeMessage(session).apply {
+            setFrom(InternetAddress(sender))
+            recipients.forEach { addRecipient(RecipientType.TO, InternetAddress(it)) }
+            subject = "Invitation: ${event.title.ifBlank { "Calendar event" }}"
+            setHeader("X-Sogo-Message-Type", "calendar:invitation")
+            setHeader("Content-Class", "urn:content-classes:calendarmessage")
+            setContent(multipart)
+        }
+    }
+
+    /** Send an RFC 5546 calendar invitation to the event's RSVP attendees. */
+    suspend fun sendCalendarInvite(account: Account, event: com.unifiedcomms.data.model.CalendarEvent): SendResult {
+        return withContext(Dispatchers.IO) {
+            try {
+                val config = account.serverConfig
+                if (config.smtpHost.isNullOrBlank()) {
+                    return@withContext SendResult.failure("SMTP is not configured for this account")
+                }
+                val recipients = event.attendees
+                    .map { it.email.trim() }
+                    .filter { it.isNotBlank() && it.contains('@') && !it.equals(account.email, ignoreCase = true) }
+                    .distinctBy { it.lowercase() }
+                if (recipients.isEmpty()) {
+                    return@withContext SendResult.failure("Event has no invite recipients")
+                }
+                val auth = crypto.decryptAuthConfig(account.authConfig)
+                val session = smtpSession(config, auth)
+                val message = calendarInviteMessage(
+                    session = session,
+                    sender = account.email,
+                    recipients = recipients,
+                    event = event
+                )
+                Transport.send(message)
+                SendResult.success(message.getHeader("Message-ID")?.firstOrNull() ?: java.util.UUID.randomUUID().toString())
+            } catch (e: Exception) {
+                Log.w("EmailSyncEngineImpl", "calendar invite send failed", e)
+                SendResult.failure(e.message ?: "Calendar invite send failed")
+            }
+        }
+    }
+
     override suspend fun sendEmail(account: Account, email: Email): SendResult {
         return withContext(Dispatchers.IO) {
             try {
                 val config = account.serverConfig
-                val auth = crypto.decryptAuthConfig(account.authConfig)
-
-                val props = Properties().apply {
-                    put("mail.smtp.host", config.smtpHost)
-                    put("mail.smtp.port", config.smtpPort)
-                    put("mail.smtp.auth", true)
-                    put("mail.smtp.starttls.enable", config.smtpUseStartTls)
-                    put("mail.smtp.connectiontimeout", 30000)
-                    put("mail.smtp.timeout", 30000)
+                if (config.smtpHost.isNullOrBlank()) {
+                    return@withContext SendResult.failure("SMTP is not configured for this account")
                 }
-
-                val session = Session.getInstance(props, object : javax.mail.Authenticator() {
-                    override fun getPasswordAuthentication(): javax.mail.PasswordAuthentication {
-                        return if (auth.type == com.unifiedcomms.data.model.AuthType.OAUTH2) {
-                            javax.mail.PasswordAuthentication(auth.username!!, buildXoauth2(auth.username!!, auth.oauthAccessToken.orEmpty()))
-                        } else {
-                            javax.mail.PasswordAuthentication(auth.username!!, auth.passwordEncrypted!!)
-                        }
-                    }
-                })
+                val auth = crypto.decryptAuthConfig(account.authConfig)
+                val session = smtpSession(config, auth)
 
                 val mimeMessage = MimeMessage(session)
                 mimeMessage.setFrom(InternetAddress(email.sender.email, email.sender.name))
@@ -1085,60 +1425,115 @@ class EmailSyncEngineImpl(
         }
     }
 
+    override suspend fun setFlags(
+        account: Account,
+        folder: String,
+        uid: String,
+        flags: com.unifiedcomms.data.model.EmailFlags
+    ): SyncResult {
+        return withContext(Dispatchers.IO) {
+            var store: Store? = null
+            var imapFolder: Folder? = null
+            try {
+                val numericUid = uid.toLongOrNull() ?: return@withContext SyncResult.failure("Invalid IMAP UID")
+                val config = account.serverConfig
+                val auth = crypto.decryptAuthConfig(account.authConfig)
+                store = openImapSession(config).store
+                connectStoreWithRetry(store!!, config, auth)
+                imapFolder = store!!.getFolder(folder)
+                if (!imapFolder!!.exists()) return@withContext SyncResult.failure("Folder not found: $folder")
+                imapFolder!!.open(Folder.READ_WRITE)
+                val message = (imapFolder as javax.mail.UIDFolder).getMessageByUID(numericUid)
+                    ?: return@withContext SyncResult.failure("Message not found")
+                message.setFlag(Flags.Flag.SEEN, flags.isRead)
+                message.setFlag(Flags.Flag.FLAGGED, flags.isFlagged)
+                message.setFlag(Flags.Flag.ANSWERED, flags.isAnswered)
+                SyncResult.success()
+            } catch (e: Exception) {
+                SyncResult.failure(e.message ?: "Flag update failed")
+            } finally {
+                runCatching { imapFolder?.close(false) }
+                runCatching { store?.close() }
+            }
+        }
+    }
+
     override suspend fun moveToFolder(account: Account, uids: List<String>, fromFolder: String, toFolder: String): SyncResult {
         return withContext(Dispatchers.IO) {
+            if (uids.isEmpty()) return@withContext SyncResult.failure("No messages selected")
+            val numericUids = uids.map { it.toLongOrNull() ?: return@withContext SyncResult.failure("Invalid IMAP UID") }
+            var store: Store? = null
+            var src: Folder? = null
+            var dst: Folder? = null
             try {
                 val config = account.serverConfig
                 val auth = crypto.decryptAuthConfig(account.authConfig)
-                val session = openImapSession(config)
-                val store = session.store
-                connectStoreWithRetry(store, config, auth)
-                val src = store.getFolder(fromFolder)
-                val dst = store.getFolder(toFolder)
-                if (!src.exists() || !dst.exists()) {
-                    store.close()
+                val activeStore = openImapSession(config).store
+                store = activeStore
+                connectStoreWithRetry(activeStore, config, auth)
+                val source = activeStore.getFolder(fromFolder)
+                val destination = activeStore.getFolder(toFolder)
+                src = source
+                dst = destination
+                if (!source.exists() || !destination.exists()) {
                     return@withContext SyncResult.failure("Folder not found: $fromFolder -> $toFolder")
                 }
-                src.open(Folder.READ_WRITE)
-                val uidFolder = src as? javax.mail.UIDFolder
-                val msgs = uids.mapNotNull { uid -> uidFolder?.getMessageByUID(uid.toLongOrNull() ?: -1L) }
-                if (msgs.isNotEmpty()) {
-                    dst.appendMessages(msgs.toTypedArray())
-                    msgs.forEach { it.setFlag(Flags.Flag.DELETED, true) }
-                    src.expunge()
+                source.open(Folder.READ_WRITE)
+                val uidFolder = source as? javax.mail.UIDFolder
+                    ?: return@withContext SyncResult.failure("IMAP UID folder is unavailable")
+                val msgs = mutableListOf<JMailMessage>()
+                numericUids.forEach { uid ->
+                    val message = uidFolder.getMessageByUID(uid)
+                        ?: return@withContext SyncResult.failure("Message not found: $uid")
+                    msgs += message
                 }
-                src.close(false)
-                store.close()
+                destination.appendMessages(msgs.toTypedArray())
+                msgs.forEach { it.setFlag(Flags.Flag.DELETED, true) }
+                source.expunge()
                 SyncResult.success(itemsSynced = msgs.size)
             } catch (e: Exception) {
                 SyncResult.failure(e.message ?: "Move failed")
+            } finally {
+                runCatching { src?.close(false) }
+                runCatching { dst?.close(false) }
+                runCatching { store?.close() }
             }
         }
     }
 
     override suspend fun deleteMessages(account: Account, folder: String, uids: List<String>): SyncResult {
         return withContext(Dispatchers.IO) {
+            if (uids.isEmpty()) return@withContext SyncResult.failure("No messages selected")
+            val numericUids = uids.map { it.toLongOrNull() ?: return@withContext SyncResult.failure("Invalid IMAP UID") }
+            var store: Store? = null
+            var target: Folder? = null
             try {
                 val config = account.serverConfig
                 val auth = crypto.decryptAuthConfig(account.authConfig)
-                val session = openImapSession(config)
-                val store = session.store
-                connectStoreWithRetry(store, config, auth)
-                val f = store.getFolder(folder)
-                if (!f.exists()) {
-                    store.close()
-                    return@withContext SyncResult.failure("Folder not found: $folder")
+                val activeStore = openImapSession(config).store
+                store = activeStore
+                connectStoreWithRetry(activeStore, config, auth)
+                val targetFolder = activeStore.getFolder(folder)
+                target = targetFolder
+                if (!targetFolder.exists()) return@withContext SyncResult.failure("Folder not found: $folder")
+                targetFolder.open(Folder.READ_WRITE)
+                val uidFolder = targetFolder as? javax.mail.UIDFolder
+                    ?: return@withContext SyncResult.failure("IMAP UID folder is unavailable")
+                val msgs = mutableListOf<JMailMessage>()
+                numericUids.forEach { uid ->
+                    val message = uidFolder.getMessageByUID(uid)
+                        ?: return@withContext SyncResult.failure("Message not found: $uid")
+                    msgs += message
                 }
-                f.open(Folder.READ_WRITE)
-                val uidFolder = f as? javax.mail.UIDFolder
-                val msgs = uids.mapNotNull { uid -> uidFolder?.getMessageByUID(uid.toLongOrNull() ?: -1L) }
                 msgs.forEach { it.setFlag(Flags.Flag.DELETED, true) }
-                f.expunge()
-                f.close(false)
-                store.close()
+                targetFolder.expunge()
+                uids.forEach { uid -> emailRepo.getByImapUid(account.id, uid, folder)?.let { emailRepo.deleteById(it.id) } }
                 SyncResult.success(itemsSynced = msgs.size)
             } catch (e: Exception) {
                 SyncResult.failure(e.message ?: "Delete failed")
+            } finally {
+                runCatching { target?.close(false) }
+                runCatching { store?.close() }
             }
         }
     }

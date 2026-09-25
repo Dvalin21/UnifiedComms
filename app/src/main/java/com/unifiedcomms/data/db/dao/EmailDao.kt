@@ -11,6 +11,7 @@ import androidx.room.RawQuery
 import androidx.sqlite.db.SupportSQLiteQuery
 import kotlinx.coroutines.flow.Flow
 import com.unifiedcomms.data.model.Attachment
+import com.unifiedcomms.data.model.CalendarInviteMessage
 import com.unifiedcomms.data.model.Email
 import com.unifiedcomms.data.model.EmailFlags
 import com.unifiedcomms.data.model.SystemLabels
@@ -23,6 +24,13 @@ data class EmailSyncKey(
     val id: String,
     val etag: String,
     val flags: EmailFlags
+)
+
+data class EmailSyncUid(
+    val id: String,
+    val imapUid: String?,
+    val uidValidity: String?,
+    val messageId: String? = null
 )
 
 @Dao
@@ -79,6 +87,9 @@ interface EmailDao {
     @Query("SELECT id, etag, flags FROM emails WHERE accountId = :accountId AND uid = :uid AND folder = :folder LIMIT 1")
     suspend fun getSyncKeyByUid(accountId: String, uid: String, folder: String): EmailSyncKey?
 
+    @Query("SELECT id, imapUid, uidValidity, messageId FROM emails WHERE accountId = :accountId AND folder = :folder")
+    suspend fun getSyncUids(accountId: String, folder: String): List<EmailSyncUid>
+
     // ponytail: targeted merge update that never reads the (possibly huge) row,
     // so it cannot overflow the CursorWindow. Body is always refreshed from the
     // freshly parsed value (parseEmail now reliably returns a clean body).
@@ -95,7 +106,8 @@ interface EmailDao {
             bodyText = :bodyText,
             bodyHtml = :bodyHtml,
             preview = :preview,
-            attachments = :attachments
+            attachments = :attachments,
+            invite = :invite
         WHERE id = :id
     """)
     suspend fun updateSyncMeta(
@@ -110,7 +122,8 @@ interface EmailDao {
         bodyText: String?,
         bodyHtml: String?,
         preview: String?,
-        attachments: List<Attachment>
+        attachments: List<Attachment>,
+        invite: CalendarInviteMessage?
     )
 
     @Query("SELECT * FROM emails WHERE threadId = :threadId ORDER BY receivedAt DESC")

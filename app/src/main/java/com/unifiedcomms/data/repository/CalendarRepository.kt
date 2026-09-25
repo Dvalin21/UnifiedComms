@@ -16,6 +16,7 @@ interface CalendarRepository {
     suspend fun deleteEventById(id: String): Int
     suspend fun getEventById(id: String): CalendarEvent?
     suspend fun getEventByUid(uid: String, accountId: String): CalendarEvent?
+    suspend fun getEventByUidAndCalendar(uid: String, accountId: String, calendarId: String): CalendarEvent?
     fun getEventsByCalendar(accountId: String, calendarId: String): Flow<List<CalendarEvent>>
     fun getAllEventsForAccount(accountId: String): Flow<List<CalendarEvent>>
     fun getUnifiedEvents(accountIds: List<String>): Flow<List<CalendarEvent>>

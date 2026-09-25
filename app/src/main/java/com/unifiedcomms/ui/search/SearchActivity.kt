@@ -1,6 +1,7 @@
 package com.unifiedcomms.ui.search
 import androidx.compose.foundation.border
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -36,6 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,13 +47,11 @@ import com.unifiedcomms.UnifiedCommsApplication
 import com.unifiedcomms.data.db.UnifiedCommsDatabase
 import com.unifiedcomms.data.model.CalendarEvent
 import com.unifiedcomms.data.model.Email
-import com.unifiedcomms.data.model.Message
 import com.unifiedcomms.data.model.Task
 import com.unifiedcomms.data.model.UnifiedContact
 import com.unifiedcomms.data.repository.CalendarRepositoryImpl
 import com.unifiedcomms.data.repository.ContactRepositoryImpl
 import com.unifiedcomms.data.repository.EmailRepositoryImpl
-import com.unifiedcomms.data.repository.MessagingRepositoryImpl
 import com.unifiedcomms.data.repository.TaskRepositoryImpl
 import com.unifiedcomms.data.repository.AccountRepositoryImpl
 import com.unifiedcomms.security.CryptoManagerImpl
@@ -65,12 +65,11 @@ data class SearchRow(
     val kind: String,
     val icon: ImageVector,
     val title: String,
-    val subtitle: String
+    val subtitle: String,
+    val id: String? = null
 )
 
 class SearchActivity : ComponentActivity() {
-
-    private val scope = CoroutineScope(Dispatchers.IO)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -80,7 +79,6 @@ class SearchActivity : ComponentActivity() {
         val calendarRepo = CalendarRepositoryImpl(db.calendarEventDao(), db.calendarDao())
         val taskRepo = TaskRepositoryImpl(db.taskDao(), db.taskListDao())
         val contactRepo = ContactRepositoryImpl(db.contactDao())
-        val msgRepo = MessagingRepositoryImpl(db.messageDao())
         val accountRepo = AccountRepositoryImpl(db.accountDao(), CryptoManagerImpl(this))
 
         setContent {
@@ -91,6 +89,22 @@ class SearchActivity : ComponentActivity() {
                 ) {
                     SearchScreen(
                         onClose = { finish() },
+                        onOpen = { row ->
+                            val route = when (row.kind) {
+                                "Email" -> row.id?.let { "email_detail/${android.net.Uri.encode(it)}" }
+                                "Calendar" -> row.id?.let { "event_detail/${android.net.Uri.encode(it)}" }
+                                "Task" -> row.id?.let { "task_detail/${android.net.Uri.encode(it)}" }
+                                "Contact" -> row.id?.let { "contact_edit/${android.net.Uri.encode(it)}" }
+                                else -> null
+                            }
+                            if (route != null) {
+                                startActivity(Intent(this, com.unifiedcomms.ui.main.MainActivity::class.java).apply {
+                                    putExtra("navigate_to", route)
+                                    addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                                })
+                                finish()
+                            }
+                        },
                         onSearch = { query ->
                             // ponytail: run each source query against the active account set, flatten results.
                             val rows = mutableListOf<SearchRow>()
@@ -99,24 +113,20 @@ class SearchActivity : ComponentActivity() {
                                 if (accountIds.isNotEmpty()) {
                                     val emails = emailRepo.searchEmails(query, accountIds, 50).first()
                                     rows += emails.map { e ->
-                                        SearchRow("Email", Icons.Default.Email, e.subject, e.sender.name ?: e.sender.email)
+                                         SearchRow("Email", Icons.Default.Email, e.subject, e.sender.name ?: e.sender.email, e.id)
                                     }
                                     val events = calendarRepo.searchEvents(query, accountIds, 50).first()
                                     rows += events.map { ev ->
-                                        SearchRow("Calendar", Icons.Default.CalendarMonth, ev.title, ev.location ?: "")
+                                         SearchRow("Calendar", Icons.Default.CalendarMonth, ev.title, ev.location ?: "", ev.id)
                                     }
                                     val tasks = taskRepo.searchTasks(query, accountIds, 50).first()
                                     rows += tasks.map { t ->
-                                        SearchRow("Task", Icons.Default.Checklist, t.title, if (t.isCompleted()) "Done" else "Open")
+                                         SearchRow("Task", Icons.Default.Checklist, t.title, if (t.isCompleted()) "Done" else "Open", t.id)
                                     }
                                 }
                                 val contacts = contactRepo.search(query, 50).first()
                                 rows += contacts.map { c ->
-                                    SearchRow("Contact", Icons.Default.Contacts, c.displayName, c.emails.firstOrNull() ?: "")
-                                }
-                                val messages = msgRepo.searchMessages(query, 50).first()
-                                rows += messages.map { m ->
-                                    SearchRow("Message", Icons.Default.Email, m.content.take(80), m.senderId)
+                                         SearchRow("Contact", Icons.Default.Contacts, c.displayName, c.emails.firstOrNull() ?: "", c.id)
                                 }
                             }
                             rows
@@ -131,11 +141,14 @@ class SearchActivity : ComponentActivity() {
 @Composable
 fun SearchScreen(
     onClose: () -> Unit,
+    onOpen: (SearchRow) -> Unit,
     onSearch: suspend (String) -> List<SearchRow>
 ) {
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<SearchRow>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
+    var searchError by remember { mutableStateOf<String?>(null) }
+    val coroutineScope = rememberCoroutineScope()
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
@@ -163,17 +176,21 @@ fun SearchScreen(
                 trailingIcon = {
                     androidx.compose.material3.TextButton(onClick = {
                         if (query.isBlank()) return@TextButton
-                        searching = true
-                        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                            val r = onSearch(query)
-                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                results = r
-                                searching = false
-                            }
+                        coroutineScope.launch {
+                            searching = true
+                            searchError = null
+                            runCatching { onSearch(query) }
+                                .onSuccess { results = it }
+                                .onFailure { searchError = it.message ?: "Search failed" }
+                            searching = false
                         }
                     }) { Text(if (searching) "..." else "Go") }
                 }
             )
+
+            searchError?.let {
+                Text(it, color = MaterialTheme.colorScheme.error)
+            }
 
             if (results.isEmpty() && query.isNotBlank() && !searching) {
                 Column(
@@ -194,7 +211,7 @@ fun SearchScreen(
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { /* future: drill into result */ }
+                            .clickable { onOpen(row) }
                             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(24.dp)),
                         shape = RoundedCornerShape(24.dp),
                         tonalElevation = 2.dp,

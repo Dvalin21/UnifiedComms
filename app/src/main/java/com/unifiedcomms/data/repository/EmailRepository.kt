@@ -1,6 +1,7 @@
 package com.unifiedcomms.data.repository
 
 import com.unifiedcomms.data.model.Attachment
+import com.unifiedcomms.data.model.CalendarInviteMessage
 import com.unifiedcomms.data.model.Email
 import com.unifiedcomms.data.model.EmailFlags
 import com.unifiedcomms.data.model.SystemLabels
@@ -20,6 +21,7 @@ interface EmailRepository {
     // never overflow the CursorWindow on large folders.
     suspend fun getSyncKeyByImapUid(accountId: String, imapUid: String, folder: String): com.unifiedcomms.data.db.dao.EmailSyncKey?
     suspend fun getSyncKeyByUid(accountId: String, uid: String, folder: String): com.unifiedcomms.data.db.dao.EmailSyncKey?
+    suspend fun getSyncUids(accountId: String, folder: String): List<com.unifiedcomms.data.db.dao.EmailSyncUid>
     // ponytail: targeted merge update that never reads the (possibly huge) row.
     suspend fun updateSyncMeta(
         id: String,
@@ -33,7 +35,8 @@ interface EmailRepository {
         bodyText: String?,
         bodyHtml: String?,
         preview: String?,
-        attachments: List<Attachment>
+        attachments: List<Attachment>,
+        invite: CalendarInviteMessage?
     )
     suspend fun getByFolderAndUidValidity(accountId: String, folder: String, uidValidity: String): List<Email>
     // ponytail: exists-check only (no bodyText) to avoid CursorWindow overflow.

@@ -83,17 +83,22 @@ data class Task(
     @TypeConverters(DateTimeConverter::class) val createdAt: Instant = Clock.System.now(),
     @TypeConverters(DateTimeConverter::class) val updatedAt: Instant = Clock.System.now(),
     @TypeConverters(DateTimeConverter::class) val lastSyncedAt: Instant = Clock.System.now(),
+    // Exact href returned by CalDAV; UID-derived href is only a fallback.
+    val serverHref: String? = null,
     val etag: String? = null,
     val isLocalOnly: Boolean = false,
     val needsSync: Boolean = false
 ) {
-    fun isOverdue(): Boolean = dueAt?.let { it.toInstant() < Clock.System.now() } ?: false
-    fun isDueToday(): Boolean = dueAt?.let {
+    fun withDueAt(value: TaskDateTime?): Task =
+        copy(dueAt = value, dueAtMs = value?.toInstant()?.toEpochMilliseconds() ?: 0L)
+
+    fun isOverdue(): Boolean = dueAt?.takeUnless { it.isEmpty() }?.let { it.toInstant() < Clock.System.now() } == true
+    fun isDueToday(): Boolean = dueAt?.takeUnless { it.isEmpty() }?.let {
         val instant = it.toInstant()
         val javaInstant = java.time.Instant.ofEpochMilli(instant.toEpochMilliseconds())
         val zoneId = ZoneId.systemDefault()
-        javaInstant.atZone(zoneId).toLocalDate() == java.time.Instant.ofEpochMilli(Clock.System.now().toEpochMilliseconds()).atZone(ZoneId.systemDefault()).toLocalDate()
-    } ?: false
+        javaInstant.atZone(zoneId).toLocalDate() == java.time.Instant.ofEpochMilli(Clock.System.now().toEpochMilliseconds()).atZone(zoneId).toLocalDate()
+    } == true
     fun isCompleted(): Boolean = status == TaskStatus.COMPLETED
     fun getProgressText(): String {
         if (hasSubtasks) return "$completedSubtaskCount/$subtaskCount"
@@ -118,9 +123,11 @@ data class TaskDateTime(
         return when {
             dateTime != null -> Instant.fromEpochMilliseconds(JLocalDateTime.parse(dateTime.toString()).atZone(zoneId).toInstant().toEpochMilli())
             date != null -> Instant.fromEpochMilliseconds(JLocalDateTime.of(JLocalDate.parse(date.toString()), JLocalTime.MIDNIGHT).atZone(zoneId).toInstant().toEpochMilli())
-            else -> Clock.System.now()
+            else -> Instant.fromEpochMilliseconds(0L)
         }
     }
+
+    fun isEmpty(): Boolean = dateTime == null && date == null
 
     companion object {
         fun fromInstant(instant: Instant, tz: TimeZone = TimeZone.currentSystemDefault(), hasTime: Boolean = true): TaskDateTime {

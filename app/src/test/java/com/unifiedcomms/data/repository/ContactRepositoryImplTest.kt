@@ -37,7 +37,7 @@ class ContactRepositoryImplTest {
         val contacts = listOf(
             UnifiedContact(id = "1", displayName = "Alice", emails = listOf("alice@example.com"))
         )
-        whenever(dao.search("Alice", 10)).thenReturn(flowOf(contacts))
+        whenever(dao.search("%Alice%", 10)).thenReturn(flowOf(contacts))
         val result = repo.search("Alice", 10).first()
         assertEquals(contacts, result)
     }

@@ -5,6 +5,7 @@ import com.unifiedcomms.data.model.AttendeeStatus
 import com.unifiedcomms.data.model.CalendarEvent
 import com.unifiedcomms.data.model.CalendarInviteMessage
 import com.unifiedcomms.data.model.EventAttendee
+import com.unifiedcomms.data.model.EventColor
 import com.unifiedcomms.data.model.EventDateTime
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
@@ -35,6 +36,7 @@ object InviteMapper {
             timezone = tz,
             location = event.location,
             recurrenceRule = event.recurrenceRule,
+            color = event.color.takeIf { it.isExplicit }?.copy(calendarId = null),
             attendees = event.attendees.map { it.copy(email = sanitize(it.email)) },
             responseRequested = true,
             sequence = event.sequence,
@@ -65,6 +67,7 @@ object InviteMapper {
                 a.copy(email = sanitize(a.email), status = a.status ?: AttendeeStatus.NEEDS_ACTION)
             },
             recurrenceRule = invite.recurrenceRule,
+            color = invite.color ?: EventColor.Default(),
             sequence = invite.sequence,
             // ponytail: an event created from an email invite is local-first. Mark it
             // isLocalOnly so the CalDAV down-sync delete-pass (which prunes local
@@ -73,6 +76,16 @@ object InviteMapper {
             isLocalOnly = true,
             needsSync = true
         )
+    }
+
+    /**
+     * Carry a creator-supplied invite color onto an event already discovered by CalDAV.
+     * A collection fallback is not user data, so an explicit invite color may replace it;
+     * an existing explicit color remains authoritative after a local edit.
+     */
+    fun applyInviteColor(event: CalendarEvent, inviteColor: EventColor?): CalendarEvent {
+        if (inviteColor?.isExplicit != true || event.color.isExplicit) return event
+        return event.copy(color = inviteColor.copy(calendarId = event.color.calendarId))
     }
 
     /** True when the invite has not yet been added to the user's calendar. */

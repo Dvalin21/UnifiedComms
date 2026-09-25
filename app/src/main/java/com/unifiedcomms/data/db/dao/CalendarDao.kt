@@ -44,6 +44,9 @@ interface CalendarEventDao {
     @Query("SELECT * FROM calendar_events WHERE uid = :uid AND accountId = :accountId")
     suspend fun getByUid(uid: String, accountId: String): CalendarEvent?
 
+    @Query("SELECT * FROM calendar_events WHERE uid = :uid AND accountId = :accountId AND calendarId = :calendarId LIMIT 1")
+    suspend fun getByUidAndCalendar(uid: String, accountId: String, calendarId: String): CalendarEvent?
+
     @Query("SELECT * FROM calendar_events WHERE accountId = :accountId AND calendarId = :calendarId ORDER BY startAt ASC")
     fun getByCalendar(accountId: String, calendarId: String): Flow<List<CalendarEvent>>
 

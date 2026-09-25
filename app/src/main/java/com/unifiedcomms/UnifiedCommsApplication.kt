@@ -51,8 +51,13 @@ class UnifiedCommsApplication : Application() {
 
         initializeNotificationChannels()
         DemoDataSeeder.seedIfNeeded(this, mainCoroutineScope)
-        val intervalMin = com.unifiedcomms.util.PreferencesManager.getInstance().getSyncIntervalMinutes(15).toLong()
-        com.unifiedcomms.sync.BackgroundSyncScheduler.schedule(this, intervalMin)
+        val prefs = PreferencesManager.getInstance()
+        com.unifiedcomms.sync.BackgroundSyncScheduler.schedule(
+            this,
+            prefs.getSyncIntervalMinutes(15).toLong(),
+            autoSync = prefs.getBoolean("auto_sync", true),
+            wifiOnly = prefs.getBoolean("sync_wifi_only", false)
+        )
     }
 
     private fun initializeNotificationChannels() {

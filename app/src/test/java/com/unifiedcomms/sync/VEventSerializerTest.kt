@@ -1,6 +1,9 @@
 package com.unifiedcomms.sync
 
+import com.unifiedcomms.data.model.AttendeeStatus
 import com.unifiedcomms.data.model.CalendarEvent
+import com.unifiedcomms.data.model.EventAttendee
+import com.unifiedcomms.data.model.EventColor
 import com.unifiedcomms.data.model.EventDateTime
 import com.unifiedcomms.data.model.EventStatus
 import junit.framework.TestCase.assertFalse
@@ -59,6 +62,60 @@ class VEventSerializerTest {
     fun hrefMatchesDownloadConvention() {
         val href = VEventSerializer.hrefFor(timedEvent("evt-3", "UTC"))
         assertEquals("/caldav/user/cal-work/evt-3.ics", href)
+    }
+
+    @Test
+    fun usesServerHrefWhenPresent() {
+        val event = timedEvent("evt-3", "UTC").copy(serverHref = "/caldav/user/cal-work/server-renamed.ics")
+        assertEquals("/caldav/user/cal-work/server-renamed.ics", VEventSerializer.hrefFor(event))
+    }
+
+    @Test
+    fun serializesOrganizerAttendeesAndItipMethod() {
+        val event = timedEvent("evt-invite", "UTC").copy(
+            organizer = EventAttendee("organizer@example.com", "Organizer"),
+            attendees = listOf(EventAttendee("guest@example.com", "Guest"))
+        )
+
+        val request = VEventSerializer.toInvite(event)
+        assertTrue(request.contains("METHOD:REQUEST"))
+        assertTrue(request.contains("ORGANIZER;CN=\"Organizer\":mailto:organizer@example.com"))
+        assertTrue(request.contains("ATTENDEE;CN=\"Guest\";ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:guest@example.com"))
+
+        val reply = VEventSerializer.toReply(
+            event.copy(attendees = listOf(EventAttendee("guest@example.com", status = AttendeeStatus.ACCEPTED))),
+            "guest@example.com",
+            AttendeeStatus.ACCEPTED
+        )
+        assertTrue(reply.contains("METHOD:REPLY"))
+        assertTrue(reply.contains("PARTSTAT=ACCEPTED"))
+    }
+
+    @Test
+    fun explicitEventColorIsWrittenButCollectionFallbackIsNot() {
+        val event = timedEvent("evt-color", "UTC")
+        val explicitIcal = VEventSerializer.toInvite(event)
+        assertTrue(explicitIcal.contains("COLOR:dodgerblue"))
+        assertTrue(explicitIcal.contains("X-APPLE-COLOR:#2196F3"))
+
+        val inherited = event.copy(
+            color = EventColor.fromCalendar("#AAAAAAFF", "#FFFFFF", "/calendar/")
+        )
+        val inheritedIcal = VEventSerializer.toInvite(inherited)
+        assertFalse("collection fallback must not become an event override", inheritedIcal.contains("COLOR:"))
+        assertFalse("collection fallback must not become an Apple event override", inheritedIcal.contains("X-APPLE-COLOR:"))
+    }
+
+    @Test
+    fun itipUsesRfc5545CrlfLineEndings() {
+        val event = timedEvent("evt-crlf", "UTC").copy(
+            organizer = EventAttendee("organizer@example.com", "Organizer"),
+            attendees = listOf(EventAttendee("guest@example.com", "Guest"))
+        )
+        val request = VEventSerializer.toInvite(event)
+
+        assertTrue("iTIP content must use CRLF separators", request.contains("\r\n"))
+        assertFalse("iTIP content must not contain bare LF separators", request.replace("\r\n", "").contains("\n"))
     }
 
     @Test

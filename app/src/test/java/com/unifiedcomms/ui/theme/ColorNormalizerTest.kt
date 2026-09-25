@@ -46,6 +46,14 @@ class ColorNormalizerTest {
     }
 
     @Test
+    fun css3NamesRoundTripAndCustomColorsUseNearestName() {
+        assertEquals("tomato", ColorNormalizer.toCss3Name("tomato"))
+        assertEquals("red", ColorNormalizer.toCss3Name("#FF0000"))
+        assertEquals("dodgerblue", ColorNormalizer.toCss3Name("#2196F3"))
+        assertEquals(null, ColorNormalizer.toCss3Name("not-a-real-color"))
+    }
+
+    @Test
     fun unknownColorIsNotRenderable() {
         // A genuinely unknown string must not resolve to a real hex (so the UI
         // keeps its safe blue fallback instead of painting black/#000000).

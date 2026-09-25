@@ -2,6 +2,7 @@ package com.unifiedcomms.data.repository
 
 import com.unifiedcomms.data.db.dao.EmailDao
 import com.unifiedcomms.data.model.Attachment
+import com.unifiedcomms.data.model.CalendarInviteMessage
 import com.unifiedcomms.data.model.Email
 import com.unifiedcomms.data.model.EmailFlags
 import com.unifiedcomms.data.model.SystemLabels
@@ -36,6 +37,9 @@ class EmailRepositoryImpl(private val dao: EmailDao) : EmailRepository {
     override suspend fun getSyncKeyByUid(accountId: String, uid: String, folder: String): com.unifiedcomms.data.db.dao.EmailSyncKey? =
         dao.getSyncKeyByUid(accountId, uid, folder)
 
+    override suspend fun getSyncUids(accountId: String, folder: String): List<com.unifiedcomms.data.db.dao.EmailSyncUid> =
+        dao.getSyncUids(accountId, folder)
+
     override suspend fun updateSyncMeta(
         id: String,
         flags: EmailFlags,
@@ -48,8 +52,9 @@ class EmailRepositoryImpl(private val dao: EmailDao) : EmailRepository {
         bodyText: String?,
         bodyHtml: String?,
         preview: String?,
-        attachments: List<Attachment>
-    ) = dao.updateSyncMeta(id, flags, labels, systemLabels, etag, updatedAt, messageId, subject, bodyText, bodyHtml, preview, attachments)
+        attachments: List<Attachment>,
+        invite: CalendarInviteMessage?
+    ) = dao.updateSyncMeta(id, flags, labels, systemLabels, etag, updatedAt, messageId, subject, bodyText, bodyHtml, preview, attachments, invite)
 
     override suspend fun getByFolderAndUidValidity(accountId: String, folder: String, uidValidity: String): List<Email> =
         dao.getByFolderAndUidValidity(accountId, folder, uidValidity)

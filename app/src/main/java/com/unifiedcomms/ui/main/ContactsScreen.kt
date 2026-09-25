@@ -136,7 +136,9 @@ fun ContactEditScreen(
 ) {
     val scope = rememberCoroutineScope()
     val accounts by viewModel.accounts.collectAsStateWithLifecycle(initialValue = emptyList())
-    val activeAccounts = accounts.filter { it.isActive }
+    val activeAccounts = accounts.filter {
+        it.isActive && it.syncConfig.syncContacts && !it.serverConfig.carddavUrl.isNullOrBlank()
+    }
 
     // ponytail: load existing contact once if editing.
     var existing by remember { mutableStateOf<UnifiedContact?>(null) }

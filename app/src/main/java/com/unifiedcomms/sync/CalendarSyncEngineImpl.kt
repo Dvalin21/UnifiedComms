@@ -5,10 +5,13 @@ import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.model.Calendar
 import com.unifiedcomms.data.model.CalendarEvent
 import com.unifiedcomms.data.model.EventColor
+import com.unifiedcomms.data.model.EventReminder
 import com.unifiedcomms.data.model.EventStatus
 import com.unifiedcomms.data.repository.AccountRepository
 import com.unifiedcomms.data.repository.CalendarRepository
 import com.unifiedcomms.security.CryptoManager
+import com.unifiedcomms.util.PreferencesManager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -31,6 +34,57 @@ import javax.mail.Session
 import javax.mail.Transport
 import javax.mail.internet.InternetAddress
 import javax.mail.internet.MimeMessage
+import javax.mail.internet.MimeMultipart
+import javax.mail.internet.MimeBodyPart
+
+/**
+ * Resolve a server event color without destroying a known event-specific color.
+ * A collection color is a fallback only; an explicit local/user color wins when
+ * the server resource has no per-event COLOR property.
+ */
+internal fun resolveCalendarEventColor(
+    parsedColor: EventColor,
+    collectionColor: String,
+    collectionPath: String,
+    existingColor: EventColor?
+): EventColor {
+    val path = collectionPath.takeIf { it.isNotBlank() }
+    if (parsedColor.isExplicit) return parsedColor.copy(calendarId = path)
+    if (existingColor != null && existingColor.isExplicit &&
+        !sameColor(existingColor.background, collectionColor)
+    ) {
+        return existingColor.copy(calendarId = path)
+    }
+    if (collectionColor.isNotBlank()) {
+        val normalized = com.unifiedcomms.ui.theme.ColorNormalizer.normalize(collectionColor)
+        val rgb = normalized.removePrefix("#").toLongOrNull(16) ?: 0L
+        val luminance = 0.299 * ((rgb shr 16) and 0xFF) +
+            0.587 * ((rgb shr 8) and 0xFF) +
+            0.114 * (rgb and 0xFF)
+        return EventColor.fromCalendar(
+            collectionColor,
+            if (luminance > 150) "#000000" else "#FFFFFF",
+            collectionPath
+        )
+    }
+    return existingColor?.copy(calendarId = path) ?: parsedColor.copy(calendarId = path)
+}
+
+private fun sameColor(left: String, right: String): Boolean {
+    if (right.isBlank()) return false
+    val a = com.unifiedcomms.ui.theme.ColorNormalizer.normalize(left)
+    val b = com.unifiedcomms.ui.theme.ColorNormalizer.normalize(right)
+    return a.isNotEmpty() && a.equals(b, ignoreCase = true)
+}
+
+private fun eventIntersectsSyncWindow(event: CalendarEvent, startMs: Long, endMs: Long): Boolean {
+    if (event.status == EventStatus.CANCELLED) return false
+    if (event.startAtMs in startMs..endMs) return true
+    if (event.recurrenceRule == null) return false
+    return RecurrenceExpander.expand(event, startMs, endMs).any {
+        it.status != EventStatus.CANCELLED && it.startAtMs in startMs..endMs
+    }
+}
 
 class CalendarSyncEngineImpl(
     private val calendarRepo: CalendarRepository,
@@ -50,6 +104,10 @@ class CalendarSyncEngineImpl(
                 val auth = crypto.decryptAuthConfig(account.authConfig)
                 val client = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build()
                 val calDav = newCalDav(url, auth, client)
+                val defaultReminderMinutes = runCatching {
+                    PreferencesManager.getInstance().getDefaultReminderMinutes()
+                }.getOrDefault(60)
+                val defaultReminders = listOf(EventReminder.Default(defaultReminderMinutes))
 
                 val allCalendars = calDav.discoverCalendars()
                 updateProgress(account.id, null, SyncStage.LISTING_FOLDERS, 0, allCalendars.size)
@@ -57,6 +115,14 @@ class CalendarSyncEngineImpl(
                     Log.w("CalendarSyncEngineImpl", "No calendars discovered for ${account.email}")
                     return@withContext SyncResult.failure("No calendars discovered (check CalDAV URL / app-password)")
                 }
+
+                val syncNow = System.currentTimeMillis()
+                val syncStart = syncNow - account.syncConfig.syncPastDays.coerceAtLeast(0).toLong() * 86_400_000L
+                val syncEnd = syncNow + account.syncConfig.syncFutureDays.coerceAtLeast(0).toLong() * 86_400_000L
+                Log.i(
+                    "CalendarSyncEngineImpl",
+                    "calendar sync window pastDays=${account.syncConfig.syncPastDays} futureDays=${account.syncConfig.syncFutureDays}"
+                )
 
                 // ponytail: persist discovered calendars into the local `calendars`
                 // table. Without this the table stays EMPTY, and any code path that
@@ -73,7 +139,7 @@ class CalendarSyncEngineImpl(
                                 accountId = account.id,
                                 serverId = cal.path,
                                 name = cal.displayName.ifBlank { "Calendar" },
-                                color = if (cal.color.isNotBlank()) EventColor(cal.color, "#FFFFFF") else EventColor.Default(),
+                                color = if (cal.color.isNotBlank()) EventColor.fromCalendar(cal.color, "#FFFFFF", cal.path) else EventColor.Default(),
                                 isPrimary = allCalendars.indexOf(cal) == 0,
                                 isSelected = true,
                                 timeZone = java.time.ZoneId.systemDefault().id
@@ -82,7 +148,8 @@ class CalendarSyncEngineImpl(
                     }
                 }
 
-                val localEvents = calendarRepo.getAllEventsForAccount(account.id).first()
+                var localEvents = calendarRepo.getAllEventsForAccount(account.id).first().toMutableList()
+                val pushedHrefs = mutableSetOf<String>()
 
                 // Push offline edits before down-sync. Otherwise a server copy fetched
                 // later in this same pass overwrites the user's pending local change.
@@ -95,84 +162,79 @@ class CalendarSyncEngineImpl(
                     }
                     if (calendarPath.isNullOrBlank()) continue
                     val pushEvent = pending.copy(calendarId = calendarPath)
-                    val etag = calDav.putResource(VEventSerializer.hrefFor(pushEvent), VEventSerializer.toVevent(pushEvent))
+                    val href = VEventSerializer.hrefFor(pushEvent)
+                    val etag = calDav.putResource(href, VEventSerializer.toVevent(pushEvent), ifMatch = pushEvent.etag)
                         ?: return@withContext SyncResult.failure("Calendar write failed for ${pending.uid}")
-                    calendarRepo.updateEvent(
-                        pushEvent.copy(etag = etag, isLocalOnly = false, needsSync = false)
+                    val stored = pushEvent.copy(
+                        serverHref = href,
+                        etag = etag,
+                        isLocalOnly = false,
+                        needsSync = false
                     )
+                    calendarRepo.updateEvent(stored)
+                    val index = localEvents.indexOfFirst { it.id == stored.id }
+                    if (index >= 0) localEvents[index] = stored else localEvents += stored
+                    pushedHrefs += pathOf(href)
                 }
 
-                // ponytail: key the local cache by NORMALIZED SERVER PATH (the .ics
-                // href), not by UID. The fetch/dedup filter below compares against the
-                // server href too, so the two sides must use the same key. Keying by
-                // UID-from-href only matched when the server stored the object as
-                // $UID.ics AND returned a relative href — for any other server layout
-                // every event looked "new" each sync (dupe-storm) and the delete pass
-                // couldn't match either.
+                // Key the local cache by the exact server href when available. A
+                // UID-derived path is only a fallback for local/legacy rows.
                 val localEventByPath = localEvents.associateBy { pathOf(VEventSerializer.hrefFor(it)) }
 
-                val masterServerHrefs = mutableSetOf<String>()
                 val masterServerPaths = mutableSetOf<String>()
                 var eventsImported = 0
+                var itemFailures = 0
                 val newItems = mutableListOf<String>()
                 val updatedItems = mutableListOf<String>()
 
                 for (cal in allCalendars) {
-                    val etagEntries = calDav.getETagList(cal.path).getOrElse {
+                    val etagEntries = calDav.getEventETagList(cal.path, syncStart, syncEnd).getOrElse {
                         return@withContext SyncResult.failure(it.message ?: "Calendar collection listing failed")
                     }
-                    masterServerHrefs.addAll(etagEntries.map { localEt -> localEt.href })
                     masterServerPaths.addAll(etagEntries.map { localEt -> pathOf(localEt.href) })
                     val toFetch = etagEntries.filter { entry ->
-                        val local = localEventByPath[pathOf(entry.href)]
-                        // ponytail: re-fetch when (a) the event is new, (b) the server
-                        // etag changed, OR (c) the local copy is still on the default
-                        // blue but the calendar has a real color — the first sync
-                        // stored default-blue because the collection color wasn't
-                        // captured yet. This one-time recolor pass repaints
-                        // existing events to their creation color.
-                        local == null || local.etag != entry.etag ||
-                            (local.color == com.unifiedcomms.data.model.EventColor.Default() && cal.color.isNotBlank())
+                        val path = pathOf(entry.href)
+                        val local = localEventByPath[path]
+                        // Re-fetch when new or changed, except for a resource
+                        // pushed earlier in this pass: a missing ETag response
+                        // must not restore stale server content.
+                        ((local == null || local.etag != entry.etag ||
+                            (local.color.calendarId != cal.path && cal.color.isNotBlank())) && path !in pushedHrefs)
                     }.map { it.href }
 
                     coroutineScope {
                         toFetch.chunked(6).forEach { batch ->
                             val fetched = batch.map { href -> async { calDav.fetchItem(account.id, href) } }.awaitAll()
                             for (res in fetched) {
-                                if (res == null) continue
+                                if (res == null) {
+                                    itemFailures++
+                                    continue
+                                }
                                 val parsed = ICalParser.parse(res.ical, account.id, cal.path, res.href, defaultColor = cal.color)
                                 for (event in parsed.events) {
-                                    val existing = calendarRepo.getEventByUid(event.uid, account.id)
-                                    // ponytail: server/database is the source of truth for the
-                                    // creation color. Prefer the event's own COLOR, then the
-                                    // calendar collection color (SOGo/mailcow store it there),
-                                    // then whatever we already had locally. Never keep a stale
-                                    // default-blue when the server now sends a real color.
-                                    val resolvedColor = when {
-                                        event.color != com.unifiedcomms.data.model.EventColor.Default() -> event.color
-                                        cal.color.isNotBlank() -> {
-                                            val fg = runCatching {
-                                                val rgb = cal.color.removePrefix("#").toLongOrNull(16) ?: 0L
-                                                val lum = 0.299 * ((rgb shr 16) and 0xFF) +
-                                                        0.587 * ((rgb shr 8) and 0xFF) +
-                                                        0.114 * (rgb and 0xFF)
-                                                if (lum > 150) "#000000" else "#FFFFFF"
-                                            }.getOrElse { "#FFFFFF" }
-                                            com.unifiedcomms.data.model.EventColor(cal.color, fg)
-                                        }
-                                        else -> existing?.color ?: event.color
-                                    }
+                                    val existing = localEventByPath[pathOf(res.href)]
+                                        ?: calendarRepo.getEventByUid(event.uid, account.id)
+                                    val resolvedColor = resolveCalendarEventColor(
+                                        parsedColor = event.color,
+                                        collectionColor = cal.color,
+                                        collectionPath = cal.path,
+                                        existingColor = existing?.color
+                                    )
+                                    val entry = etagEntries.firstOrNull { pathOf(it.href) == pathOf(res.href) }
                                     val updated = event.copy(
                                         id = existing?.id ?: event.id,
-                                        // ponytail: calendarId = the collection path (cal.path),
-                                        // the same value a locally-created event uses in
-                                        // createEvent. Previously this stored the full item href,
-                                        // so a local event's calendarId (a path) never matched the
-                                        // server href set and got deleted on the next down-sync.
                                         calendarId = cal.path,
-                                        etag = res.etag,
+                                        serverHref = res.href,
+                                        etag = res.etag.takeIf { it.isNotBlank() } ?: entry?.etag.orEmpty(),
                                         color = resolvedColor,
-                                        attendees = existing?.let { if (it.attendees.isNotEmpty()) it.attendees else event.attendees } ?: event.attendees
+
+                                         attendees = if (existing?.needsSync == true || existing?.isLocalOnly == true) {
+                                             existing.attendees
+                                         } else {
+                                             event.attendees
+                                         },
+                                         reminders = existing?.reminders ?: defaultReminders
+
                                     )
                                     if (existing == null) {
                                         calendarRepo.insertEvent(updated)
@@ -181,6 +243,8 @@ class CalendarSyncEngineImpl(
                                         calendarRepo.updateEvent(updated)
                                         updatedItems.add(updated.id)
                                     }
+                                    val localIndex = localEvents.indexOfFirst { it.id == updated.id }
+                                    if (localIndex >= 0) localEvents[localIndex] = updated else localEvents += updated
                                     eventsImported++
                                 }
                             }
@@ -188,22 +252,30 @@ class CalendarSyncEngineImpl(
                     }
                 }
 
+                if (itemFailures > 0) {
+                    updateProgress(account.id, null, SyncStage.ERROR, eventsImported, eventsImported)
+                    return@withContext SyncResult.failure("$itemFailures calendar items could not be fetched", itemFailures)
+                }
+
                 for (event in localEvents) {
-                    // ponytail: never delete locally-created events during a server down-sync.
-                    if (event.isLocalOnly) continue
-                    // Compare by the event's expected server href (path-normalized), NOT by raw
-                    // calendarId string. The server may return relative hrefs while cal.path is a
-                    // full URL (or vice-versa); a raw string compare deleted every downloaded
-                    // event on the next sync. Path-normalizing both sides makes the membership
-                    // check correct regardless of URL form.
+                    // Never delete a local-only event, and never delete an event that
+                    // was just successfully pushed before the listing snapshot. The
+                    // filtered REPORT is authoritative only inside the sync window;
+                    // retain older local history rather than deleting it just because
+                    // it was outside this request.
+                    if (event.isLocalOnly || !eventIntersectsSyncWindow(event, syncStart, syncEnd)) continue
                     val expectedHref = pathOf(VEventSerializer.hrefFor(event))
-                    if (expectedHref.isNotBlank() && masterServerPaths.none { pathOf(it) == expectedHref }) {
+                    if (expectedHref.isNotBlank() && expectedHref !in pushedHrefs &&
+                        masterServerPaths.none { pathOf(it) == expectedHref }
+                    ) {
                         calendarRepo.deleteEvent(event)
                     }
                 }
 
                 updateProgress(account.id, null, SyncStage.COMPLETED, eventsImported, eventsImported)
                 SyncResult.success(eventsImported, newItems, updatedItems)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e("CalendarSyncEngineImpl", "sync failed for ${account.email}: ${e.message}", e)
                 updateProgress(account.id, null, SyncStage.ERROR, 0, 0)
@@ -229,7 +301,9 @@ class CalendarSyncEngineImpl(
             val etagEntries = dav.getETagList(calendarId).getOrElse { return@withContext null }
             etagEntries.firstOrNull { entry -> entry.href.contains(uid, true) }?.let { entry ->
                 val fetched = dav.fetchItem(account.id, entry.href) ?: return@withContext null
-                ICalParser.parse(fetched.ical, account.id, calendarId, entry.href).events.firstOrNull()
+                ICalParser.parse(fetched.ical, account.id, calendarId, entry.href)
+                    .events.firstOrNull()
+                    ?.copy(etag = entry.etag)
             }
         }
     }
@@ -244,11 +318,18 @@ class CalendarSyncEngineImpl(
             val ical = VEventSerializer.toVevent(event)
             val etag = client.putResource(href, ical)
                 ?: return com.unifiedcomms.sync.CreateResult.failure("Calendar server write failed")
-            // ponytail: persist local copy with the server etag so the next down-sync
-            // sees a matching etag and does not re-fetch/duplicate.
-            val stored = event.copy(etag = etag, needsSync = false, isLocalOnly = false)
+            // Persist the exact href used for the PUT so reconciliation and later
+            // updates do not assume that the server renamed the resource to UID.ics.
+            val stored = event.copy(
+                serverHref = href,
+                etag = etag,
+                needsSync = false,
+                isLocalOnly = false
+            )
             calendarRepo.insertEvent(stored)
             com.unifiedcomms.sync.CreateResult.success(stored.id, stored.uid, etag)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             com.unifiedcomms.sync.CreateResult.failure(e.message ?: "Calendar create failed")
         }
@@ -256,37 +337,59 @@ class CalendarSyncEngineImpl(
 
     override suspend fun updateEvent(account: Account, event: CalendarEvent): SyncResult {
         return try {
-            if (!isDavCollectionPath(event.calendarId)) {
+            val stored = calendarRepo.getEventById(event.id)
+                ?: calendarRepo.getEventByUid(event.uid, account.id)
+            val candidate = if (stored == null) event else event.copy(
+                id = stored.id,
+                calendarId = if (isDavCollectionPath(event.calendarId)) event.calendarId else stored.calendarId,
+                serverHref = event.serverHref ?: stored.serverHref,
+                etag = event.etag ?: stored.etag
+            )
+            if (!isDavCollectionPath(candidate.calendarId)) {
                 return SyncResult.failure("No calendar collection path")
             }
             val client = clientFor(account)
-            val href = VEventSerializer.hrefFor(event)
-            val ical = VEventSerializer.toVevent(event)
-            val etag = client.putResource(href, ical)
+            val href = VEventSerializer.hrefFor(candidate)
+            val ical = VEventSerializer.toVevent(candidate)
+            val etag = client.putResource(href, ical, ifMatch = candidate.etag)
                 ?: return SyncResult.failure("Calendar server update failed")
-            calendarRepo.updateEvent(event.copy(etag = etag, needsSync = false))
+            calendarRepo.updateEvent(
+                candidate.copy(
+                    serverHref = href,
+                    etag = etag,
+                    isLocalOnly = false,
+                    needsSync = false
+                )
+            )
             SyncResult.success()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             SyncResult.failure(e.message ?: "Calendar update failed")
         }
     }
 
     override suspend fun deleteEvent(account: Account, calendarId: String, uid: String): SyncResult {
-        // ponytail: delete both server object (if any) and local row. Server 404 is
-        // treated as success (already gone). A local-only event has no server object.
-        // Normalize the href the same way createEvent's hrefFor does (single slash)
-        // to avoid double-slash paths that servers may not resolve.
         return try {
-            if (!isDavCollectionPath(calendarId)) return SyncResult.failure("No calendar collection path")
-            val cal = calendarId.trimEnd('/')
-            val href = "$cal/$uid.ics"
-            val local = calendarRepo.getEventByUid(uid, account.id)
-            if (local != null && !local.isLocalOnly) {
-                val client = clientFor(account)
-                if (!client.deleteResource(href)) return SyncResult.failure("Calendar server delete failed")
+            val local = calendarRepo.getEventByUidAndCalendar(uid, account.id, calendarId)
+                ?: calendarRepo.getEventByUid(uid, account.id)
+            if (local?.isLocalOnly == true) {
+                calendarRepo.deleteEvent(local)
+                return SyncResult.success()
             }
-            calendarRepo.getEventByUid(uid, account.id)?.let { calendarRepo.deleteEvent(it) }
+            val collection = local?.calendarId?.takeIf { isDavCollectionPath(it) } ?: calendarId
+            if (!isDavCollectionPath(collection)) return SyncResult.failure("No calendar collection path")
+            val href = local?.serverHref?.trim()?.takeIf { it.isNotBlank() }
+                ?: "${collection.trimEnd('/')}/$uid.ics"
+            if (local == null || !local.isLocalOnly) {
+                if (!clientFor(account).deleteResource(href)) {
+                    return SyncResult.failure("Calendar server delete failed")
+                }
+            }
+            local?.let { calendarRepo.deleteEvent(it) }
             SyncResult.success()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             SyncResult.failure(e.message ?: "Calendar delete failed")
         }
@@ -316,6 +419,7 @@ class CalendarSyncEngineImpl(
                     com.unifiedcomms.data.model.AttendeeStatus.DECLINED -> EventStatus.CANCELLED
                     else -> EventStatus.CONFIRMED
                 },
+                isCancelled = status == com.unifiedcomms.data.model.AttendeeStatus.DECLINED,
                 needsSync = true,
                 updatedAt = kotlinx.datetime.Clock.System.now()
             )
@@ -325,11 +429,18 @@ class CalendarSyncEngineImpl(
                 return calDavResult
             }
 
-            // Attempt iTIP reply to organizer. This is best-effort: protocol support/errors
-            // must not block the local/CalDAV status update.
-            runCatching { sendReplyMail(account, updated, status, comment) }
+            try {
+                sendReplyMail(account, updated, status, comment)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w("CalendarSyncEngineImpl", "RSVP reply email failed for ${event.uid}", e)
+                return SyncResult.failure("Calendar updated, but RSVP email failed: ${e.message ?: "SMTP error"}")
+            }
 
             SyncResult.success()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             SyncResult.failure(e.message ?: "Response failed")
         }
@@ -343,6 +454,7 @@ class CalendarSyncEngineImpl(
         status: com.unifiedcomms.data.model.AttendeeStatus,
         comment: String?
     ) = withContext(Dispatchers.IO) {
+        ensureMailMimeHandlers()
         val auth = crypto.decryptAuthConfig(account.authConfig)
         val props = Properties().apply {
             put("mail.smtp.host", account.serverConfig.smtpHost)
@@ -358,50 +470,29 @@ class CalendarSyncEngineImpl(
             }
         })
 
-        val tzid = event.startAt.timeZone.ifBlank { java.time.ZoneId.systemDefault().toString() }
-        val format = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss")
-        val myAttendee = event.attendees.firstOrNull { it.email.equals(account.email, ignoreCase = true) }
-            ?: event.attendees.firstOrNull()
-            ?: return@withContext
-        val partstat = when (status) {
-            com.unifiedcomms.data.model.AttendeeStatus.ACCEPTED -> "ACCEPTED"
-            com.unifiedcomms.data.model.AttendeeStatus.DECLINED -> "DECLINED"
-            else -> "TENTATIVE"
-        }
-
-        // Minimal attended matching rough standard clients.
-        val attendeeBlock = StringBuilder()
-        for (a in event.attendees) {
-            attendeeBlock.appendLine("ATTENDEE;RSVP=${if (a.rsvp) "TRUE" else "FALSE"}:${a.name?.let { "CN=$it" } ?: ""} <${a.email}>")
-        }
-
-        val ical = buildString {
-            appendLine("BEGIN:VCALENDAR")
-            appendLine("VERSION:2.0")
-            appendLine("PRODID:-//UnifiedComms//Calendar//EN")
-            appendLine("METHOD:REPLY")
-            appendLine("BEGIN:VEVENT")
-            appendLine("UID:${event.uid}")
-            appendLine("DTSTAMP:${java.time.Instant.now().atZone(java.time.ZoneId.of("UTC")).format(format)}Z")
-            event.startAt.dateTime?.let { appendLine("DTSTART;TZID=$tzid:${it}") }
-                ?: appendLine("DTSTART;VALUE=DATE:${event.startAt.date ?: ""}")
-            event.endAt.dateTime?.let { appendLine("DTEND;TZID=$tzid:${it}") }
-                ?: appendLine("DTEND;VALUE=DATE:${event.endAt.date ?: ""}")
-            if (!event.description.isNullOrBlank()) appendLine("DESCRIPTION:${escapeIcal(event.description!!)}")
-            appendLine(attendeeBlock)
-            appendLine("ATTENDEE;PARTSTAT=$partstat;RSVP=FALSE:${myAttendee.name?.let { "CN=$it" } ?: ""} <${myAttendee.email}>")
-            if (!comment.isNullOrBlank()) appendLine("COMMENT:${escapeIcal(comment)}")
-            appendLine("END:VEVENT")
-            appendLine("END:VCALENDAR")
-        }
+        val ical = VEventSerializer.toReply(event, account.email, status, comment)
+        val multipart = MimeMultipart("mixed")
+        multipart.addBodyPart(MimeBodyPart().apply {
+            setContent(
+                "<p>${event.title}: ${status.name.lowercase()}</p>",
+                "text/html; charset=utf-8"
+            )
+        })
+        multipart.addBodyPart(MimeBodyPart().apply {
+            setContent(ical, "text/calendar; method=REPLY; charset=UTF-8")
+            setHeader("Content-Class", "urn:content-classes:calendarmessage")
+        })
 
         val msg = MimeMessage(session)
         msg.setFrom(InternetAddress(account.email))
-        val organizer = event.organizer?.takeIf { !it.email.isNullOrBlank() }?.email ?: event.attendees.firstOrNull { !it.email.isNullOrBlank() }?.email
+        val organizer = event.organizer?.takeIf { !it.email.isNullOrBlank() }?.email
+            ?: event.attendees.firstOrNull { !it.email.isNullOrBlank() }?.email
         if (organizer.isNullOrBlank()) return@withContext
         msg.addRecipient(javax.mail.Message.RecipientType.TO, InternetAddress(organizer))
         msg.subject = "Re: ${event.title.takeIf { it.isNotBlank() } ?: "Calendar Invitation"}"
-        msg.setContent(ical, "text/calendar; method=REPLY; charset=UTF-8")
+        msg.setHeader("X-Sogo-Message-Type", "calendar:invitation-reply")
+        msg.setHeader("Content-Class", "urn:content-classes:calendarmessage")
+        msg.setContent(multipart)
         Transport.send(msg)
     }
 
@@ -461,7 +552,7 @@ class CalendarSyncEngineImpl(
                     accountId = account.id,
                     serverId = info.path,
                     name = info.displayName,
-                    color = com.unifiedcomms.data.model.EventColor.Default(),
+                    color = if (info.color.isNotBlank()) EventColor.fromCalendar(info.color, "#FFFFFF", info.path) else EventColor.Default(),
                     isSelected = true,
                     syncEnabled = true,
                     supportedComponents = if (info.supportsVTODO) listOf("VEVENT", "VTODO") else listOf("VEVENT"),

@@ -65,8 +65,19 @@ fun AccountSettingsScreen(
     // ponytail: read the account from the collected accounts stream, not a direct call during
     // composition — otherwise a not-yet-loaded list shows "Account not found" forever and the
     // lookup re-runs every recomposition.
-    val allAccounts by viewModel.accounts.collectAsStateWithLifecycle(initialValue = emptyList())
-    val account = allAccounts.find { it.id == accountId }
+    val allAccounts by viewModel.accounts.collectAsStateWithLifecycle<List<Account>?>(initialValue = null)
+    val loadedAccounts = allAccounts
+    if (loadedAccounts == null) {
+        UnifiedCommsTheme(darkTheme = darkTheme) {
+            Scaffold { innerPadding ->
+                Column(modifier = Modifier.padding(innerPadding).padding(16.dp)) {
+                    Text("Loading account…")
+                }
+            }
+        }
+        return
+    }
+    val account = loadedAccounts.find { it.id == accountId }
     if (account == null) {
         UnifiedCommsTheme(darkTheme = darkTheme) {
             Scaffold { innerPadding ->
@@ -81,6 +92,9 @@ fun AccountSettingsScreen(
     val color: AccountColor = viewModel.getAccountColor(account.id)
     val effectiveScope = coroutineScope ?: rememberCoroutineScope()
     var accountState by remember(account.id) { mutableStateOf(account) }
+    var showRemoveConfirmation by remember { mutableStateOf(false) }
+    var removeError by remember { mutableStateOf<String?>(null) }
+    var mutationError by remember { mutableStateOf<String?>(null) }
     var syncEmail by remember(account.id) { mutableStateOf(account.syncConfig.syncEmail) }
     var syncCalendar by remember(account.id) { mutableStateOf(account.syncConfig.syncCalendar) }
     var syncTasks by remember(account.id) { mutableStateOf(account.syncConfig.syncTasks) }
@@ -91,6 +105,19 @@ fun AccountSettingsScreen(
         syncCalendar = account.syncConfig.syncCalendar
         syncTasks = account.syncConfig.syncTasks
         syncContacts = account.syncConfig.syncContacts
+    }
+
+    fun persistAccount(candidate: Account, rollback: () -> Unit) {
+        effectiveScope.launch {
+            val saved = viewModel.updateAccount(candidate)
+            if (saved == null) {
+                rollback()
+                mutationError = "Account setting could not be saved"
+            } else {
+                accountState = saved
+                mutationError = null
+            }
+        }
     }
 
     UnifiedCommsTheme(darkTheme = darkTheme) {
@@ -145,6 +172,10 @@ fun AccountSettingsScreen(
                     }
                 }
 
+                mutationError?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error)
+                }
+
                 HorizontalDivider()
 
                 SettingItem(
@@ -153,9 +184,13 @@ fun AccountSettingsScreen(
                     icon = Icons.Default.Email,
                     trailing = {
                         Switch(checked = syncEmail, onCheckedChange = {
+                            val previous = accountState
+                            val requested = previous.copy(syncConfig = previous.syncConfig.copy(syncEmail = it))
                             syncEmail = it
-                            effectiveScope.launch {
-                                accountState = viewModel.updateAccount(accountState.copy(syncConfig = accountState.syncConfig.copy(syncEmail = it)))
+                            accountState = requested
+                            persistAccount(requested) {
+                                syncEmail = previous.syncConfig.syncEmail
+                                accountState = previous
                             }
                         })
                     }
@@ -167,9 +202,13 @@ fun AccountSettingsScreen(
                     icon = Icons.Default.CalendarMonth,
                     trailing = {
                         Switch(checked = syncCalendar, onCheckedChange = {
+                            val previous = accountState
+                            val requested = previous.copy(syncConfig = previous.syncConfig.copy(syncCalendar = it))
                             syncCalendar = it
-                            effectiveScope.launch {
-                                accountState = viewModel.updateAccount(accountState.copy(syncConfig = accountState.syncConfig.copy(syncCalendar = it)))
+                            accountState = requested
+                            persistAccount(requested) {
+                                syncCalendar = previous.syncConfig.syncCalendar
+                                accountState = previous
                             }
                         })
                     }
@@ -181,9 +220,13 @@ fun AccountSettingsScreen(
                     icon = Icons.Default.Checklist,
                     trailing = {
                         Switch(checked = syncTasks, onCheckedChange = {
+                            val previous = accountState
+                            val requested = previous.copy(syncConfig = previous.syncConfig.copy(syncTasks = it))
                             syncTasks = it
-                            effectiveScope.launch {
-                                accountState = viewModel.updateAccount(accountState.copy(syncConfig = accountState.syncConfig.copy(syncTasks = it)))
+                            accountState = requested
+                            persistAccount(requested) {
+                                syncTasks = previous.syncConfig.syncTasks
+                                accountState = previous
                             }
                         })
                     }
@@ -195,9 +238,13 @@ fun AccountSettingsScreen(
                     icon = Icons.Default.AccountCircle,
                     trailing = {
                         Switch(checked = syncContacts, onCheckedChange = {
+                            val previous = accountState
+                            val requested = previous.copy(syncConfig = previous.syncConfig.copy(syncContacts = it))
                             syncContacts = it
-                            effectiveScope.launch {
-                                accountState = viewModel.updateAccount(accountState.copy(syncConfig = accountState.syncConfig.copy(syncContacts = it)))
+                            accountState = requested
+                            persistAccount(requested) {
+                                syncContacts = previous.syncConfig.syncContacts
+                                accountState = previous
                             }
                         })
                     }
@@ -215,9 +262,15 @@ fun AccountSettingsScreen(
                             enabled = accountState.isActive && !accountState.isDefault,
                             onCheckedChange = { enabled ->
                                 if (enabled) {
-                                    accountState = accountState.copy(isDefault = true)
+                                    val previous = accountState
+                                    accountState = previous.copy(isDefault = true)
                                     effectiveScope.launch {
-                                        viewModel.setDefaultAccount(accountState.id)
+                                        if (!viewModel.setDefaultAccount(previous.id)) {
+                                            accountState = previous
+                                            mutationError = "Default account could not be saved"
+                                        } else {
+                                            mutationError = null
+                                        }
                                     }
                                 }
                             }
@@ -238,10 +291,9 @@ fun AccountSettingsScreen(
                                         isActive = enabled,
                                         isDefault = if (enabled) accountState.isDefault else false
                                     )
+                                    val previous = accountState
                                     accountState = requested
-                                    effectiveScope.launch {
-                                        accountState = viewModel.updateAccount(requested)
-                                    }
+                                    persistAccount(requested) { accountState = previous }
                                 }
                             }
                         )
@@ -254,14 +306,42 @@ fun AccountSettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable {
-                            effectiveScope.launch {
-                                viewModel.removeAccount(accountState.id)
-                                onBack()
-                            }
+                            removeError = null
+                            showRemoveConfirmation = true
                         }
                         .padding(vertical = 12.dp)
                 )
             }
+        }
+
+        if (showRemoveConfirmation) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showRemoveConfirmation = false },
+                title = { Text("Remove account?") },
+                text = {
+                    Text(
+                        removeError ?: "This removes the local account and its synced email, calendar, task, and account-owned contact data. It cannot be undone."
+                    )
+                },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(onClick = {
+                        showRemoveConfirmation = false
+                        effectiveScope.launch {
+                            if (viewModel.removeAccount(accountState.id)) {
+                                onBack()
+                            } else {
+                                removeError = "Account was not removed; no local row was deleted."
+                                showRemoveConfirmation = true
+                            }
+                        }
+                    }) { Text("Remove", color = Color.Red) }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(onClick = { showRemoveConfirmation = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
     }
 }
@@ -272,12 +352,12 @@ private fun SettingItem(
     subtitle: String = "",
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     trailing: @Composable () -> Unit = {},
-    onClick: () -> Unit = {}
+    onClick: (() -> Unit)? = null
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

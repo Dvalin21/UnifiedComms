@@ -1,5 +1,7 @@
 package com.unifiedcomms.ui.theme
 
+import kotlin.math.sqrt
+
 /**
  * Normalize ANY calendar color string to a parseable 6-digit hex (#RRGGBB).
  *
@@ -93,6 +95,34 @@ object ColorNormalizer {
         // accept a clean 6-digit hex here.
         if (s.matches(Regex("[0-9A-Fa-f]{6}"))) return "#$s"
         return ""
+    }
+
+    /**
+     * Convert a renderable color to the CSS3 name required by RFC 7986 COLOR.
+     * DAVx⁵ stores only names present in its account color table, so raw #RRGGBB
+     * would be discarded by that client. Unknown custom colors use DAVx⁵'s
+     * weighted-RGB nearest-match rule rather than becoming invalid iCalendar.
+     */
+    fun toCss3Name(input: String): String? {
+        val hex = normalize(input)
+        if (hex.isEmpty()) return null
+        CSS3.entries.firstOrNull { it.value.equals(hex, ignoreCase = true) }?.let { return it.key }
+
+        val rgb = hex.removePrefix("#").toLong(16).toInt() and 0xFFFFFF
+        val r1 = (rgb shr 16) and 0xFF
+        val g1 = (rgb shr 8) and 0xFF
+        val b1 = rgb and 0xFF
+        return CSS3.entries.minByOrNull { (_, value) ->
+            val candidate = value.removePrefix("#").toLong(16).toInt() and 0xFFFFFF
+            val r2 = (candidate shr 16) and 0xFF
+            val g2 = (candidate shr 8) and 0xFF
+            val b2 = candidate and 0xFF
+            val meanR = (r1 + r2) / 2.0
+            val dr = r1 - r2
+            val dg = g1 - g2
+            val db = b1 - b2
+            sqrt(2.0 * dr * dr + 4.0 * dg * dg + 3.0 * db * db + (meanR * (dr * dr - dg * dg)) / 256.0)
+        }?.key
     }
 
     /** True if the string is a real, renderable color. */

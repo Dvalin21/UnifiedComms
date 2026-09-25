@@ -20,7 +20,7 @@ class AccountRepositoryImpl(
     override suspend fun update(account: Account): Int =
         dao.update(account.copy(authConfig = forStorage(account.authConfig)))
 
-    override suspend fun delete(accountId: String): Int = dao.deleteById(accountId)
+    override suspend fun delete(accountId: String): Int = dao.deleteAccountGraph(accountId)
 
     override suspend fun getById(id: String): Account? = withContext(Dispatchers.IO) { dao.getById(id) }
 

@@ -139,6 +139,8 @@ data class CalendarInviteMessage(
     val timezone: String,
     val location: String? = null,
     val recurrenceRule: RecurrenceRule? = null,
+    // RFC 7986 COLOR is carried from the invite MIME; null keeps old JSON rows valid.
+    val color: EventColor? = null,
     val attendees: List<EventAttendee>,
     val responseRequested: Boolean = true,
     val sequence: Int = 0,

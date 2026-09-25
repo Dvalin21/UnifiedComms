@@ -55,12 +55,41 @@ class TaskRepositoryImplTest {
 
     @Test
     fun `getOverdueUnified delegates to dao`() = runTest {
-        val overdue = baseTask(id = "o", title = "Overdue", status = TaskStatus.COMPLETED)
+        val overdue = baseTask(id = "o", title = "Overdue", status = TaskStatus.NEEDS_ACTION)
             .copy(dueAt = TaskDateTime.fromInstant(kotlinx.datetime.Instant.fromEpochMilliseconds(800L), hasTime = true))
         whenever(taskDao.getActiveUnified(any(), any())).thenReturn(flowOf(listOf(overdue)))
         whenever(taskDao.getByStatus(any(), any())).thenReturn(flowOf(emptyList()))
-        val result = repo.getOverdueUnified(listOf("a1"), 1000L, TaskStatus.NEEDS_ACTION).first()
+        val result = repo.getOverdueUnified(listOf("a1"), System.currentTimeMillis(), TaskStatus.NEEDS_ACTION).first()
         assertEquals(listOf(overdue), result)
+    }
+
+    @Test
+    fun `getDueOnDate filters active tasks by local date`() = runTest {
+        val localDate = java.time.LocalDate.now()
+        val task = baseTask().copy(
+            dueAt = TaskDateTime(
+                date = kotlinx.datetime.LocalDate(localDate.year, localDate.monthValue, localDate.dayOfMonth),
+                hasTime = false
+            )
+        )
+        whenever(taskDao.getActiveByAccount(any(), any())).thenReturn(flowOf(listOf(task)))
+        assertEquals(listOf(task), repo.getDueOnDate("a1", System.currentTimeMillis()).first())
+        verify(taskDao).getActiveByAccount("a1", TaskStatus.COMPLETED)
+    }
+
+    @Test
+    fun `getUpcoming honors exact timed bounds`() = runTest {
+        val before = baseTask(id = "before")
+            .withDueAt(TaskDateTime.fromInstant(kotlinx.datetime.Instant.fromEpochMilliseconds(900L), hasTime = true))
+        val inside = baseTask(id = "inside")
+            .withDueAt(TaskDateTime.fromInstant(kotlinx.datetime.Instant.fromEpochMilliseconds(1_100L), hasTime = true))
+        val after = baseTask(id = "after")
+            .withDueAt(TaskDateTime.fromInstant(kotlinx.datetime.Instant.fromEpochMilliseconds(1_300L), hasTime = true))
+        whenever(taskDao.getActiveByAccount(any(), any())).thenReturn(flowOf(listOf(before, inside, after)))
+
+        val result = repo.getUpcoming("a1", 1_000L, 1_200L, TaskStatus.NEEDS_ACTION, 10).first()
+
+        assertEquals(listOf(inside), result)
     }
 
     @Test

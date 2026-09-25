@@ -192,8 +192,8 @@ class TaskDateTimeConverter {
     fun fromDateTime(value: com.unifiedcomms.data.model.TaskDateTime?): String? = value?.let { json.encodeToString(it) }
 
     @TypeConverter
-    fun toDateTime(value: String?): com.unifiedcomms.data.model.TaskDateTime =
-        decodeOr(com.unifiedcomms.data.model.TaskDateTime()) { value?.let { json.decodeFromString(value) } ?: com.unifiedcomms.data.model.TaskDateTime() }
+    fun toDateTime(value: String?): com.unifiedcomms.data.model.TaskDateTime? =
+        decodeOr(null) { value?.takeIf { it.isNotBlank() }?.let { json.decodeFromString(it) } }
 }
 
 class GeoLocationConverter {

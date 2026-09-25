@@ -81,6 +81,31 @@ class DavSyncSafetyTest {
     }
 
     @Test
+    fun `event ETag listing filters VEVENT and time range`() = runTest {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(MockResponse().setResponseCode(207).setBody(
+                """<D:multistatus xmlns:D="DAV:"><D:response><D:href>/dav/calendar/event.ics</D:href><D:propstat><D:prop><D:getetag>"event-etag"</D:getetag></D:prop></D:propstat></D:response></D:multistatus>"""
+            ))
+
+            val result = client(server).getEventETagList(
+                "/dav/calendar/",
+                1_757_000_000_000L,
+                1_757_086_400_000L
+            )
+
+            assertTrue(result.isSuccess)
+            assertEquals("/dav/calendar/event.ics", result.getOrThrow().single().href)
+            val request = server.takeRequest()
+            assertEquals("POST", request.method)
+            val body = request.body.readUtf8()
+            assertTrue(body.contains("comp-filter name=\"VCALENDAR\""))
+            assertTrue(body.contains("comp-filter name=\"VEVENT\""))
+            assertTrue(body.contains("time-range"))
+        }
+    }
+
+    @Test
     fun `HTTP listing failure is not authoritative empty`() = runTest {
         MockWebServer().use { server ->
             server.start()
@@ -190,6 +215,38 @@ class DavSyncSafetyTest {
     }
 
     @Test
+    fun `cross-origin resource is rejected before credentials are sent`() = runTest {
+        MockWebServer().use { server ->
+            server.start()
+            val result = client(server).putResource("https://attacker.example/steal.ics", "BEGIN:VCALENDAR\nEND:VCALENDAR")
+            assertEquals(null, result)
+            assertEquals(0, server.requestCount)
+        }
+    }
+
+    @Test
+    fun `protocol-relative resource is rejected before credentials are sent`() = runTest {
+        MockWebServer().use { server ->
+            server.start()
+            val result = client(server).putResource("//attacker.example/steal.ics", "BEGIN:VCALENDAR\nEND:VCALENDAR")
+            assertEquals(null, result)
+            assertEquals(0, server.requestCount)
+        }
+    }
+
+    @Test
+    fun `conditional PUT sends If-Match`() = runTest {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(MockResponse().setResponseCode(204))
+
+            client(server).putResource("/dav/calendar/u1.ics", "BEGIN:VCALENDAR\nEND:VCALENDAR", ifMatch = "v1")
+
+            assertEquals("\"v1\"", server.takeRequest().getHeader("If-Match"))
+        }
+    }
+
+    @Test
     fun `failed PUT returns no ETag`() = runTest {
         MockWebServer().use { server ->
             server.start()
@@ -214,10 +271,10 @@ class DavSyncSafetyTest {
             server.enqueue(MockResponse().setResponseCode(207).setBody(
                 """<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav"><D:response><D:href>/tasks/</D:href><D:propstat><D:prop><D:resourcetype><D:collection/></D:resourcetype></D:prop></D:propstat></D:response><D:response><D:href>/tasks/</D:href><D:propstat><D:prop><D:displayname>Tasks</D:displayname><D:resourcetype><D:collection/><D:calendar/></D:resourcetype><C:supported-calendar-component-set><C:comp name="VTODO"/></C:supported-calendar-component-set></D:prop></D:propstat></D:response></D:multistatus>"""
             ))
+            server.enqueue(MockResponse().setResponseCode(201))
             server.enqueue(MockResponse().setResponseCode(207).setBody(
                 """<D:multistatus xmlns:D="DAV:"/>"""
             ))
-            server.enqueue(MockResponse().setResponseCode(201))
 
             val account = account(server.url("/dav/").toString())
             val local = Task(
@@ -247,6 +304,237 @@ class DavSyncSafetyTest {
             assertFalse(stored.isLocalOnly)
             assertFalse(stored.needsSync)
             verify(repository, never()).delete(any())
+        }
+    }
+
+    @Test
+    fun `server-provided task href survives the next sync`() = runTest {
+        MockWebServer().use { server ->
+            server.start()
+            val collection = "/tasks/"
+            val serverHref = "${collection.trimEnd('/')}/server-renamed.ics"
+            server.enqueue(MockResponse().setResponseCode(207).setBody(
+                """<D:multistatus xmlns:D="DAV:"><D:response><D:href>/dav/</D:href><D:propstat><D:prop><D:current-user-principal><D:href>/principal/</D:href></D:current-user-principal></D:prop></D:propstat></D:response></D:multistatus>"""
+            ))
+            server.enqueue(MockResponse().setResponseCode(207).setBody(
+                """<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav"><D:response><D:href>/principal/</D:href><D:propstat><D:prop><C:calendar-home-set><D:href>$collection</D:href></C:calendar-home-set></D:prop></D:propstat></D:response></D:multistatus>"""
+            ))
+            server.enqueue(MockResponse().setResponseCode(207).setBody(
+                """<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav"><D:response><D:href>$collection</D:href><D:propstat><D:prop><D:resourcetype><D:collection/></D:resourcetype></D:prop></D:propstat></D:response><D:response><D:href>$collection</D:href><D:propstat><D:prop><D:displayname>Tasks</D:displayname><D:resourcetype><D:collection/><D:calendar/></D:resourcetype></D:prop></D:propstat></D:response></D:multistatus>"""
+            ))
+            server.enqueue(MockResponse().setResponseCode(207).setBody(
+                """<D:multistatus xmlns:D="DAV:"><D:response><D:href>$serverHref</D:href><D:propstat><D:prop><D:getetag>"v2"</D:getetag></D:prop></D:propstat></D:response></D:multistatus>"""
+            ))
+            server.enqueue(
+                MockResponse().setResponseCode(200)
+                    .setHeader("ETag", "\"v2\"")
+                    .setBody(
+                        """BEGIN:VCALENDAR
+BEGIN:VTODO
+UID:remote-task
+SUMMARY:Remote
+DUE;VALUE=DATE:20260923
+END:VTODO
+END:VCALENDAR""".trimIndent()
+                    )
+            )
+
+            val account = account(server.url("/dav/").toString())
+            val local = Task(
+                id = "remote-task",
+                accountId = account.id,
+                listId = collection.trimEnd('/'),
+                uid = "remote-task",
+                title = "Old",
+                serverHref = "${collection.trimEnd('/')}/old-name.ics",
+                etag = "v1"
+            )
+            val repository: TaskRepository = mock()
+            var stored = local
+            whenever(repository.getByList(any(), any()))
+                .thenReturn(flow { emit(listOf(stored)) })
+            whenever(repository.getNeedingSync(account.id)).thenReturn(emptyList())
+            whenever(repository.getByUidAndList(any(), any(), any()))
+                .thenReturn(local)
+            whenever(repository.update(any())).thenAnswer { invocation ->
+                stored = invocation.getArgument(0)
+                1
+            }
+
+            val result = TaskSyncEngineImpl(
+                repository,
+                mock(),
+                cryptoReturning(account.authConfig),
+                TestScope()
+            ).syncAccount(account)
+
+            assertTrue("error=${result.errorMessage}", result.success)
+            assertEquals(serverHref, stored.serverHref)
+            assertEquals("v2", stored.etag)
+            verify(repository, never()).delete(any())
+        }
+    }
+
+    @Test
+    fun `newly pushed calendar survives the same sync before ETag listing sees it`() = runTest {
+        MockWebServer().use { server ->
+            server.start()
+            val collection = "/dav/calendar/"
+            server.enqueue(MockResponse().setResponseCode(207).setBody(
+                """<D:multistatus xmlns:D="DAV:"><D:response><D:href>/dav/</D:href><D:propstat><D:prop><D:current-user-principal><D:href>/principal/</D:href></D:current-user-principal></D:prop></D:propstat></D:response></D:multistatus>"""
+            ))
+            server.enqueue(MockResponse().setResponseCode(207).setBody(
+                """<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav"><D:response><D:href>/principal/</D:href><D:propstat><D:prop><C:calendar-home-set><D:href>$collection</D:href></C:calendar-home-set></D:prop></D:propstat></D:response></D:multistatus>"""
+            ))
+            server.enqueue(MockResponse().setResponseCode(207).setBody(
+                """<D:multistatus xmlns:D="DAV:"><D:response><D:href>$collection</D:href><D:propstat><D:prop><D:displayname>Personal</D:displayname><D:resourcetype><D:collection/><D:calendar/></D:resourcetype></D:prop></D:propstat></D:response></D:multistatus>"""
+            ))
+            server.enqueue(MockResponse().setResponseCode(201).setHeader("ETag", "\"pushed\""))
+            // The listing is deliberately empty to model eventual consistency.
+            server.enqueue(MockResponse().setResponseCode(207).setBody("<D:multistatus xmlns:D=\"DAV:\"/>"))
+
+            val account = account(server.url("/dav/").toString())
+            val local = CalendarEvent(
+                id = "pending-event",
+                accountId = account.id,
+                calendarId = collection.trimEnd('/'),
+                uid = "pending-event",
+                title = "Pending",
+                startAt = EventDateTime(dateTime = LocalDateTime.parse("2026-09-23T10:00"), timeZone = "UTC"),
+                endAt = EventDateTime(dateTime = LocalDateTime.parse("2026-09-23T11:00"), timeZone = "UTC"),
+                isLocalOnly = true,
+                needsSync = true
+            )
+            val repository: CalendarRepository = mock()
+            var stored = local
+            whenever(repository.getAllEventsForAccount(account.id)).thenReturn(flowOf(listOf(local)))
+            whenever(repository.updateEvent(any())).thenAnswer { invocation ->
+                stored = invocation.getArgument(0)
+                1
+            }
+
+            val result = CalendarSyncEngineImpl(
+                repository,
+                mock(),
+                cryptoReturning(account.authConfig),
+                TestScope()
+            ).syncAccount(account)
+
+            assertTrue(result.success)
+            assertFalse(stored.isLocalOnly)
+            assertEquals("${collection.trimEnd('/')}/pending-event.ics", stored.serverHref)
+            verify(repository, never()).deleteEvent(any())
+        }
+    }
+
+    @Test
+    fun `server-provided href is retained when it differs from UID filename`() = runTest {
+        MockWebServer().use { server ->
+            server.start()
+            val collection = "/dav/calendar/"
+            val serverHref = "${collection.trimEnd('/')}/server-renamed.ics"
+            server.enqueue(MockResponse().setResponseCode(207).setBody(
+                """<D:multistatus xmlns:D="DAV:"><D:response><D:href>/dav/</D:href><D:propstat><D:prop><D:current-user-principal><D:href>/principal/</D:href></D:current-user-principal></D:prop></D:propstat></D:response></D:multistatus>"""
+            ))
+            server.enqueue(MockResponse().setResponseCode(207).setBody(
+                """<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav"><D:response><D:href>/principal/</D:href><D:propstat><D:prop><C:calendar-home-set><D:href>$collection</D:href></C:calendar-home-set></D:prop></D:propstat></D:response></D:multistatus>"""
+            ))
+            server.enqueue(MockResponse().setResponseCode(207).setBody(
+                """<D:multistatus xmlns:D="DAV:"><D:response><D:href>$collection</D:href><D:propstat><D:prop><D:displayname>Personal</D:displayname><D:resourcetype><D:collection/><D:calendar/></D:resourcetype></D:prop></D:propstat></D:response></D:multistatus>"""
+            ))
+            server.enqueue(MockResponse().setResponseCode(207).setBody(
+                """<D:multistatus xmlns:D="DAV:"><D:response><D:href>$serverHref</D:href><D:propstat><D:prop><D:getetag>"v2"</D:getetag></D:prop></D:propstat></D:response></D:multistatus>"""
+            ))
+            server.enqueue(
+                MockResponse().setResponseCode(200)
+                    .setHeader("ETag", "\"v2\"")
+                    .setBody(
+                        """BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:remote-event
+SUMMARY:Remote
+DTSTART:20260923T100000Z
+DTEND:20260923T110000Z
+END:VEVENT
+END:VCALENDAR""".trimIndent()
+                    )
+            )
+
+            val account = account(server.url("/dav/").toString())
+            val local = CalendarEvent(
+                id = "remote-event",
+                accountId = account.id,
+                calendarId = collection.trimEnd('/'),
+                uid = "remote-event",
+                title = "Old",
+                startAt = EventDateTime(dateTime = LocalDateTime.parse("2026-09-23T10:00"), timeZone = "UTC"),
+                endAt = EventDateTime(dateTime = LocalDateTime.parse("2026-09-23T11:00"), timeZone = "UTC"),
+                serverHref = "${collection.trimEnd('/')}/old-name.ics",
+                etag = "v1"
+            )
+            val repository: CalendarRepository = mock()
+            var stored = local
+            whenever(repository.getAllEventsForAccount(account.id)).thenReturn(flowOf(listOf(local)))
+            whenever(repository.getEventByUid("remote-event", account.id)).thenReturn(local)
+            whenever(repository.updateEvent(any())).thenAnswer { invocation ->
+                stored = invocation.getArgument(0)
+                1
+            }
+
+            val result = CalendarSyncEngineImpl(
+                repository,
+                mock(),
+                cryptoReturning(account.authConfig),
+                TestScope()
+            ).syncAccount(account)
+
+            assertTrue(result.success)
+            assertEquals(serverHref, stored.serverHref)
+            assertEquals("v2", stored.etag)
+            verify(repository, never()).deleteEvent(any())
+        }
+    }
+
+    @Test
+    fun `filtered calendar listing does not delete older local history`() = runTest {
+        MockWebServer().use { server ->
+            server.start()
+            val collection = "/dav/calendar/"
+            server.enqueue(MockResponse().setResponseCode(207).setBody(
+                """<D:multistatus xmlns:D="DAV:"><D:response><D:href>/dav/</D:href><D:propstat><D:prop><D:current-user-principal><D:href>/principal/</D:href></D:current-user-principal></D:prop></D:propstat></D:response></D:multistatus>"""
+            ))
+            server.enqueue(MockResponse().setResponseCode(207).setBody(
+                """<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav"><D:response><D:href>/principal/</D:href><D:propstat><D:prop><C:calendar-home-set><D:href>$collection</D:href></C:calendar-home-set></D:prop></D:propstat></D:response></D:multistatus>"""
+            ))
+            server.enqueue(MockResponse().setResponseCode(207).setBody(
+                """<D:multistatus xmlns:D="DAV:"><D:response><D:href>$collection</D:href><D:propstat><D:prop><D:resourcetype><D:collection/><D:calendar/></D:resourcetype><D:displayname>Personal</D:displayname></D:prop></D:propstat></D:response></D:multistatus>"""
+            ))
+            server.enqueue(MockResponse().setResponseCode(207).setBody("<D:multistatus xmlns:D=\"DAV:\"/>"))
+
+            val account = account(server.url("/dav/").toString())
+            val old = CalendarEvent(
+                id = "old-event",
+                accountId = account.id,
+                calendarId = collection.trimEnd('/'),
+                uid = "old-event",
+                title = "Old history",
+                startAt = EventDateTime(dateTime = LocalDateTime.parse("2010-01-01T10:00"), timeZone = "UTC"),
+                endAt = EventDateTime(dateTime = LocalDateTime.parse("2010-01-01T11:00"), timeZone = "UTC"),
+                serverHref = "${collection.trimEnd('/')}/old-event.ics",
+                etag = "old-etag"
+            )
+            val repository: CalendarRepository = mock()
+            whenever(repository.getAllEventsForAccount(account.id)).thenReturn(flowOf(listOf(old)))
+
+            val result = CalendarSyncEngineImpl(
+                repository,
+                mock(),
+                cryptoReturning(account.authConfig),
+                TestScope()
+            ).syncAccount(account)
+
+            assertTrue(result.success)
+            verify(repository, never()).deleteEvent(any())
         }
     }
 

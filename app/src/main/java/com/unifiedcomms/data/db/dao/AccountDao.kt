@@ -28,6 +28,24 @@ interface AccountDao {
     @Query("DELETE FROM accounts WHERE id = :id")
     suspend fun deleteById(id: String): Int
 
+    @Query("DELETE FROM emails WHERE accountId = :accountId")
+    suspend fun deleteEmailsForAccount(accountId: String): Int
+
+    @Query("DELETE FROM calendar_events WHERE accountId = :accountId")
+    suspend fun deleteCalendarEventsForAccount(accountId: String): Int
+
+    @Query("DELETE FROM calendars WHERE accountId = :accountId")
+    suspend fun deleteCalendarsForAccount(accountId: String): Int
+
+    @Query("DELETE FROM tasks WHERE accountId = :accountId")
+    suspend fun deleteTasksForAccount(accountId: String): Int
+
+    @Query("DELETE FROM task_lists WHERE accountId = :accountId")
+    suspend fun deleteTaskListsForAccount(accountId: String): Int
+
+    @Query("DELETE FROM contacts WHERE accountId = :accountId")
+    suspend fun deleteContactsForAccount(accountId: String): Int
+
     @Query("SELECT * FROM accounts WHERE id = :id")
     suspend fun getById(id: String): Account?
 
@@ -63,6 +81,17 @@ interface AccountDao {
 
     @Query("SELECT * FROM accounts WHERE lastSyncAt IS NOT NULL ORDER BY lastSyncAt DESC LIMIT :limit")
     suspend fun getRecentlySynced(limit: Int): List<Account>
+
+    @Transaction
+    suspend fun deleteAccountGraph(accountId: String): Int {
+        deleteEmailsForAccount(accountId)
+        deleteCalendarEventsForAccount(accountId)
+        deleteCalendarsForAccount(accountId)
+        deleteTasksForAccount(accountId)
+        deleteTaskListsForAccount(accountId)
+        deleteContactsForAccount(accountId)
+        return deleteById(accountId)
+    }
 
     @Transaction
     @Query("UPDATE accounts SET isDefault = 0 WHERE isDefault = 1")
