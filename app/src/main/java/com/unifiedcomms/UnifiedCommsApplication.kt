@@ -31,6 +31,9 @@ class UnifiedCommsApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         PreferencesManager.initialize(this)
+        // ponytail: no plaintext attachment bytes survive a process start. The store also
+        // clears the pre-2026-09 cacheDir/attachments directory on this first run.
+        com.unifiedcomms.security.AttachmentStore.forApp(cacheDir).purge()
         database = UnifiedCommsDatabase.getInstance(this)
 
         initializeNotificationChannels()

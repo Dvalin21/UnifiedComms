@@ -1228,12 +1228,16 @@ class EmailSyncEngineImpl(
             val msg = uidFolder.getMessageByUID(uid.toLongOrNull() ?: return@withContext null) ?: return@withContext null
             val parsed = runCatching { javax.mail.internet.MimeMessage(null, msg.getInputStream()) }.getOrElse { msg }
             val part = findAttachmentPart(parsed, attachment) ?: return@withContext null
-            val dir = java.io.File(UnifiedCommsApplication.getInstance().cacheDir, "attachments")
-            dir.mkdirs()
-            val safeName = attachment.fileName.replace(Regex("[^A-Za-z0-9._-]"), "_")
-            val file = java.io.File(dir, "${attachment.id}_$safeName")
-            runCatching { (part as? javax.mail.internet.MimeBodyPart)?.saveFile(file.absolutePath) }.getOrNull()
-                ?: file.writeBytes(part.inputStream.readBytes())
+            // ponytail: bytes go through AttachmentStore, which keeps exactly one plaintext
+            // copy in cacheDir/attachment_tmp and clears the rest. The previous code wrote
+            // unencrypted files into cacheDir/attachments and never removed them, so every
+            // attachment the user had ever opened stayed readable on disk.
+            val bytes = runCatching { (part as? javax.mail.internet.MimeBodyPart)?.inputStream?.use { it.readBytes() } }
+                .getOrNull()
+                ?: return@withContext null
+            val file = com.unifiedcomms.security.AttachmentStore
+                .forApp(UnifiedCommsApplication.getInstance().cacheDir)
+                .write("${attachment.id}_${attachment.fileName}", bytes)
             return@withContext if (file.exists() && file.length() > 0) file.absolutePath else null
         } catch (e: Exception) {
             Log.e("EmailSyncEngineImpl", "fetchAttachment failed folder=$folder uid=$uid name=${attachment.fileName}: ${e.message}")
