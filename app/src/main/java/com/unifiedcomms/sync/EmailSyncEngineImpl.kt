@@ -133,8 +133,6 @@ class EmailSyncEngineImpl(
                     updatedItems.addAll(folderResult.fourth)
                 }
 
-                store?.close()
-
                 if (totalFailed > 0) {
                     updateProgress(account.id, folder = null, SyncStage.ERROR, totalSynced, totalSynced)
                     return@withContext SyncResult.failure(
@@ -145,8 +143,11 @@ class EmailSyncEngineImpl(
 
                 updateProgress(account.id, folder = null, SyncStage.COMPLETED, totalSynced, totalSynced)
                 if (missingFolders.isNotEmpty()) {
+                    // Read the server's folder list while the store is still open: after
+                    // store.close() the listing comes back empty and the message lies.
                     val available = runCatching {
-                        store!!.defaultFolder.list("*").filter { it.exists() }.map { it.name }
+                        store?.defaultFolder?.list("*")?.filter { it.exists() }?.map { it.name }
+                            ?: emptyList()
                     }.getOrDefault(emptyList())
                     Log.w(
                         "EmailSyncEngineImpl",
@@ -154,6 +155,7 @@ class EmailSyncEngineImpl(
                             "${missingFolders.joinToString()}. Server has: ${available.joinToString()}"
                     )
                 }
+                store?.close()
                 return@withContext SyncResult.success(
                     itemsSynced = totalSynced,
                     newItems = newItems,
