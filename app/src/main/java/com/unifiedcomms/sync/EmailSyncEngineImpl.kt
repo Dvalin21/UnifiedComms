@@ -100,6 +100,7 @@ class EmailSyncEngineImpl(
             var totalSynced = 0
             var totalFailed = 0
             val missingFolders = mutableListOf<String>()
+            var serverFolders = emptyList<String>()
             val newItems = mutableListOf<String>()
             val updatedItems = mutableListOf<String>()
             val deletedItems = mutableListOf<String>()
@@ -149,6 +150,7 @@ class EmailSyncEngineImpl(
                         store?.defaultFolder?.list("*")?.filter { it.exists() }?.map { it.name }
                             ?: emptyList()
                     }.getOrDefault(emptyList())
+                    serverFolders = available
                     Log.w(
                         "EmailSyncEngineImpl",
                         "skipped ${missingFolders.size} folder(s) not present on the server: " +
@@ -161,7 +163,8 @@ class EmailSyncEngineImpl(
                     newItems = newItems,
                     updatedItems = updatedItems,
                     deletedItems = deletedItems,
-                    skippedFolders = missingFolders
+                    skippedFolders = missingFolders,
+                    serverFolders = serverFolders
                 )
 
             } catch (e: CancellationException) {
