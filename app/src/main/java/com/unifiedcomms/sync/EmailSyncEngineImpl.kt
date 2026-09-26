@@ -1075,24 +1075,6 @@ class EmailSyncEngineImpl(
      * PDF attachment. Parsing by the actual boundary — like SOGo/Edison do — finds
      * them. Returns null if no boundary can be located.
      */
-    private fun boundaryAwareMultipart(stream: java.io.InputStream): MimeMultipart? {
-        return runCatching {
-            val bytes = stream.readBytes()
-            val text = String(bytes, Charsets.ISO_8859_1)
-            // The outer boundary is the first line beginning with "--".
-            val boundary = text.lineSequence().firstNotNullOfOrNull { line ->
-                val t = line.trim()
-                if (t.startsWith("--") && t.length > 4) t.substring(2).trim().takeIf { it.isNotBlank() } else null
-            } ?: return null
-            val ds = object : javax.activation.DataSource {
-                override fun getInputStream(): java.io.InputStream = bytes.inputStream()
-                override fun getOutputStream() = java.io.ByteArrayOutputStream()
-                override fun getContentType() = "multipart/mixed; boundary=\"$boundary\""
-                override fun getName() = "multipart"
-            }
-            MimeMultipart(ds)
-        }.getOrNull()
-    }
 
     /**
      * Entry point for the sync path. Builds the top-level MimeMultipart from the
@@ -1224,17 +1206,32 @@ class EmailSyncEngineImpl(
             connectStoreWithRetry(store, config, auth)
             imapFolder = store.getFolder(folder)
             imapFolder.open(javax.mail.Folder.READ_ONLY)
-            val uidFolder = imapFolder as? javax.mail.UIDFolder ?: return@withContext null
-            val msg = uidFolder.getMessageByUID(uid.toLongOrNull() ?: return@withContext null) ?: return@withContext null
-            val parsed = runCatching { javax.mail.internet.MimeMessage(null, msg.getInputStream()) }.getOrElse { msg }
-            val part = findAttachmentPart(parsed, attachment) ?: return@withContext null
+            val uidFolder = imapFolder as? javax.mail.UIDFolder
+                ?: return@withContext null.also { Log.w("EmailSyncEngineImpl", "server is not a UIDFolder: $folder") }
+            val numericUid = uid.toLongOrNull()
+                ?: return@withContext null.also { Log.w("EmailSyncEngineImpl", "attachment uid is not numeric: $uid") }
+            val msg = uidFolder.getMessageByUID(numericUid)
+                ?: return@withContext null.also { Log.w("EmailSyncEngineImpl", "message $numericUid vanished from $folder") }
+            val raw = runCatching { msg.inputStream.use { it.readBytes() } }.getOrElse { ByteArray(0) }
+            val parsed = runCatching { javax.mail.internet.MimeMessage(null, raw.inputStream()) }.getOrElse { msg }
+            val part = findAttachmentPartInRawMessage(raw, attachment)
+                ?: findAttachmentPart(parsed, attachment)
+                ?: run {
+                Log.w(
+                    "EmailSyncEngineImpl",
+                    "no MIME part matched attachment name=${attachment.fileName} size=${attachment.sizeBytes} cid=${attachment.contentId}"
+                )
+                return@withContext null
+            }
             // ponytail: bytes go through AttachmentStore, which keeps exactly one plaintext
             // copy in cacheDir/attachment_tmp and clears the rest. The previous code wrote
             // unencrypted files into cacheDir/attachments and never removed them, so every
             // attachment the user had ever opened stayed readable on disk.
             val bytes = runCatching { (part as? javax.mail.internet.MimeBodyPart)?.inputStream?.use { it.readBytes() } }
                 .getOrNull()
-                ?: return@withContext null
+                ?: return@withContext null.also {
+                    Log.w("EmailSyncEngineImpl", "part for ${attachment.fileName} is not a readable MimeBodyPart: ${part.javaClass.simpleName}")
+                }
             val file = com.unifiedcomms.security.AttachmentStore
                 .forApp(UnifiedCommsApplication.getInstance().cacheDir)
                 .write("${attachment.id}_${attachment.fileName}", bytes)
@@ -1271,41 +1268,6 @@ class EmailSyncEngineImpl(
         }
     }
 
-    private fun findAttachmentPart(part: javax.mail.Part, target: com.unifiedcomms.data.model.Attachment): javax.mail.Part? {
-        return try {
-            val ct = runCatching { part.contentType }.getOrNull().orEmpty().lowercase()
-            if (part is javax.mail.internet.MimeMultipart || ct.startsWith("multipart/")) {
-                // ponytail: same root cause as extractAttachments — mislabeled
-                // multipart/alternative drops the sibling PDF when trusting the
-                // header. Use the boundary-aware parser (multipart/mixed) so the
-                // on-demand fetch finds the real attachment part.
-                val mp = boundaryAwareMultipart(part.inputStream)
-                    ?: (part as? javax.mail.internet.MimeMultipart)
-                if (mp != null) {
-                    for (i in 0 until mp.count) {
-                        findAttachmentPart(mp.getBodyPart(i) as javax.mail.Part, target)?.let { return it }
-                    }
-                }
-                null
-            } else if (ct.startsWith("message/rfc822")) {
-                // ponytail: forwarded/embedded message can wrap the target attachment.
-                val nested = runCatching { part.content as? javax.mail.internet.MimeMessage }.getOrNull()
-                    ?: runCatching { javax.mail.internet.MimeMessage(null, part.inputStream) }.getOrNull()
-                nested?.let { findAttachmentPart(it, target) } ?: null
-            } else {
-                val fileName = runCatching { part.fileName }.getOrNull()
-                val cid = runCatching {
-                    (part as? javax.mail.internet.MimeBodyPart)?.contentID
-                }.getOrNull()?.trim('<', '>')
-                val matches = (fileName != null && fileName == target.fileName) ||
-                    (target.contentId != null && !target.contentId.isBlank() && cid == target.contentId.trim('<', '>')) ||
-                    (fileName != null && target.fileName != null && fileName.equals(target.fileName, true))
-                if (matches) part else null
-            }
-        } catch (_: Exception) {
-            null
-        }
-    }
 
     private fun smtpSession(
         config: com.unifiedcomms.data.model.ServerConfig,
@@ -1582,4 +1544,134 @@ class EmailSyncEngineImpl(
         val third: List<String>,
         val fourth: List<String>
     )
+}
+
+/**
+ * Locates the MIME part that produced [target] during sync, from the raw message bytes.
+ *
+ * ponytail: this MUST use the same parse as extraction, or the attachment lists in the UI and then
+ * refuses to open. Real sends violate that in both directions:
+ *  - a forward whose top header says `multipart/alternative` while the body is actually a mixed
+ *    blob with a different boundary. JavaMail trusts the header and exposes only the two body
+ *    alternatives — the forwarded PDF is invisible to it. The byte-level parse (which takes the
+ *    boundary actually present in the body) finds it, which is how it got into the database.
+ *  - the header-driven walk used to be tried first here, so the fetch saw a 2-part tree and
+ *    returned null with no explanation.
+ * Byte-level is therefore primary for both paths; the header-driven walk stays as a fallback for
+ * the rare message the byte parse cannot segment.
+ */
+internal fun findAttachmentPartInRawMessage(
+    raw: ByteArray,
+    target: com.unifiedcomms.data.model.Attachment
+): javax.mail.Part? {
+    val leaves = ArrayList<javax.mail.Part>()
+    boundaryAwareMultipart(raw.inputStream())?.let { collectLeaves(it, leaves) }
+    return rankAttachmentCandidates(leaves, target)
+}
+
+/** Header-driven fallback for a message the byte-level parse could not segment. */
+internal fun findAttachmentPart(
+    part: javax.mail.Part,
+    target: com.unifiedcomms.data.model.Attachment
+): javax.mail.Part? {
+    val leaves = ArrayList<javax.mail.Part>()
+    collectLeavesFromPart(part, leaves)
+    return rankAttachmentCandidates(leaves, target)
+}
+
+/** Ranks candidates instead of first-hit: a body of "see attached" and a 12-byte PDF both report
+ *  size 12, so a size match alone would return the wrong part. Size counts only when unique. */
+private fun rankAttachmentCandidates(
+    candidates: List<javax.mail.Part>,
+    target: com.unifiedcomms.data.model.Attachment
+): javax.mail.Part? {
+    return candidates.firstOrNull { candidate ->
+        runCatching { candidate.fileName }.getOrNull()?.equals(target.fileName, ignoreCase = true) == true
+    } ?: candidates.firstOrNull { candidate ->
+        val wanted = target.contentId?.takeIf { it.isNotBlank() }?.trim('<', '>') ?: return@firstOrNull false
+        runCatching { (candidate as? javax.mail.internet.MimeBodyPart)?.contentID }.getOrNull()?.trim('<', '>') == wanted
+    } ?: candidates.singleOrNull { candidate ->
+        runCatching { candidate.fileName }.getOrNull() == null &&
+            target.sizeBytes > 0L &&
+            runCatching { candidate.size }.getOrNull() == target.sizeBytes.toInt()
+    }
+}
+
+/**
+ * Flattens a MIME tree into leaf parts.
+ *
+ * Note the types: `MimeMultipart` implements `Multipart`/`DataHandler`, NOT `Part`, so a container
+ * can never be a candidate itself and the old `part is MimeMultipart` branch was dead code. A
+ * `MimeMessage`, by contrast, is both `Part` and `Multipart` and does double duty, which is why
+ * the two entry points are separate functions rather than overloads.
+ */
+private fun collectLeaves(container: javax.mail.Multipart, out: MutableList<javax.mail.Part>) {
+    try {
+        for (i in 0 until container.count) {
+            val child = container.getBodyPart(i)
+            when (val ct = runCatching { child.contentType }.getOrNull().orEmpty().lowercase()) {
+                else -> when {
+                    child is javax.mail.internet.MimeBodyPart && ct.startsWith("message/rfc822") -> {
+                        val nested = runCatching { child.content as? javax.mail.internet.MimeMessage }.getOrNull()
+                            ?: runCatching { javax.mail.internet.MimeMessage(null, child.inputStream) }.getOrNull()
+                        nested?.let { collectLeavesFromPart(it, out) }
+                    }
+                    child is javax.mail.Multipart -> collectLeaves(child, out)
+                    // A container JavaMail exposes as a plain part despite a multipart header.
+                    ct.startsWith("multipart/") ->
+                        runCatching { child.content as? javax.mail.internet.MimeMultipart }.getOrNull()
+                            ?.let { collectLeaves(it, out) }
+                    else -> out.add(child)
+                }
+            }
+        }
+    } catch (_: Exception) {
+        // A malformed subtree must not abort the whole search.
+    }
+}
+
+private fun collectLeavesFromPart(part: javax.mail.Part, out: MutableList<javax.mail.Part>) {
+    if (part is javax.mail.Multipart) {
+        collectLeaves(part as javax.mail.Multipart, out)
+        return
+    }
+    val ct = runCatching { part.contentType }.getOrNull().orEmpty().lowercase()
+    try {
+        when {
+            ct.startsWith("multipart/") ->
+                runCatching { part.content as? javax.mail.internet.MimeMultipart }.getOrNull()
+                    ?.let { collectLeaves(it, out) }
+            ct.startsWith("message/rfc822") -> {
+                val nested = runCatching { part.content as? javax.mail.internet.MimeMessage }.getOrNull()
+                    ?: runCatching { javax.mail.internet.MimeMessage(null, part.inputStream) }.getOrNull()
+                nested?.let { collectLeavesFromPart(it, out) }
+            }
+            else -> out.add(part)
+        }
+    } catch (_: Exception) {
+        // ditto
+    }
+}
+
+internal fun boundaryAwareMultipart(stream: java.io.InputStream): MimeMultipart? {
+    return runCatching {
+        val bytes = stream.readBytes()
+        val text = String(bytes, Charsets.ISO_8859_1)
+        // The outer boundary is the first line beginning with "--". Any length is valid: a
+        // previous `length > 4` guard rejected legitimate short boundaries such as "b" and
+        // silently produced an empty one-part container. Closing delimiters ("--x--") are skipped.
+        val boundary = text.lineSequence().firstNotNullOfOrNull { line ->
+            val t = line.trim()
+            if (!t.startsWith("--")) return@firstNotNullOfOrNull null
+            val candidate = t.removePrefix("--").removeSuffix("--").trim()
+            candidate.takeIf { it.isNotBlank() }
+        } ?: return null
+        val ds = object : javax.activation.DataSource {
+            override fun getInputStream(): java.io.InputStream = bytes.inputStream()
+            override fun getOutputStream() = java.io.ByteArrayOutputStream()
+            override fun getContentType() = "multipart/mixed; boundary=\"$boundary\""
+            override fun getName() = "multipart"
+        }
+        MimeMultipart(ds)
+    }.getOrNull()
 }
