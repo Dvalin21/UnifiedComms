@@ -129,11 +129,15 @@
             android:syncable="true" />
 
         <!-- ponytail: exposes cached attachment files to external viewers via
-             ACTION_VIEW (grantUriPermissions). Authority must match the one
-             used in EmailScreen.openFile (packageName + ".fileprovider"). -->
+             ACTION_VIEW (grantUriPermissions). The authority must be
+             ${applicationId}.fileprovider: EmailScreen.openFile builds it from
+             packageName, and packageName carries the ".debug" suffix on debug
+             builds. The hardcoded literal only matched release, so every
+             attachment open failed on debug with "Couldn't find meta-data for
+             provider". -->
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="com.unifiedcomms.fileprovider"
+            android:authorities="${applicationId}.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data

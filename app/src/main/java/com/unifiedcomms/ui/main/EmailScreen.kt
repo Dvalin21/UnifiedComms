@@ -581,8 +581,15 @@ fun EmailDetailScreen(
                                 attachment = att,
                                 onOpen = {
                                     coroutineScope.launch {
+                                        actionError = null
                                         val path = viewModel.downloadAttachment(e.accountId, e.folder, e.imapUid ?: e.uid, att)
-                                        path?.let { openFile(context, it, att.mimeType) }
+                                        if (path != null) {
+                                            openFile(context, path, att.mimeType)?.let { actionError = it }
+                                        } else {
+                                            // ponytail: a silent null here looks exactly like a
+                                            // dead tap. Say what failed instead.
+                                            actionError = "Could not download ${att.fileName}"
+                                        }
                                     }
                                 }
                             )
@@ -631,7 +638,7 @@ private fun AttachmentRow(attachment: com.unifiedcomms.data.model.Attachment, on
             Column(modifier = Modifier.weight(1f)) {
                 Text(attachment.fileName, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium)
                 Text(
-                    attachment.mimeType + sizeLabel,
+                    bareMimeType(attachment.mimeType) + sizeLabel,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -750,6 +757,14 @@ private fun StatusRow(labelPrefix: String, result: String?, successColor: androi
     )
 }
 
+/**
+ * The stored mime type is the raw MIME header, so it carries parameters
+ * ("application/pdf; name=\"PROGRESS 1.pdf\""). Passing that to setDataAndType
+ * resolves nothing, which made every PDF hand-off open an empty chooser.
+ */
+private fun bareMimeType(raw: String): String =
+    raw.substringBefore(';').trim().ifBlank { "*/*" }
+
 private fun formatAttachmentSize(bytes: Long): String {
     val units = arrayOf("B", "KB", "MB", "GB")
     var value = bytes.toDouble()
@@ -770,18 +785,25 @@ internal fun squashBlankLines(raw: String): String =
         .trimEnd('\n', ' ', '\u00A0')
         .replace(Regex("\n{3,}"), "\n\n")
 
-private fun openFile(context: android.content.Context, path: String, mimeType: String) {
-    runCatching {
+/**
+ * Hands [path] to an external viewer. Returns null on success, or a message the caller should
+ * show — a failed open used to be invisible outside logcat, which reads to the user as a dead tap.
+ */
+private fun openFile(context: android.content.Context, path: String, mimeType: String): String? {
+    return runCatching {
         val file = java.io.File(path)
         val uri = FileProvider.getUriForFile(context, context.packageName + ".fileprovider", file)
-        val type = if (mimeType.isNotBlank()) mimeType else MimeTypeMap.getSingleton()
-            .getMimeTypeFromExtension(file.extension) ?: "*/*"
+        val type = bareMimeType(mimeType).takeIf { it != "*/*" }
+            ?: MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension)
+            ?: "*/*"
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, type)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         context.startActivity(Intent.createChooser(intent, "Open attachment"))
-    }.onFailure { e ->
+        null
+    }.getOrElse { e ->
         android.util.Log.e("EmailScreen", "openFile failed: ${e.message}")
+        "No app on this device can open this file type"
     }
 }
