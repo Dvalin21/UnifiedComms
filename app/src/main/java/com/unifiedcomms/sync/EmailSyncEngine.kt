@@ -61,11 +61,14 @@ data class SyncResult(
     // Configured folders the server does not have. Reported instead of counted as failures:
     // mailcow names the spam folder "Junk", so the default "Spam" entry is absent on a
     // perfectly healthy server and must not fail the account.
-    val skippedFolders: List<String> = emptyList()
+    val skippedFolders: List<String> = emptyList(),
+    // What the server actually has, captured only when a configured folder was missing.
+    // SyncManager uses it to reconcile the account config instead of guessing folder names.
+    val serverFolders: List<String> = emptyList()
 ) {
     companion object {
-        fun success(itemsSynced: Int = 0, newItems: List<String> = emptyList(), updatedItems: List<String> = emptyList(), deletedItems: List<String> = emptyList(), skippedFolders: List<String> = emptyList()): SyncResult =
-            SyncResult(true, itemsSynced, 0, null, newItems, updatedItems, deletedItems, skippedFolders)
+        fun success(itemsSynced: Int = 0, newItems: List<String> = emptyList(), updatedItems: List<String> = emptyList(), deletedItems: List<String> = emptyList(), skippedFolders: List<String> = emptyList(), serverFolders: List<String> = emptyList()): SyncResult =
+            SyncResult(true, itemsSynced, 0, null, newItems, updatedItems, deletedItems, skippedFolders, serverFolders)
         fun failure(error: String, itemsFailed: Int = 0): SyncResult = SyncResult(false, 0, itemsFailed, error)
     }
 }
