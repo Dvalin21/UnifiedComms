@@ -125,6 +125,7 @@ class SyncManager(
                     "unknown" to SyncResult.failure(e.message ?: "crashed")
                 }
                 Log.d("SyncManager", "$leg leg: success=${result.success} items=${result.itemsSynced} err=${result.errorMessage}")
+                if (leg == "email") reconcileFoldersFromServer(fresh, result)
                 if (!result.success) {
                     failed = true
                     errorMessage = (errorMessage ?: "") + if (errorMessage.isNullOrBlank().not()) "; ${leg.replaceFirstChar { it.uppercase() }} sync failed: ${result.errorMessage}" else "${leg.replaceFirstChar { it.uppercase() }} sync failed: ${result.errorMessage}"
@@ -150,6 +151,34 @@ class SyncManager(
             accountRepo.update(stored.copy(lastSyncAt = completedAt, updatedAt = completedAt))
         }
         return SyncResult.success(totalSynced)
+    }
+
+    /**
+     * Makes the server the source of truth for `foldersToSync`.
+     *
+     * ponytail: the config used to ship a hardcoded guess ("INBOX", "Sent", ..., "Spam", ...),
+     * but mailcow names the spam folder "Junk", so a perfectly healthy account carried a folder
+     * that did not exist. There is no folder picker in account settings, so nothing a user did
+     * can be overwritten by this — the list was never hand-curated. It is refreshed only when the
+     * engine actually saw the server and found a configured folder missing, and only when the
+     * server answered with a non-empty list, so a transient listing failure cannot wipe the config.
+     */
+    private suspend fun reconcileFoldersFromServer(account: Account, emailResult: SyncResult) {
+        if (emailResult.skippedFolders.isEmpty() || emailResult.serverFolders.isEmpty()) return
+        val current = account.syncConfig.foldersToSync
+        val reconciled = emailResult.serverFolders
+        if (reconciled == current) return
+        Log.w(
+            "SyncManager",
+            "reconciling foldersToSync for ${account.email}: $current -> $reconciled"
+        )
+        val stored = accountRepo.getById(account.id) ?: return
+        accountRepo.update(
+            stored.copy(
+                syncConfig = stored.syncConfig.copy(foldersToSync = reconciled),
+                updatedAt = kotlinx.datetime.Clock.System.now()
+            )
+        )
     }
 
     suspend fun syncNow(account: Account): SyncResult {

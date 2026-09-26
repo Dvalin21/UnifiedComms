@@ -124,6 +124,27 @@ class MainViewModel(
         }
         accountRepo.insert(toInsert)
         if (toInsert.isDefault) accountRepo.setDefault(toInsert.id)
+        seedFoldersFromServer(toInsert)
+    }
+
+    /**
+     * Replaces the hardcoded default folder list with the folders the server actually has.
+     *
+     * ponytail: the default shipped "Spam", which mailcow calls "Junk" — so every new mailcow
+     * account started life with a folder that does not exist. The list is only written when the
+     * server answers with something, so a failed lookup leaves the default in place rather than
+     * blanking it. performFullSync reconciles the same way later, which covers existing accounts.
+     */
+    private suspend fun seedFoldersFromServer(account: Account) {
+        if (!account.syncConfig.syncEmail) return
+        // Use the persisted record: it carries the encrypted credentials the engine expects, the
+        // same reason performFullSync re-fetches instead of trusting the in-memory account.
+        val stored = accountRepo.getById(account.id) ?: return
+        val folders = runCatching { emailSyncEngine.listFolders(stored) }.getOrDefault(emptyList())
+        if (folders.isEmpty()) return
+        val current = account.syncConfig.foldersToSync
+        if (current == folders) return
+        accountRepo.update(account.copy(syncConfig = account.syncConfig.copy(foldersToSync = folders)))
     }
 
     suspend fun removeAccount(accountId: String): Boolean = accountMutationMutex.withLock {
