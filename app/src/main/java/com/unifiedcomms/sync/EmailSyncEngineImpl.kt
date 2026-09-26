@@ -99,6 +99,7 @@ class EmailSyncEngineImpl(
         return withContext(Dispatchers.IO) {
             var totalSynced = 0
             var totalFailed = 0
+            val missingFolders = mutableListOf<String>()
             val newItems = mutableListOf<String>()
             val updatedItems = mutableListOf<String>()
             val deletedItems = mutableListOf<String>()
@@ -118,8 +119,11 @@ class EmailSyncEngineImpl(
 
                     val folder = store!!.getFolder(folderName)
                     if (!folder.exists()) {
-                        Log.w("EmailSyncEngineImpl", "folder does not exist: $folderName")
-                        totalFailed++
+                        // ponytail: an absent folder is a config mismatch, not a sync failure.
+                        // Counting it as one failed the whole account and made WorkManager
+                        // retry forever on a server that is working fine. Report it and move on.
+                        Log.w("EmailSyncEngineImpl", "folder not on server: $folderName")
+                        missingFolders += folderName
                         continue
                     }
                     val folderResult = syncSingleFolder(account, folder)
@@ -140,11 +144,22 @@ class EmailSyncEngineImpl(
                 }
 
                 updateProgress(account.id, folder = null, SyncStage.COMPLETED, totalSynced, totalSynced)
+                if (missingFolders.isNotEmpty()) {
+                    val available = runCatching {
+                        store!!.defaultFolder.list("*").filter { it.exists() }.map { it.name }
+                    }.getOrDefault(emptyList())
+                    Log.w(
+                        "EmailSyncEngineImpl",
+                        "skipped ${missingFolders.size} folder(s) not present on the server: " +
+                            "${missingFolders.joinToString()}. Server has: ${available.joinToString()}"
+                    )
+                }
                 return@withContext SyncResult.success(
                     itemsSynced = totalSynced,
                     newItems = newItems,
                     updatedItems = updatedItems,
-                    deletedItems = deletedItems
+                    deletedItems = deletedItems,
+                    skippedFolders = missingFolders
                 )
 
             } catch (e: CancellationException) {
