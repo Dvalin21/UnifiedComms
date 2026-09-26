@@ -24,6 +24,16 @@ internal fun shouldRetrySync(result: Result<SyncResult>): Boolean =
     result.isFailure || result.getOrNull()?.success != true
 
 /**
+ * Retry ceiling. WorkManager will retry a failing one-shot forever with backoff, so a permanent
+ * error (renamed folder, revoked credentials, deleted account) becomes a poison pill that burns
+ * battery and fills the log. Past this many attempts the failure is reported and the work is
+ * finished; the next scheduled cycle will try again from a clean slate.
+ */
+internal const val MAX_SYNC_ATTEMPTS = 5
+
+internal fun shouldGiveUpRetrying(runAttemptCount: Int): Boolean = runAttemptCount >= MAX_SYNC_ATTEMPTS
+
+/**
  * Background sync driver. Reuses the SAME engine stack + SyncManager.performFullSync
  * that the foreground UI uses, so behaviour is identical — only the lifecycle owner
  * differs (WorkManager process instead of the app's on-screen lifecycle).
@@ -87,6 +97,14 @@ class BackgroundSyncWorker(
             return if (failedAccounts == 0) {
                 BackgroundSyncScheduler.scheduleNextShort(applicationContext)
                 Result.success()
+            } else if (shouldGiveUpRetrying(runAttemptCount)) {
+                Log.w(
+                    "BackgroundSyncWorker",
+                    "giving up after $runAttemptCount attempts ($failedAccounts account(s) failed); " +
+                        "the next scheduled cycle will try again"
+                )
+                BackgroundSyncScheduler.scheduleNextShort(applicationContext)
+                Result.failure()
             } else {
                 Result.retry()
             }
@@ -94,7 +112,7 @@ class BackgroundSyncWorker(
             throw e
         } catch (e: Exception) {
             android.util.Log.e("BackgroundSyncWorker", "Background sync error", e)
-            return Result.retry()
+            return if (shouldGiveUpRetrying(runAttemptCount)) Result.failure() else Result.retry()
         } finally {
             scope.cancel()
         }
