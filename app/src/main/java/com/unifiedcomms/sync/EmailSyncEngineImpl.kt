@@ -1408,7 +1408,13 @@ class EmailSyncEngineImpl(
                     event = event
                 )
                 Transport.send(message)
-                SendResult.success(message.getHeader("Message-ID")?.firstOrNull() ?: java.util.UUID.randomUUID().toString())
+                val sentId = message.getHeader("Message-ID")?.firstOrNull()
+                    ?: java.util.UUID.randomUUID().toString()
+                // ponytail: a send that returns success must be visible. The
+                // result is the only signal that the invite actually left the
+                // device, and nothing recorded it.
+                Log.d("EmailSyncEngineImpl", "calendar invite sent to ${recipients.size} recipient(s): $sentId")
+                SendResult.success(sentId)
             } catch (e: Exception) {
                 Log.w("EmailSyncEngineImpl", "calendar invite send failed", e)
                 SendResult.failure(e.message ?: "Calendar invite send failed")
@@ -1445,8 +1451,17 @@ class EmailSyncEngineImpl(
                 }
 
                 Transport.send(mimeMessage)
-                SendResult.success(mimeMessage.getHeader("Message-ID")?.firstOrNull() ?: java.util.UUID.randomUUID().toString())
+                val sentId = mimeMessage.getHeader("Message-ID")?.firstOrNull()
+                    ?: java.util.UUID.randomUUID().toString()
+                // ponytail: the send result is the only signal that mail left
+                // the device, and this path recorded nothing on success.
+                Log.d(
+                    "EmailSyncEngineImpl",
+                    "sendEmail ok recipients=${email.recipients.to.size} id=$sentId"
+                )
+                SendResult.success(sentId)
             } catch (e: Exception) {
+                Log.w("EmailSyncEngineImpl", "sendEmail failed subject=${email.subject}", e)
                 SendResult.failure(e.message ?: "Send failed")
             }
         }
