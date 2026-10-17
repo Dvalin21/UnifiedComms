@@ -1,81 +1,20 @@
 package com.unifiedcomms.data.model
 
 import androidx.room.Entity
-import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverters
 import com.unifiedcomms.data.db.converters.DateTimeConverter
 import com.unifiedcomms.data.db.converters.StringListConverter
-import com.unifiedcomms.data.db.converters.MapConverter
 import kotlinx.datetime.Instant
 import kotlinx.datetime.Clock
 import kotlinx.serialization.Serializable
 
-@Serializable
-@Entity(
-    tableName = "messages",
-    indices = [
-        Index(value = ["conversationId", "sentAt"]),
-        Index(value = ["senderId"]),
-        Index(value = ["recipientId"]),
-        Index(value = ["status"]),
-        Index(value = ["messageType"]),
-        Index(value = ["content"])
-    ]
-)
-data class Message(
-    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
-    val conversationId: String,
-    val senderId: String,       // Our user ID
-    val recipientId: String,    // Other user's ID
-    val content: String,
-    val messageType: MessageType = MessageType.TEXT,
-    val status: MessageStatus = MessageStatus.PENDING,
-    val replyToId: String? = null,
-    val forwardFromId: String? = null,
-    @TypeConverters(MapConverter::class) val metadata: Map<String, String> = emptyMap(),
-    val isEncrypted: Boolean = true,
-    val encryptionKeyId: String? = null,
-    @TypeConverters(DateTimeConverter::class) val sentAt: Instant = Clock.System.now(),
-    @TypeConverters(DateTimeConverter::class) val deliveredAt: Instant? = null,
-    @TypeConverters(DateTimeConverter::class) val readAt: Instant? = null,
-    @TypeConverters(DateTimeConverter::class) val createdAt: Instant = Clock.System.now(),
-    val isLocalOnly: Boolean = false,
-    val needsSync: Boolean = false
-) {
-    fun isOutgoing(): Boolean = senderId == getCurrentUserId()
-    fun isIncoming(): Boolean = !isOutgoing()
-}
-
-@Serializable
-enum class MessageType {
-    TEXT,
-    IMAGE,
-    VIDEO,
-    AUDIO,
-    FILE,
-    LOCATION,
-    CONTACT,
-    CALENDAR_INVITE,
-    CALENDAR_RESPONSE,
-    EMAIL_SHARE,
-    TASK_SHARE,
-    SYSTEM,
-    ENCRYPTED_KEY_EXCHANGE
-}
-
-@Serializable
-enum class MessageStatus {
-    PENDING,      // Queued locally
-    SENDING,      // In transit
-    SENT,         // Delivered to server
-    DELIVERED,    // Delivered to recipient device
-    READ,         // Read by recipient
-    FAILED,       // Failed to send
-    EXPIRED       // Expired (e.g., invite expired)
-}
-
-// ── Shared, non-chat model types (contacts / calendar invites / shares) ──
+// ponytail: this file used to also carry the `Message` chat entity, its
+// MessageType/MessageStatus enums and three share-message models. The chat
+// feature was removed (commit 3ab6450) but they stayed behind with zero
+// consumers, and because they shared a file with UnifiedContact and
+// CalendarInviteMessage the whole file looked load-bearing. Only the dead
+// types are gone; the live ones below are untouched.
 
 @Serializable
 @Entity(tableName = "contacts")
@@ -150,50 +89,19 @@ data class CalendarInviteMessage(
     val method: InviteMethod = InviteMethod.REQUEST
 ) {
     enum class InviteMethod {
-        REQUEST,      // New invite
-        REPLY,        // Response to invite
-        CANCEL,       // Event cancelled
-        COUNTER,      // Counter-proposal
-        REFRESH       // Update
+        REQUEST,        // New invite
+        REPLY,          // Response to invite
+        CANCEL,         // Event cancelled
+        COUNTER,        // Counter-proposal
+        REFRESH         // Update
     }
 }
-
-@Serializable
-data class CalendarResponseMessage(
-    val eventUid: String,
-    val attendeeEmail: String,
-    val attendeeName: String? = null,
-    val status: AttendeeStatus,
-    val comment: String? = null,
-    @TypeConverters(DateTimeConverter::class) val respondedAt: Instant = Clock.System.now()
-)
-
-@Serializable
-data class EmailShareMessage(
-    val emailId: String,
-    val accountId: String,
-    val subject: String,
-    val sender: EmailAddress,
-    val preview: String,
-    val hasAttachments: Boolean
-)
-
-@Serializable
-data class TaskShareMessage(
-    val taskId: String,
-    val accountId: String,
-    val title: String,
-    val description: String? = null,
-    val dueAt: Instant? = null,
-    val priority: TaskPriority
-)
 
 const val CURRENT_USER = "current_user"
 
 fun getCurrentUserId(): String {
     // ponytail: no auth/session layer yet. Read a stored id if present (the integration
-    // point for real auth); otherwise fall back to the stable placeholder so messaging
-    // rows stay consistent across the app (#8).
+    // point for real auth); otherwise fall back to the stable placeholder.
     return runCatching { com.unifiedcomms.util.PreferencesManager.getInstance().getString("current_user_id", "") }
         .getOrNull()?.ifBlank { CURRENT_USER } ?: CURRENT_USER
 }

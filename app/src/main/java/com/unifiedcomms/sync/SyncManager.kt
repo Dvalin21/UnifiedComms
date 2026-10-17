@@ -5,7 +5,6 @@ import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import com.unifiedcomms.data.model.Account
-import com.unifiedcomms.data.model.Message
 import com.unifiedcomms.data.repository.AccountRepository
 import com.unifiedcomms.util.NotificationHelper
 import kotlinx.coroutines.CancellationException

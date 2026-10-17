@@ -197,6 +197,21 @@ object Migrations {
             dropLegacyIdxIndexes(db, listOf("emails", "calendar_events", "tasks", "calendars", "task_lists", "messages", "contacts", "accounts"))
         }
     }
+
+    /**
+     * Drops the `messages` table. The chat feature was removed (commit
+     * 3ab6450) but the entity, DAO and repository stayed behind with zero
+     * consumers — ~361 lines of dead code shipping in the APK, plus a table
+     * nothing wrote to. Room validates entities against the schema, so the
+     * entity cannot simply be deleted without this migration: an install
+     * carrying the old table would fail validation and crash on launch.
+     */
+    val MIGRATION_10_11 = object : Migration(10, 11) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            dropLegacyIdxIndexes(db, listOf("messages"))
+            db.execSQL("DROP TABLE IF EXISTS messages")
+        }
+    }
 }
 
 /** The duplicate emails/calendar index originally created before the entity

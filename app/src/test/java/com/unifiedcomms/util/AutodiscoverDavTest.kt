@@ -21,13 +21,13 @@ class AutodiscoverDavTest {
         <?xml version="1.0" encoding="utf-8"?>
         <d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
           <d:response>
-            <d:href>/remote.php/dav/principals/users/keith/</d:href>
+            <d:href>/remote.php/dav/principals/users/user1/</d:href>
           </d:response>
           <d:response>
             <d:propstat>
               <d:prop>
                 <c:calendar-home-set>
-                  <d:href xmlns:d="DAV:">/remote.php/dav/calendars/keith/</d:href>
+                  <d:href xmlns:d="DAV:">/remote.php/dav/calendars/user1/</d:href>
                 </c:calendar-home-set>
               </d:prop>
             </d:propstat>
@@ -43,7 +43,7 @@ class AutodiscoverDavTest {
             <d:propstat>
               <d:prop>
                 <d:current-user-principal>
-                  <d:href>/principals/users/keith/</d:href>
+                  <d:href>/principals/users/user1/</d:href>
                 </d:current-user-principal>
               </d:prop>
             </d:propstat>
@@ -54,13 +54,13 @@ class AutodiscoverDavTest {
     @Test
     fun `calendar-home-set href parsed from namespaced multistatus`() {
         val href = Autodiscover.parsePropHref(calendarHomeSetXml, "calendar-home-set")
-        assertEquals("/remote.php/dav/calendars/keith/", href)
+        assertEquals("/remote.php/dav/calendars/user1/", href)
     }
 
     @Test
     fun `current-user-principal href parsed from namespaced response`() {
         val href = Autodiscover.parsePropHref(principalXml, "current-user-principal")
-        assertEquals("/principals/users/keith/", href)
+        assertEquals("/principals/users/user1/", href)
     }
 
     @Test

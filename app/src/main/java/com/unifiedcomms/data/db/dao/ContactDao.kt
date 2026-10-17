@@ -1,90 +1,19 @@
 package com.unifiedcomms.data.db.dao
 
 import androidx.room.Dao
+import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
-import androidx.room.Update
-import androidx.room.Delete
 import androidx.room.Transaction
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
-import com.unifiedcomms.data.model.Message
+import androidx.room.Update
 import com.unifiedcomms.data.model.UnifiedContact
-import com.unifiedcomms.data.model.MessageStatus
-import com.unifiedcomms.data.model.MessageType
-import kotlinx.datetime.Instant
-import kotlinx.datetime.Clock
+import kotlinx.coroutines.flow.Flow
 
-@Dao
-interface MessageDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(message: Message): Long
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAll(messages: List<Message>): List<Long>
-
-    @Update
-    suspend fun update(message: Message): Int
-
-    @Update
-    suspend fun updateAll(messages: List<Message>): Int
-
-    @Delete
-    suspend fun delete(message: Message): Int
-
-    @Query("DELETE FROM messages WHERE id = :id")
-    suspend fun deleteById(id: String): Int
-
-    @Query("SELECT * FROM messages WHERE id = :id")
-    suspend fun getById(id: String): Message?
-
-    @Query("SELECT * FROM messages ORDER BY sentAt DESC")
-    fun getAllMessages(): Flow<List<Message>>
-
-    // ponytail: Message.conversationId now keys the search index only — searchMessages
-    // is the real consumer. kept as a simple lookup helper.
-    @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY sentAt DESC LIMIT 1")
-    suspend fun getLastForConversation(conversationId: String): Message?
-
-    @Query("SELECT * FROM messages WHERE (senderId = :senderId AND recipientId = :recipientId) OR (senderId = :recipientId AND recipientId = :senderId) ORDER BY sentAt DESC LIMIT :limit")
-    suspend fun getDirectMessages(senderId: String, recipientId: String, limit: Int): List<Message>
-
-    @Query("SELECT * FROM messages WHERE content LIKE :query ORDER BY sentAt DESC LIMIT :limit")
-    fun searchMessages(query: String, limit: Int): Flow<List<Message>>
-
-    @Query("SELECT * FROM messages WHERE messageType = :type ORDER BY sentAt DESC")
-    fun getByType(type: MessageType): Flow<List<Message>>
-
-    @Query("SELECT * FROM messages WHERE needsSync = 1")
-    suspend fun getNeedingSync(): List<Message>
-
-    @Query("SELECT * FROM messages WHERE isLocalOnly = 1")
-    suspend fun getLocalOnly(): List<Message>
-
-    @Query("UPDATE messages SET status = :status WHERE id = :id")
-    suspend fun updateStatus(id: String, status: MessageStatus): Int
-
-    @Transaction
-    suspend fun markDelivered(messageIds: List<String>) {
-        messageIds.forEach { id ->
-            updateStatus(id, MessageStatus.DELIVERED)
-        }
-    }
-
-    @Transaction
-    suspend fun markRead(messageIds: List<String>) {
-        messageIds.forEach { id ->
-            val msg = getById(id)
-            if (msg != null) {
-                update(msg.copy(status = MessageStatus.READ, readAt = Clock.System.now()))
-            }
-        }
-    }
-
-    @Query("DELETE FROM messages WHERE conversationId = :conversationId AND sentAt < :olderThan")
-    suspend fun cleanupOldMessages(conversationId: String, olderThan: Long): Int
-}
+// ponytail: this file was named MessageDao.kt but carried two DAOs — the
+// `MessageDao` for the removed chat feature (dead) and the live `ContactDao`.
+// Deleting the file to remove the dead DAO would have taken contacts with it.
+// It now holds only ContactDao and is named for what it contains.
 
 @Dao
 interface ContactDao {

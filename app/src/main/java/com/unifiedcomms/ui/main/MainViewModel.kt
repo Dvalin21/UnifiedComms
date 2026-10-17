@@ -8,7 +8,6 @@ import com.unifiedcomms.data.model.Account
 import com.unifiedcomms.data.model.Calendar
 import com.unifiedcomms.data.model.CalendarEvent
 import com.unifiedcomms.data.model.Email
-import com.unifiedcomms.data.model.Message
 import com.unifiedcomms.data.model.Task
 import com.unifiedcomms.data.repository.AccountRepository
 import com.unifiedcomms.data.repository.AccountRepositoryImpl

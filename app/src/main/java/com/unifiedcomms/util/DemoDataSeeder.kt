@@ -9,7 +9,6 @@ import com.unifiedcomms.data.model.AuthConfig
 import com.unifiedcomms.data.model.CalendarEvent
 import com.unifiedcomms.data.model.EventAttendee
 import com.unifiedcomms.data.model.EventDateTime
-import com.unifiedcomms.data.model.Message
 import com.unifiedcomms.data.model.ServerConfig
 import com.unifiedcomms.data.model.SyncConfig
 import com.unifiedcomms.data.model.Task

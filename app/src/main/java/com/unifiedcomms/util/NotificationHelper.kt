@@ -25,7 +25,6 @@ object NotificationHelper {
     const val CHANNEL_ID_EMAIL = "email"
     const val CHANNEL_ID_CALENDAR = "calendar"
     const val CHANNEL_ID_TASKS = "tasks"
-    const val CHANNEL_ID_MESSAGES = "messages"
     const val CHANNEL_ID_REMINDERS = "reminders"
     const val CHANNEL_ID_SYNC = "sync"
     const val CHANNEL_ID_SECURITY = "security"
@@ -83,13 +82,6 @@ object NotificationHelper {
                     enableVibration(true)
                     vibrationPattern = longArrayOf(0, 300, 300, 300)
                     lightColor = Color.YELLOW
-                    lockscreenVisibility = Notification.VISIBILITY_PRIVATE
-                },
-                NotificationChannel(CHANNEL_ID_MESSAGES, "Messages", NotificationManager.IMPORTANCE_HIGH).apply {
-                    description = "New message notifications"
-                    enableVibration(true)
-                    vibrationPattern = longArrayOf(0, 200, 200, 200)
-                    lightColor = Color.MAGENTA
                     lockscreenVisibility = Notification.VISIBILITY_PRIVATE
                 },
                 NotificationChannel(
@@ -227,37 +219,6 @@ object NotificationHelper {
             .build()
 
         context.notifySafe(taskId.hashCode(), notification)
-    }
-
-    fun showMessageNotification(
-        context: Context,
-        conversationId: String,
-        senderName: String,
-        message: String
-    ) {
-        val intent = Intent(context, MainActivity::class.java).apply {
-            putExtra("navigate_to", "conversation/$conversationId")
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        }
-
-        val pendingIntent = PendingIntent.getActivity(
-            context, conversationId.hashCode(), intent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID_MESSAGES)
-            .setSmallIcon(R.drawable.ic_notification_sync)
-            .setContentTitle(senderName)
-            .setContentText(message)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
-            .setGroup("messages")
-            .setGroupSummary(false)
-            .build()
-
-        context.notifySafe(conversationId.hashCode(), notification)
     }
 
     fun showCalendarInviteNotification(

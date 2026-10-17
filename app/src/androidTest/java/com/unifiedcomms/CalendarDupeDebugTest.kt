@@ -50,10 +50,10 @@ class CalendarDupeDebugTest {
             uidDupes.forEach { (uid, rows) ->
                 Log.e("DUPEDBG", "  UID_DUPE uid='$uid' count=${rows.size} ids=${rows.map { it.id }}")
             }
-            //Dump "Appointment with Maggie" masters (explain on-screen triplication)
-            val maggie = masters.filter { it.title.contains("Maggie", true) }
-            Log.e("DUPEDBG", "MAGGIE_MASTERS=${maggie.size}")
-            maggie.forEach { e ->
+            //Dump "Appointment with Sample" masters (explain on-screen triplication)
+            val sample = masters.filter { it.title.contains("Sample", true) }
+            Log.e("DUPEDBG", "MAGGIE_MASTERS=${sample.size}")
+            sample.forEach { e ->
                 Log.e("DUPEDBG", "  MAGGIE uid='${e.uid}' start='${e.startAt}' rrule='${e.recurrenceRule}' calId='${e.calendarId}' color='${e.color.background}'")
             }
             // Color distribution of July 2026 window events (what the screen shows)
@@ -80,7 +80,7 @@ class CalendarDupeDebugTest {
         staleNonRecur.take(15).forEach { e ->
             Log.e("DUPEDBG", "  STALE title='${e.title}' start='${e.startAt}' uid='${e.uid}'")
         }
-        // How many MASTERS have original start before 2026 but are recurring (legit repeaters like Maggie)?
+        // How many MASTERS have original start before 2026 but are recurring (legit repeaters like Sample)?
         val oldStartRecur = masters.filter {
             it.recurrenceRule != null && runCatching { it.startAt.toInstant().toEpochMilliseconds() }.getOrNull()?.let { ms ->
                 ms < java.time.LocalDate.of(2026,1,1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
@@ -134,8 +134,8 @@ class CalendarDupeDebugTest {
                 if (etags == null) {
                     Log.e("PROBEDBG", "CAL ${cal.path} listing failed: ${listing.exceptionOrNull()?.message}")
                 } else {
-                    val google = etags.filter { it.href.contains("@google.com", true) || it.href.contains("maggie", true) }
-                    Log.e("PROBEDBG", "CAL ${cal.path} totalHrefs=${etags.size} googleOrMaggie=${google.size} e.g.=${google.take(5).map { it.href }}")
+                    val google = etags.filter { it.href.contains("@google.com", true) || it.href.contains("sample", true) }
+                    Log.e("PROBEDBG", "CAL ${cal.path} totalHrefs=${etags.size} googleOrSample=${google.size} e.g.=${google.take(5).map { it.href }}")
                 }
             }
         }
