@@ -16,6 +16,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -51,7 +52,7 @@ private fun BiometricLockScreen(
     val executor = remember { ContextCompat.getMainExecutor(context) }
     val biometricManager = remember { BiometricManager.from(context) }
     var statusMessage by remember { mutableStateOf("") }
-
+    var authAttempt by remember { mutableIntStateOf(0) }
     // ponytail: root cause of "device not found" — the gate used BIOMETRIC_STRONG only,
     // but many devices/emulators enroll fingerprint as BIOMETRIC_WEAK, so
     // canAuthenticate(STRONG or DEVICE_CREDENTIAL) returns NONE_ENROLLED and the Unlock
@@ -68,7 +69,7 @@ private fun BiometricLockScreen(
 
     // ponytail: auto-launch the system prompt the moment the lock appears — no separate
     // "Unlock" button. On success we flip to UNLOCKED immediately (no app restart).
-    LaunchedEffect(Unit) {
+    LaunchedEffect(authAttempt) {
         if (canAuth != BiometricManager.BIOMETRIC_SUCCESS || activity == null) return@LaunchedEffect
         val promptInfoBuilder = BiometricPrompt.PromptInfo.Builder()
             .setTitle("Unlock UnifiedComms")
@@ -119,7 +120,11 @@ private fun BiometricLockScreen(
             }
         },
         confirmButton = {
-            androidx.compose.material3.TextButton(onClick = {}) { Text("Close") }
+            // Previously a no-op "Close" that trapped the user in this dialog.
+            androidx.compose.material3.TextButton(onClick = {
+                statusMessage = ""
+                authAttempt++
+            }) { Text("Retry") }
         }
     )
 }

@@ -38,9 +38,9 @@ Captured from the running app (debug build, light + dark themes, seeded demo dat
 
 | Feature | Providers | Key Capabilities |
 |---------|-----------|------------------|
-| **📧 Email** | Google, Mailcow, Outlook, Yahoo, Exchange, iCloud, Generic IMAP/SMTP | Unified inbox, push, attachments, PGP, threading, flags |
-| **📅 Calendar** | Google, CalDAV, Exchange, iCloud | Shared calendars, color preservation, invites (Yes/No/Maybe), RRULE recurrence |
-| **✅ Tasks** | CalDAV VTODO, Google Tasks | Subtasks, priorities (Low/Normal/High/Urgent), due dates, recurring |
+| **📧 Email** | Mailcow | Unified inbox, push, attachments, PGP, threading, flags |
+| **📅 Calendar** | Mailcow (CalDAV) | Shared calendars, color preservation, invites (Yes/No/Maybe), RRULE recurrence |
+| **✅ Tasks** | Mailcow (CalDAV VTODO) | Subtasks, priorities (Low/Normal/High/Urgent), due dates, recurring |
 | **🔒 Security** | — | Biometric lock, AES-256 for stored credentials (Android Keystore), zero telemetry |
 | **🔔 Reminders** | AlarmManager | Full-screen heads-up alerts with snooze/dismiss |
 
@@ -110,14 +110,7 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 
 | Provider | Method | Required Info |
 |----------|--------|---------------|
-| **Google** | OAuth 2.0 | Opens browser → grant permissions (Gmail, Calendar, Contacts, Tasks) |
-| **Outlook / Hotmail** | OAuth 2.0 | Opens browser → grant permissions (Mail, Calendar, Contacts, Tasks) |
-| **Yahoo Mail** | OAuth 2.0 | Opens browser → grant permissions |
-| **iCloud** | OAuth 2.0 | Opens browser → Apple ID login |
-| **Exchange / Office 365** | OAuth 2.0 (cloud) or Manual | For on-prem: server URL, email, password |
 | **Mailcow** | Manual | Server URL (e.g., `mail.example.com`), email, password/app password |
-| **Generic IMAP/SMTP** | Manual | IMAP host, SMTP host, ports, email, password |
-| **Generic CalDAV/CardDAV** | Manual | CalDAV URL, CardDAV URL, email, password |
 
 **After adding:**
 - Choose sync options: Email, Calendar, Contacts, Tasks (per-account)

@@ -114,6 +114,7 @@ data class ServerConfig(
     val oauthTokenUrl: String? = null,
     val oauthAuthUrl: String? = null,
     val oauthClientId: String? = null,
+    val oauthClientSecret: String? = null, // Yahoo & other secret-requiring providers
     val oauthScopes: List<String> = emptyList(),
     val supportsPush: Boolean = false,
     // ponytail: opt-in escape for self-signed / internal-CA IMAP servers.
@@ -171,27 +172,36 @@ data class ServerConfig(
             )
         }
 
-        fun ExchangeDefaults(serverUrl: String): ServerConfig = ServerConfig(
-            imapHost = serverUrl.removeSuffix("/").removeSuffix("https://").removeSuffix("http://"),
-            imapPort = 993,
-            imapUseSsl = true,
-            smtpHost = serverUrl.removeSuffix("/").removeSuffix("https://").removeSuffix("http://"),
-            smtpPort = 587,
-            smtpUseStartTls = true,
-            caldavUrl = "$serverUrl/EWS/Exchange.asmx",
-            carddavUrl = "$serverUrl/EWS/Exchange.asmx",
-            oauthTokenUrl = "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-            oauthAuthUrl = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
-            oauthScopes = listOf(
-                "https://outlook.office.com/IMAP.AccessAsUser.All",
-                "https://outlook.office.com/SMTP.Send",
-                "https://outlook.office.com/Calendars.ReadWrite",
-                "https://outlook.office.com/Contacts.ReadWrite",
-                "https://outlook.office.com/Tasks.ReadWrite"
-            ),
-            supportsPush = true,
-            pushConfig = PushConfig.Exchange()
-        )
+        fun ExchangeDefaults(serverUrl: String): ServerConfig {
+            // Normalize: a bare domain gets an https:// scheme; an http(s):// URL
+            // keeps only its origin, not any pre-existing path component.
+            val origin = runCatching {
+                val uri = java.net.URI(if (serverUrl.startsWith("http", ignoreCase = true)) serverUrl else "https://$serverUrl")
+                "${uri.scheme}://${uri.host}${if (uri.port in 1..65535 && uri.port != 443 && uri.port != 80) ":${uri.port}" else ""}"
+            }.getOrDefault(serverUrl.trimEnd('/'))
+            val host = runCatching { java.net.URI(origin).host }.getOrNull() ?: serverUrl
+            return ServerConfig(
+                imapHost = host,
+                imapPort = 993,
+                imapUseSsl = true,
+                smtpHost = host,
+                smtpPort = 587,
+                smtpUseStartTls = true,
+                caldavUrl = "$origin/EWS/Exchange.asmx",
+                carddavUrl = "$origin/EWS/Exchange.asmx",
+                oauthTokenUrl = "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+                oauthAuthUrl = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+                oauthScopes = listOf(
+                    "https://outlook.office.com/IMAP.AccessAsUser.All",
+                    "https://outlook.office.com/SMTP.Send",
+                    "https://outlook.office.com/Calendars.ReadWrite",
+                    "https://outlook.office.com/Contacts.ReadWrite",
+                    "https://outlook.office.com/Tasks.ReadWrite"
+                ),
+                supportsPush = true,
+                pushConfig = PushConfig.Exchange()
+            )
+        }
 
         fun OutlookDefaults(): ServerConfig = ExchangeDefaults("outlook.office365.com")
 

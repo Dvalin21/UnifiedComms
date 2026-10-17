@@ -73,7 +73,7 @@ class EmailRepositoryImpl(private val dao: EmailDao) : EmailRepository {
         dao.getUnreadByAccountAndFolder(accountId, folder).map { it.filter { e -> !e.flags.isRead } }
 
     override suspend fun getUnreadCount(accountId: String, folder: String): Int =
-        dao.getUnreadByAccountAndFolder(accountId, folder).map { it.size }.first()
+        dao.getUnreadByAccountAndFolder(accountId, folder).map { it.count { e -> !e.flags.isRead } }.first()
 
     override fun getFlagged(accountId: String): Flow<List<Email>> =
         dao.getFlagged(accountId).map { it.filter { e -> e.flags.isFlagged } }
@@ -88,7 +88,7 @@ class EmailRepositoryImpl(private val dao: EmailDao) : EmailRepository {
         dao.getUnifiedInbox(accountIds, folders, limit)
 
     override fun getUnifiedUnread(accountIds: List<String>, limit: Int): Flow<List<Email>> =
-        dao.getUnifiedUnread(accountIds, limit).map { it.filter { e -> !e.flags.isRead } }
+        dao.getUnifiedUnread(accountIds, limit).map { it.filter { e -> !e.flags.isRead && e.folder.equals("INBOX", ignoreCase = true) } }
 
     override fun searchEmails(query: String, accountIds: List<String>, limit: Int): Flow<List<Email>> =
         dao.searchEmails("%$query%", accountIds, limit)

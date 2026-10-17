@@ -23,7 +23,8 @@ import com.unifiedcomms.data.model.SystemLabels
 data class EmailSyncKey(
     val id: String,
     val etag: String,
-    val flags: EmailFlags
+    val flags: EmailFlags,
+    val needsSync: Boolean = false
 )
 
 data class EmailSyncUid(
@@ -81,10 +82,10 @@ interface EmailDao {
     // full row (incl. a possibly multi-MB bodyText) overflows the 2MB
     // CursorWindow for large folders (Sent/Trash) and aborts the sync. Only the
     // columns needed to decide insert-vs-update / etag change are fetched.
-    @Query("SELECT id, etag, flags FROM emails WHERE accountId = :accountId AND imapUid = :imapUid AND folder = :folder LIMIT 1")
+    @Query("SELECT id, etag, flags, needsSync FROM emails WHERE accountId = :accountId AND imapUid = :imapUid AND folder = :folder LIMIT 1")
     suspend fun getSyncKeyByImapUid(accountId: String, imapUid: String, folder: String): EmailSyncKey?
 
-    @Query("SELECT id, etag, flags FROM emails WHERE accountId = :accountId AND uid = :uid AND folder = :folder LIMIT 1")
+    @Query("SELECT id, etag, flags, needsSync FROM emails WHERE accountId = :accountId AND uid = :uid AND folder = :folder LIMIT 1")
     suspend fun getSyncKeyByUid(accountId: String, uid: String, folder: String): EmailSyncKey?
 
     @Query("SELECT id, imapUid, uidValidity, messageId FROM emails WHERE accountId = :accountId AND folder = :folder")

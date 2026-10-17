@@ -93,18 +93,11 @@ private data class Provider(
 )
 
 private val PROVIDERS = listOf(
-    // OAuth provider tiles stay hidden until the browser/token callback is wired;
-    // launching a half-implemented flow is worse than offering manual setup.
-    Provider("Mailcow", AccountType.MAILCOW, false, R.drawable.ic_provider_mailcow, 0xFF4A6FE3),
-    Provider("Exchange", AccountType.EXCHANGE, false, R.drawable.ic_provider_exchange, 0xFF0072C6),
-    Provider("ProtonMail", AccountType.PROTONMAIL, false, R.drawable.ic_provider_protonmail, 0xFF8B89ED),
-    Provider("Fastmail", AccountType.FASTMAIL, false, R.drawable.ic_provider_fastmail, 0xFF3B5BDB),
-    Provider("Zoho", AccountType.ZOHO, false, R.drawable.ic_provider_zoho, 0xFFE03A1D),
-    Provider("GMX", AccountType.GMX, false, R.drawable.ic_provider_gmx, 0xFFEC1C24),
-    Provider("AOL", AccountType.AOL, false, R.drawable.ic_provider_aol, 0xFF0060AF),
-    Provider("Generic IMAP/SMTP", AccountType.GENERIC_IMAP_SMTP, false, R.drawable.ic_provider_generic_imap, 0xFF6750A4),
-    Provider("Generic CalDAV/CardDAV", AccountType.GENERIC_CALDAV_CARDDAV, false, R.drawable.ic_provider_generic_caldav, 0xFF00897B),
-    Provider("Custom", AccountType.CUSTOM, false, R.drawable.ic_provider_custom, 0xFF625B71)
+    // Mailcow is the only supported provider (it serves SOGo et al over IMAPS/993,
+    // submission/587+STARTTLS, and CalDAV/CardDAV under /SOGo). Other providers
+    // were removed: each non-mailcow tile built an Account that immediately
+    // failed at the connection gate, so the choices were noise.
+    Provider("Mailcow", AccountType.MAILCOW, false, R.drawable.ic_provider_mailcow, 0xFF4A6FE3)
 )
 
 @Composable

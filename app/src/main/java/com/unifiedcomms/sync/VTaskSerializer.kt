@@ -84,6 +84,10 @@ object VTaskSerializer {
 
         if (task.categories.isNotEmpty()) sb.appendLine("CATEGORIES:${task.categories.joinToString(",") { escape(it) }}")
 
+        // Round-trip the RRULE; without it a recurring VTODO edited here would
+        // silently land on the server as a single-instance task.
+        task.recurrenceRule?.let { sb.appendLine("RRULE:${it.toRfc5545()}") }
+
         sb.appendLine("END:VTODO")
         sb.appendLine("END:VCALENDAR")
         return sb.toString()

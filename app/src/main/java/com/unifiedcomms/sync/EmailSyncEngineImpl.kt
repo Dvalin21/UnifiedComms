@@ -333,7 +333,12 @@ class EmailSyncEngineImpl(
                         // later pass; etag/flags may be unchanged so we MUST still
                         // refresh the body. parseEmail now reliably returns a clean
                         // body, so always write it (never clobber with null).
-                        val mergedFlags = if (localKey.flags != email.flags) localKey.flags else email.flags
+                        // Flag reconciliation: a row whose flags the user changed
+                        // locally (needsSync=true) wins — push it to the server.
+                        // A row with no pending local change follows the server
+                        // (read/star on another device must propagate here).
+                        val localFlagsDirty = localKey.needsSync
+                        val mergedFlags = if (localFlagsDirty) localKey.flags else email.flags
                         emailRepo.updateSyncMeta(
                             id = localKey.id,
                             flags = mergedFlags,
@@ -349,11 +354,11 @@ class EmailSyncEngineImpl(
                             attachments = email.attachments,
                             invite = email.invite
                         )
-                        // Push the flags that were in Room before this server refresh.
-                        // `email` is the newly parsed server copy; passing it as both
-                        // sides made the diff always empty and silently discarded
-                        // local read/star changes.
-                        pendingFlagUpdates.add(email.copy(id = localKey.id, flags = localKey.flags) to email.flags)
+                        if (localFlagsDirty) {
+                            // Push the local pending flag state up; on success the
+                            // server now matches, so the row is no longer dirty.
+                            pendingFlagUpdates.add(email.copy(id = localKey.id, flags = localKey.flags) to email.flags)
+                        }
 
                         updatedItems.add(localKey.id)
                     }
@@ -1229,17 +1234,10 @@ class EmailSyncEngineImpl(
             }
             val config = account.serverConfig
             val auth = crypto.decryptAuthConfig(account.authConfig)
-            val props = Properties().apply {
-                put("mail.store.protocol", "imap")
-                put("mail.imap.host", config.imapHost)
-                put("mail.imap.port", config.imapPort.toString())
-                put("mail.imap.ssl.enable", "true")
-                put("mail.imap.auth", "true")
-                put("mail.imap.timeout", "30000")
-                put("mail.imap.connectiontimeout", "30000")
-                put("mail.imap.writetimeout", "30000")
-            }
-            val session = javax.mail.Session.getInstance(props, null)
+            // Reuse the real IMAP session builder: honors imapUseSsl, port, host,
+            // and the acceptAllCerts opt-in — the previous hardcoded ssl=true session
+            // broke attachments for self-signed/mailcow setups even though sync worked.
+            val session = openImapSession(config, connectTimeoutMs = 30_000, readTimeoutMs = 30_000)
             store = session.getStore("imap") as com.sun.mail.imap.IMAPStore
             connectStoreWithRetry(store, config, auth)
             imapFolder = store.getFolder(folder)

@@ -120,13 +120,31 @@
             android:name=".util.InviteActionReceiver"
             android:exported="false" />
 
-        <!-- Sync Adapters -->
-        <provider
-            android:name=".sync.accounts.UnifiedCommsAuthenticatorProvider"
-            android:authorities="com.unifiedcomms.authenticator"
-            android:exported="false"
-            android:multiprocess="true"
-            android:syncable="true" />
+        <!-- System AccountManager integration: one account of type com.unifiedcomms
+             per Room account, with a contacts sync adapter backing it. -->
+        <service
+            android:name=".sync.accounts.AuthenticatorService"
+            android:exported="true"
+            android:permission="android.permission.BIND_AUTHENTICATOR_SERVICE">
+            <intent-filter>
+                <action android:name="android.accounts.AccountAuthenticator" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accounts.AccountAuthenticator"
+                android:resource="@xml/authenticator" />
+        </service>
+
+        <service
+            android:name=".sync.ContactsSyncAdapterService"
+            android:exported="true"
+            android:permission="android.permission.BIND_SYNC_ADAPTER">
+            <intent-filter>
+                <action android:name="android.content.SyncAdapter" />
+            </intent-filter>
+            <meta-data
+                android:name="android.content.SyncAdapter"
+                android:resource="@xml/syncadapter" />
+        </service>
 
         <!-- ponytail: exposes cached attachment files to external viewers via
              ACTION_VIEW (grantUriPermissions). Authority must match the one

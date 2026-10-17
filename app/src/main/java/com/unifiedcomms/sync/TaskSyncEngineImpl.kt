@@ -211,7 +211,9 @@ class TaskSyncEngineImpl(
             val href = VTaskSerializer.hrefFor(task.copy(listId = listPath, uid = uid))
             val etag = dav.putResource(href, VTaskSerializer.toVtodo(task, uid))
                 ?: return@withContext com.unifiedcomms.sync.CreateResult.failure("Task write failed")
-            com.unifiedcomms.sync.CreateResult.success(uid, uid, etag)
+            // Return the SAME uid actually written to the server, plus the exact
+            // href so callers can persist serverHref instead of a blank-uid guess.
+            com.unifiedcomms.sync.CreateResult.success(href, uid, etag)
         }
     }
 

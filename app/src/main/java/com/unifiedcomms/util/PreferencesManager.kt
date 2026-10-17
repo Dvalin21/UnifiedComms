@@ -130,7 +130,8 @@ class PreferencesManager private constructor(
 
     fun <T> getObject(key: String, type: Type, default: T): T {
         val json = getString(key, "")
-        return if (json.isNotEmpty()) gson.fromJson(json, type) else default
+        if (json.isEmpty()) return default
+        return runCatching { gson.fromJson<T>(json, type) ?: default }.getOrDefault(default)
     }
 
     fun remove(key: String) {

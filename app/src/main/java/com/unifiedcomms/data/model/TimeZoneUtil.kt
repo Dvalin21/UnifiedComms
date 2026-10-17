@@ -11,7 +11,7 @@ import kotlinx.datetime.TimeZone
  * platform zone table and NEVER throw — they fall back to the canonical form or UTC.
  */
 object TimeZoneUtil {
-    private val cache = mutableMapOf<String, String?>()
+    private val cache = java.util.concurrent.ConcurrentHashMap<String, String?>()
 
     /** Normalize an iCal TZID to its canonical IANA string (e.g. "AMERICA/NEW_YORK" -> "America/New_York"). */
     fun normalize(tzId: String?): String? {

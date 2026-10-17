@@ -18,8 +18,11 @@ class AddAccountActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         val intent = Intent(this, com.unifiedcomms.ui.main.MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            // Forward the OAuth redirect URI too — without it MainActivity/AddAccountScreen
+            // never sees the authorization code and OAuth can never complete.
+            getIntent().data?.let { data = it }
             getIntent().getStringExtra("accountType")?.let { putExtra("accountType", it) }
-            getIntent().getStringExtra("confirmCredentials")?.let { putExtra("confirmCredentials", it) }
+            getIntent().getBooleanExtra("confirmCredentials", false).let { putExtra("confirmCredentials", it) }
         }
         startActivity(intent)
         finish()

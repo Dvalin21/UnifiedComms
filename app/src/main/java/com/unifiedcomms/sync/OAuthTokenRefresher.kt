@@ -50,6 +50,11 @@ class OAuthTokenRefresher(
                     .add("client_id", account.serverConfig.oauthClientId ?: "")
                     .add("refresh_token", refreshToken)
                     .add("grant_type", "refresh_token")
+                    .apply {
+                        // Yahoo (and others) 400 the refresh response without a
+                        // client_secret even for public clients.
+                        account.serverConfig.oauthClientSecret?.takeIf { it.isNotBlank() }?.let { add("client_secret", it) }
+                    }
                     .build()
                 val req = Request.Builder().url(tokenUrl).post(body).build()
                 client.newCall(req).execute().use { resp ->

@@ -58,6 +58,10 @@ data class CalendarEvent(
     val calendarId: String,
     val uid: String,
     val recurrenceId: String? = null,
+    // Original occurrence instant carried by an expanded/edited recurrence.
+    // RECURRENCE-ID (RFC 5545) is this value, NOT the master uid — the serializer
+    // and expander rely on it. Null for ordinary single-instance events.
+    val occurrenceStartMs: Long? = null,
     val title: String,
     val description: String? = null,
     val location: String? = null,
@@ -100,7 +104,7 @@ data class CalendarEvent(
     fun isRecurring(): Boolean = recurrenceRule != null
     fun isInstance(): Boolean = recurrenceId != null
     fun isMaster(): Boolean = recurrenceId == null && recurrenceRule != null
-    fun getDurationMinutes(): Long = (endAt.toInstant(TimeZoneUtil.toKtxZone(startAt.timeZone)) - startAt.toInstant(TimeZoneUtil.toKtxZone(startAt.timeZone))).inWholeMinutes
+    fun getDurationMinutes(): Long = (endAt.toInstant(TimeZoneUtil.toKtxZone(endAt.timeZone)) - startAt.toInstant(TimeZoneUtil.toKtxZone(startAt.timeZone))).inWholeMinutes
     fun getAttendeeStatus(email: String): AttendeeStatus = attendees.find { it.email == email }?.status ?: AttendeeStatus.NEEDS_ACTION
     fun hasAttendee(email: String): Boolean = attendees.any { it.email == email }
     fun getOrganizerEmail(): String = organizer?.email ?: ""

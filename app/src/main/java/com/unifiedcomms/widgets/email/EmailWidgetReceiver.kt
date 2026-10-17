@@ -38,15 +38,48 @@ class EmailWidgetReceiver : AppWidgetProvider() {
                 val repository = EmailRepositoryImpl(db.emailDao())
                 val accounts = runBlocking { db.accountDao().getAllActive().first() }
                 val unread = runBlocking {
-                    accounts.sumOf { account ->
-                        listOf("INBOX", "Inbox", "inbox")
-                            .map { repository.getUnreadCount(account.id, it) }
-                            .firstOrNull { count -> count > 0 } ?: 0
+                    accounts.sumOf { account -> repository.getUnreadCount(account.id, "INBOX") }
+                }
+                val messages = runBlocking {
+                    if (accounts.isEmpty()) emptyList()
+                    else repository.getUnifiedInbox(accounts.map { it.id }, listOf("INBOX"), 100).first()
+                        .filter { it.isUnread() }
+                        .take(5)
+                }
+
+                val views = RemoteViews(context.packageName, R.layout.widget_email)
+                views.setTextViewText(
+                    R.id.widget_email_count,
+                    when {
+                        accounts.isEmpty() -> "No accounts"
+                        unread == 0 -> "Inbox 0 unread"
+                        else -> "$unread unread · latest below"
+                    }
+                )
+                val rowIds = intArrayOf(R.id.email_r1_p, R.id.email_r2_p, R.id.email_r3_p, R.id.email_r4_p, R.id.email_r5_p)
+                for (idx in 0 until 5) {
+                    if (idx < messages.size) {
+                        val msg = messages[idx]
+                        views.setTextViewText(rowIds[idx], "${msg.sender.email.ifBlank { "?" }} · ${msg.subject.ifBlank { "(no subject)" }}")
+                        views.setViewVisibility(rowIds[idx], android.view.View.VISIBLE)
+                        val intent = Intent(context, MainActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                            putExtra("navigate_to", "email_detail/${msg.id}")
+                        }
+                        val rowPending = PendingIntent.getActivity(
+                            context, 1000 + idx, intent,
+                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                        )
+                        views.setOnClickPendingIntent(rowIds[idx], rowPending)
+                    } else {
+                        views.setTextViewText(rowIds[idx], "")
+                        views.setViewVisibility(rowIds[idx], android.view.View.GONE)
+                        views.setOnClickPendingIntent(rowIds[idx], null)
                     }
                 }
-                val views = RemoteViews(context.packageName, R.layout.widget_email)
+
                 val intent = Intent(context, MainActivity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                     putExtra("navigate_to", "email")
                 }
                 val pendingIntent = PendingIntent.getActivity(
@@ -54,11 +87,6 @@ class EmailWidgetReceiver : AppWidgetProvider() {
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
                 views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
-                views.setTextViewText(R.id.widget_email_count, unread.toString())
-                views.setTextViewText(
-                    R.id.widget_email_account,
-                    accounts.firstOrNull()?.name ?: "No account"
-                )
                 appWidgetManager.updateAppWidget(appWidgetId, views)
             } catch (e: Exception) {
                 Log.e("EmailWidgetReceiver", "Unable to update widget", e)

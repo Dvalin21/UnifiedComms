@@ -124,7 +124,18 @@ class MainViewModel(
         }
         accountRepo.insert(toInsert)
         if (toInsert.isDefault) accountRepo.setDefault(toInsert.id)
+        syncAndroidAccount(app, toInsert)
         seedFoldersFromServer(toInsert)
+    }
+
+    private fun syncAndroidAccount(app: com.unifiedcomms.UnifiedCommsApplication, account: Account) {
+        runCatching {
+            val am = android.accounts.AccountManager.get(app)
+            val sys = android.accounts.Account(account.email, "com.unifiedcomms")
+            if (!am.addAccountExplicitly(sys, null, null)) am.setAuthToken(sys, "password", null)
+            am.setUserData(sys, "unifiedcomms.accountId", account.id)
+            android.content.ContentResolver.setSyncAutomatically(sys, "com.android.contacts", true)
+        }
     }
 
     /**
@@ -152,6 +163,14 @@ class MainViewModel(
         if (removed) {
             ReminderScheduler(app, calendarRepo, accountRepo).cancelAccountReminders(accountId)
             ensureDefaultAccount()
+            val am = android.accounts.AccountManager.get(app)
+            runCatching {
+                am.getAccountsByType("com.unifiedcomms").forEach {
+                    if (am.getUserData(it, "unifiedcomms.accountId") == accountId) {
+                        @Suppress("DEPRECATION") am.removeAccount(it, null, null)
+                    }
+                }
+            }
         }
         removed
     }
@@ -431,9 +450,10 @@ class MainViewModel(
                 val created = taskSyncEngine.createTask(account, candidate)
                 val result = created.asSyncResult()
                 if (result.success) {
+                    val resolvedUid = created.uid ?: candidate.uid
                     val stored = candidate.copy(
-                        uid = created.uid ?: candidate.uid,
-                        serverHref = com.unifiedcomms.sync.VTaskSerializer.hrefFor(candidate),
+                        uid = resolvedUid,
+                        serverHref = created.serverId ?: com.unifiedcomms.sync.VTaskSerializer.hrefFor(candidate.copy(uid = resolvedUid)),
                         etag = created.etag,
                         isLocalOnly = false,
                         needsSync = false
@@ -681,7 +701,9 @@ class MainViewModel(
         val calendar = calendars.firstOrNull() ?: return null
         val event = InviteMapper.toCalendarEvent(invite, account.id, calendar.serverId)
         val id = calendarRepo.insertEvent(event)
-        return if (id > 0) event.copy(id = id.toString()) else null
+        // Room returns RowID for a String PK; the entity's PK is its UUID.
+        // Return the event that was actually persisted, not one re-keyed with rowid.
+        return if (id >= 0) event else null
     }
 
     /** Add the invite to the calendar without changing RSVP status. */

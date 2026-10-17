@@ -97,7 +97,14 @@ object ICalParser {
         // ponytail: RECURRENCE-ID carries params (TZID); look it up by prefix, not exact key.
         val ridEntry = map.entries.firstOrNull { it.key.startsWith("RECURRENCE-ID") }
         val rid = ridEntry?.let { parseRecurrenceId(it.value, map) }
-        return ParsedVEvent(event, rid)
+        // An exception VEVENT is an instance of its own UID's master series: mark
+        // it accordingly, and carry the original occurrence instant — the RFC 5545
+        // RECURRENCE-ID value — as a first-class field so the serializer can emit it.
+        val eventWithRid = event.copy(
+            recurrenceId = if (rid != null) event.uid else event.recurrenceId,
+            occurrenceStartMs = rid?.toEpochMilliseconds() ?: event.occurrenceStartMs
+        )
+        return ParsedVEvent(eventWithRid, rid)
     }
 
     private fun parseVEvent(lines: List<String>, accountId: String, calendarPath: String, resourceHref: String, defaultColor: String = ""): CalendarEvent? {
@@ -214,6 +221,9 @@ object ICalParser {
                     ?: if (status == TaskStatus.COMPLETED) 100 else 0,
                 categories = categories,
                 serverHref = resourceHref,
+                // Without this, recurring VTODOs round-tripped back to a
+                // silent single-instance task on first sync.
+                recurrenceRule = map["RRULE"]?.let { com.unifiedcomms.data.model.RecurrenceRule.parse(it) },
                 // TaskSyncEngine overwrites this with the real ETag after listing.
                 etag = resourceHref
             )
@@ -309,7 +319,7 @@ object ICalParser {
     // non-canonical case (e.g. "AMERICA/NEW_YORK"). A direct ZoneId.of() miss silently falls
     // back to systemDefault() and corrupts every timestamp in that zone — so resolve
     // case-insensitively against the available zone ids, memoized.
-    private val zoneIdCache = mutableMapOf<String, ZoneId?>()
+    private val zoneIdCache = java.util.concurrent.ConcurrentHashMap<String, ZoneId?>()
     private fun resolveZoneId(raw: String?): ZoneId? {
         if (raw.isNullOrBlank()) return null
         zoneIdCache[raw]?.let { return it }
@@ -318,7 +328,8 @@ object ICalParser {
         val lower = raw.lowercase()
         val matched = ZoneId.getAvailableZoneIds().firstOrNull { it.lowercase() == lower }
         val resolved = matched?.let { runCatching { ZoneId.of(it) }.getOrNull() }
-        zoneIdCache[raw] = resolved
+        // No null inserts: ConcurrentHashMap rejects them and we cache only hits.
+        if (resolved != null) zoneIdCache[raw] = resolved
         return resolved
     }
 

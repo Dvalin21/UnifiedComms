@@ -45,11 +45,44 @@ class CalendarWidgetReceiver : AppWidgetProvider() {
                 val now = System.currentTimeMillis()
                 val events = if (accountIds.isEmpty()) emptyList() else runBlocking {
                     repository.getEventsInRangeUnified(accountIds, now, now + 7L * 86_400_000L).first()
-                }.filter { !it.isCancelled }.sortedBy { it.startAtMs }.take(3)
+                }.filter { !it.isCancelled }.sortedBy { it.startAtMs }.take(5)
 
                 val views = RemoteViews(context.packageName, R.layout.widget_calendar)
+                val dateFmt = DateTimeFormatter.ofPattern("EEE, MMM d")
+                val timeFmt = DateTimeFormatter.ofPattern("HH:mm")
+                val zone = ZoneId.systemDefault()
+                views.setTextViewText(
+                    R.id.widget_calendar_date,
+                    LocalDate.now().format(dateFmt)
+                )
+                val rowIds = intArrayOf(R.id.cal_r1_p, R.id.cal_r2_p, R.id.cal_r3_p, R.id.cal_r4_p, R.id.cal_r5_p)
+                val clickables = if (accountIds.isEmpty()) emptyList() else events
+                for (idx in 0 until 5) {
+                    if (idx < clickables.size) {
+                        val event = clickables[idx]
+                        val time = if (event.isAllDay()) "All day" else Instant.ofEpochMilli(event.startAtMs)
+                            .atZone(zone).format(timeFmt)
+                        views.setTextViewText(rowIds[idx], "$time · ${event.title}")
+                        views.setViewVisibility(rowIds[idx], View.VISIBLE)
+                        val intent = Intent(context, MainActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                            putExtra("navigate_to", "event_detail/${event.id.substringBefore('#')}")
+                        }
+                        val rowPending = PendingIntent.getActivity(
+                            context, 1100 + idx, intent,
+                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                        )
+                        views.setOnClickPendingIntent(rowIds[idx], rowPending)
+                    } else {
+                        views.setTextViewText(rowIds[idx], "")
+                        views.setViewVisibility(rowIds[idx], View.GONE)
+                        views.setOnClickPendingIntent(rowIds[idx], null)
+                    }
+                }
+                views.setViewVisibility(R.id.widget_calendar_weather_row, View.GONE)
+
                 val intent = Intent(context, MainActivity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                     putExtra("navigate_to", "calendar")
                 }
                 val pendingIntent = PendingIntent.getActivity(
@@ -57,19 +90,6 @@ class CalendarWidgetReceiver : AppWidgetProvider() {
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
                 views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
-                views.setTextViewText(
-                    R.id.widget_calendar_date,
-                    LocalDate.now().format(DateTimeFormatter.ofPattern("EEE, MMM d"))
-                )
-                val formatter = DateTimeFormatter.ofPattern("HH:mm")
-                val zone = ZoneId.systemDefault()
-                val text = if (events.isEmpty()) "No events" else events.joinToString("\n") { event ->
-                    val time = if (event.isAllDay()) "All day" else Instant.ofEpochMilli(event.startAtMs)
-                        .atZone(zone).format(formatter)
-                    "$time  ${event.title}"
-                }
-                views.setTextViewText(R.id.widget_calendar_events, text)
-                views.setViewVisibility(R.id.widget_calendar_weather_row, View.GONE)
                 appWidgetManager.updateAppWidget(appWidgetId, views)
             } catch (e: Exception) {
                 Log.e("CalendarWidgetReceiver", "Unable to update widget", e)

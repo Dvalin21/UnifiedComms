@@ -45,11 +45,7 @@ class UnifiedWidgetReceiver : AppWidgetProvider() {
                 val taskRepository = TaskRepositoryImpl(db.taskDao(), db.taskListDao())
                 val now = System.currentTimeMillis()
                 val unread = runBlocking {
-                    accounts.sumOf { account ->
-                        listOf("INBOX", "Inbox", "inbox")
-                            .map { emailRepository.getUnreadCount(account.id, it) }
-                            .firstOrNull { it > 0 } ?: 0
-                    }
+                    accounts.sumOf { account -> emailRepository.getUnreadCount(account.id, "INBOX") }
                 }
                 val events = if (accountIds.isEmpty()) emptyList() else runBlocking {
                     calendarRepository.getEventsInRangeUnified(accountIds, now, now + 7L * 86_400_000L).first()

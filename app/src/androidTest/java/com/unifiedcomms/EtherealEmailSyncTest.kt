@@ -29,8 +29,13 @@ import java.util.UUID
  */
 class EtherealEmailSyncTest {
 
-    private val user = "rjspzbuvgo66fj6u@ethereal.email"
-    private val pass = "Km86CVbtX9Gj6py59Q"
+    // ponytail: credentials come from instrumentation args, never hardcoded.
+    private fun user(): String =
+        androidx.test.platform.app.InstrumentationRegistry.getArguments().getString("user")
+            ?: error("Supply Ethereal user via: -e user \"...\"")
+    private fun pass(): String =
+        androidx.test.platform.app.InstrumentationRegistry.getArguments().getString("password")
+            ?: error("Supply Ethereal password via: -e password \"...\"")
 
     @Test
     fun fullEmailSyncRoundTrip(): Unit = runBlocking {
@@ -45,7 +50,7 @@ class EtherealEmailSyncTest {
         val account = Account(
             id = "ethereal-test",
             name = "Ethereal Test",
-            email = user,
+            email = user(),
             accountType = AccountType.GENERIC_IMAP_SMTP,
             serverConfig = ServerConfig(
                 imapHost = "imap.ethereal.email",
@@ -55,7 +60,7 @@ class EtherealEmailSyncTest {
                 smtpPort = 587,
                 smtpUseStartTls = true
             ),
-            authConfig = AuthConfig.AppPassword(user, pass),
+            authConfig = AuthConfig.AppPassword(user(), pass()),
             syncConfig = SyncConfig.Defaults(),
             uiConfig = UIConfig.Defaults()
         )
@@ -79,8 +84,8 @@ class EtherealEmailSyncTest {
                 uid = "0",
                 messageId = "<uc-test-${System.currentTimeMillis()}@ethereal.email>",
                 threadId = "uc-test",
-                sender = EmailAddress(null, user),
-                recipients = EmailRecipients(to = listOf(EmailAddress(null, user))),
+                sender = EmailAddress(null, user()),
+                recipients = EmailRecipients(to = listOf(EmailAddress(null, user()))),
                 subject = "UnifiedComms E2E verification",
                 bodyText = "Sent from the instrumented sync-engine test.",
                 sentAt = kotlinx.datetime.Clock.System.now()

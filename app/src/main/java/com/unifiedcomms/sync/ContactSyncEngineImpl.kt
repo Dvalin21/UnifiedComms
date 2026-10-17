@@ -67,7 +67,8 @@ class ContactSyncEngineImpl(
                     if (existing == null) {
                         contactRepo.insert(contact.copy(
                             accountId = account.id,
-                            source = sourceFor(account)
+                            source = sourceFor(account),
+                            serverHref = contact.serverHref
                         ))
                         newItems.add(contact.id)
                     } else {
@@ -75,6 +76,7 @@ class ContactSyncEngineImpl(
                             accountId = account.id,
                             source = sourceFor(account),
                             sourceId = contact.sourceId ?: existing.sourceId,
+                            serverHref = contact.serverHref ?: existing.serverHref,
                             displayName = contact.displayName,
                             firstName = contact.firstName,
                             lastName = contact.lastName,
@@ -128,6 +130,7 @@ class ContactSyncEngineImpl(
                     ?: throw IllegalStateException("Contact fetch failed: ${entry.href}")
                 val uid = entry.href.substringAfterLast('/').substringBeforeLast('.')
                 out += VCardParser.parse(res.ical, account.id, ContactSource.CARDDAV, uid)
+                    .copy(serverHref = entry.href)
             }
         }
         out
@@ -168,7 +171,7 @@ class ContactSyncEngineImpl(
             ?: return@withContext null
         val res = dav.fetchVCard(href) ?: return@withContext null
         val uid = href.substringAfterLast('/').substringBeforeLast('.')
-        VCardParser.parse(res.ical, account.id, ContactSource.CARDDAV, uid)
+        VCardParser.parse(res.ical, account.id, ContactSource.CARDDAV, uid).copy(serverHref = href)
     }
 
     override suspend fun createContact(account: Account, contact: UnifiedContact): CreateResult = withContext(Dispatchers.IO) {
@@ -192,6 +195,7 @@ class ContactSyncEngineImpl(
                 id = contact.id.ifBlank { java.util.UUID.randomUUID().toString() },
                 accountId = account.id,
                 sourceId = uid,
+                serverHref = href,
                 source = when (account.accountType) {
                     com.unifiedcomms.data.model.AccountType.GOOGLE -> com.unifiedcomms.data.model.ContactSource.GOOGLE
                     com.unifiedcomms.data.model.AccountType.EXCHANGE -> com.unifiedcomms.data.model.ContactSource.EXCHANGE
@@ -213,12 +217,17 @@ class ContactSyncEngineImpl(
             .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
             .build()
         val dav = newCardDav(carddavUrl, auth, client)
-        val books = dav.discoverAddressBooks()
-        val bookPath = books.firstOrNull()?.path ?: return@withContext SyncResult.failure("No address book found")
-        val href = "${bookPath.trimEnd('/')}/${sourceId.removeSuffix(".vcf")}.vcf"
+        // Prefer the exact server href when we have it — writing to
+        // books.firstOrNull() corrupted contacts that live in a second address book.
+        val href = contact.serverHref?.takeIf { it.isNotBlank() }
+            ?: run {
+                val books = dav.discoverAddressBooks()
+                val bookPath = books.firstOrNull()?.path ?: return@withContext SyncResult.failure("No address book found")
+                "${bookPath.trimEnd('/')}/${sourceId.removeSuffix(".vcf")}.vcf"
+            }
         val vcard = VCardSerializer.toVCard(contact, sourceId)
         if (dav.putVCard(href, vcard) == null) return@withContext SyncResult.failure("Contact write failed")
-        contactRepo.update(contact.copy(needsSync = false))
+        contactRepo.update(contact.copy(serverHref = href, needsSync = false))
         SyncResult.success(1, emptyList(), listOf(contact.id))
     }
 
@@ -235,10 +244,17 @@ class ContactSyncEngineImpl(
         } else {
             dav.discoverAddressBooks()
         }
-        val href = resolveContactHref(carddavUrl, serverId, books.firstOrNull()?.path)
+        val local = contactRepo.getBySourceId(account.id, serverId.removeSuffix(".vcf"))
+            ?: contactRepo.getBySourceId(account.id, serverId)
+        val href = local?.serverHref?.takeIf { it.isNotBlank() }
+            ?: resolveContactHref(carddavUrl, serverId, books.firstOrNull()?.path)
             ?: return@withContext SyncResult.failure("No address book path")
-        if (dav.deleteResource(href)) SyncResult.success(1, emptyList(), emptyList(), listOf(serverId))
-        else SyncResult.failure("Contact delete failed")
+        if (dav.deleteResource(href)) {
+            // The local row must go too — previously the contact lingered in Room
+            // (and would resurface in every sync) because only the server was hit.
+            local?.let { contactRepo.deleteById(it.id) }
+            SyncResult.success(1, emptyList(), emptyList(), listOf(serverId))
+        } else SyncResult.failure("Contact delete failed")
     }
 
     override fun observeSyncProgress(accountId: String): kotlinx.coroutines.flow.Flow<SyncProgress> {

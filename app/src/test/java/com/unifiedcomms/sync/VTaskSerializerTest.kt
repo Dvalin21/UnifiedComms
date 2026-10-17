@@ -42,6 +42,7 @@ class VTaskSerializerTest {
         assertTrue("has DESCRIPTION", vtodo.contains("DESCRIPTION:desc for u1"))
     }
 
+    @Test
     fun `status maps correctly`() {
         val completedTask = mkTask("u2", "Done", TaskStatus.COMPLETED, TaskPriority.NONE, null).copy(
             completedAt = com.unifiedcomms.data.model.TaskDateTime(

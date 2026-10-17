@@ -240,6 +240,7 @@ object RecurrenceExpander {
             id = "${master.id}#$index",
             recurrenceId = master.uid,
             uid = master.uid,
+            occurrenceStartMs = startInstant.toEpochMilliseconds(),
             startAt = EventDateTime.fromInstant(startInstant, tz, allDay),
             startAtMs = startInstant.toEpochMilliseconds(),
             endAt = EventDateTime.fromInstant(endInstant, tz, allDay),

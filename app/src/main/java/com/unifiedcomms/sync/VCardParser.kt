@@ -22,6 +22,7 @@ object VCardParser {
         var org: String? = null
         var title: String? = null
         var note: String? = null
+        val tags = mutableListOf<String>()
 
         for (raw in lines) {
             if (!raw.contains(':')) continue
@@ -46,6 +47,7 @@ object VCardParser {
                     if (joined.isNotBlank()) addresses += joined
                 }
                 "URL" -> websites += unescape(value.trim())
+                "CATEGORIES" -> tags += value.split(',').map { unescape(it.trim()) }.filter { it.isNotBlank() }
                 "ORG" -> org = unescape(value.split(';').first().trim())
                 "TITLE" -> title = unescape(value.trim())
                 "NOTE" -> note = unescape(value.trim())
@@ -68,6 +70,7 @@ object VCardParser {
             addresses = addresses.distinct(),
             websites = websites.distinct(),
             notes = note,
+            tags = tags.distinct(),
             source = source,
             sourceId = uid,
             accountId = accountId,

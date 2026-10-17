@@ -47,13 +47,13 @@ interface CalendarEventDao {
     @Query("SELECT * FROM calendar_events WHERE uid = :uid AND accountId = :accountId AND calendarId = :calendarId LIMIT 1")
     suspend fun getByUidAndCalendar(uid: String, accountId: String, calendarId: String): CalendarEvent?
 
-    @Query("SELECT * FROM calendar_events WHERE accountId = :accountId AND calendarId = :calendarId ORDER BY startAt ASC")
+    @Query("SELECT * FROM calendar_events WHERE accountId = :accountId AND calendarId = :calendarId ORDER BY startAtMs ASC")
     fun getByCalendar(accountId: String, calendarId: String): Flow<List<CalendarEvent>>
 
-    @Query("SELECT * FROM calendar_events WHERE accountId = :accountId AND isCancelled = 0 ORDER BY startAt ASC")
+    @Query("SELECT * FROM calendar_events WHERE accountId = :accountId AND isCancelled = 0 ORDER BY startAtMs ASC")
     fun getAllForAccount(accountId: String): Flow<List<CalendarEvent>>
 
-    @Query("SELECT * FROM calendar_events WHERE accountId IN (:accountIds) AND isCancelled = 0 ORDER BY startAt ASC")
+    @Query("SELECT * FROM calendar_events WHERE accountId IN (:accountIds) AND isCancelled = 0 ORDER BY startAtMs ASC")
     fun getUnifiedCalendar(accountIds: List<String>): Flow<List<CalendarEvent>>
 
     @Query("SELECT * FROM calendar_events WHERE accountId = :accountId AND startAtMs >= :start AND startAtMs <= :end AND isCancelled = 0 ORDER BY startAtMs ASC")

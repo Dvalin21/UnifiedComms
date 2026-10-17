@@ -31,6 +31,7 @@ object VCardSerializer {
         contact.title?.let { sb.appendLine("TITLE:${it.escape()}") }
         contact.addresses.forEach { sb.appendLine("ADR;TYPE=HOME:;;${it.escape()};;;;") }
         contact.websites.forEach { sb.appendLine("URL:${it.escape()}") }
+        if (contact.tags.isNotEmpty()) sb.appendLine("CATEGORIES:${contact.tags.joinToString(",") { it.escape() }}")
         contact.notes?.let { sb.appendLine("NOTE:${it.escape()}") }
         sb.appendLine("END:VCARD")
         return sb.toString()

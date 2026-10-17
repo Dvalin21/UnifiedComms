@@ -257,7 +257,11 @@ fun ComposeEmailScreen(
     viewModel: MainViewModel,
     onSend: () -> Unit,
     mode: String? = null,
-    sourceEmailId: String? = null
+    sourceEmailId: String? = null,
+    // ponytail: onSend means "leave after a successful send"; onCancel means
+    // "leave without sending". They were the same callback, so the back arrow
+    // silently threw away a half-written message with no confirmation.
+    onCancel: () -> Unit = onSend
 ) {
     var to by rememberSaveable { mutableStateOf("") }
     var cc by rememberSaveable { mutableStateOf("") }
@@ -266,7 +270,15 @@ fun ComposeEmailScreen(
     var body by rememberSaveable { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var sourceEmail by remember { mutableStateOf<Email?>(null) }
+    var showDiscardDialog by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
+
+    // Anything the user typed is worth losing, so ask before discarding it.
+    val draftDirty = to.isNotBlank() || cc.isNotBlank() || bcc.isNotBlank() ||
+            subject.isNotBlank() || body.isNotBlank()
+    val attemptCancel: () -> Unit = {
+        if (draftDirty) showDiscardDialog = true else onCancel()
+    }
 
     LaunchedEffect(sourceEmailId) {
         if (sourceEmailId.isNullOrBlank()) return@LaunchedEffect
@@ -302,7 +314,7 @@ fun ComposeEmailScreen(
             TopAppBar(
                 title = { androidx.compose.material3.Text("New Message") },
                 navigationIcon = {
-                    IconButton(onClick = onSend) {
+                    IconButton(onClick = attemptCancel) {
                         Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Cancel")
                     }
                 },
@@ -384,6 +396,25 @@ fun ComposeEmailScreen(
                 Text(text = error!!, color = MaterialTheme.colorScheme.error)
             }
         }
+    }
+
+    // Ask before throwing away something the user typed. A bare back arrow must
+    // not be able to destroy a draft silently.
+    if (showDiscardDialog) {
+        AlertDialog(
+            onDismissRequest = { showDiscardDialog = false },
+            title = { Text("Discard message?") },
+            text = { Text("This message has not been sent.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDiscardDialog = false
+                    onCancel()
+                }) { Text("Discard") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDiscardDialog = false }) { Text("Keep editing") }
+            }
+        )
     }
 }
 

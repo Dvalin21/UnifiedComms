@@ -6,6 +6,7 @@ import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import android.view.View
 import android.widget.RemoteViews
 import com.unifiedcomms.R
 import com.unifiedcomms.data.db.UnifiedCommsDatabase
@@ -40,11 +41,40 @@ class TasksWidgetReceiver : AppWidgetProvider() {
                 val accountIds = runBlocking { db.accountDao().getAllActive().first() }.map { it.id }
                 val tasks = if (accountIds.isEmpty()) emptyList() else runBlocking {
                     repository.getActiveUnified(accountIds, TaskStatus.COMPLETED).first()
-                }.sortedBy { it.dueAtMs }.take(3)
+                }.sortedWith(compareBy({ it.dueAtMs == 0L }, { it.dueAtMs })).take(5)
 
                 val views = RemoteViews(context.packageName, R.layout.widget_tasks)
+                views.setTextViewText(
+                    R.id.widget_tasks_due,
+                    if (tasks.isEmpty()) "No open tasks" else "${tasks.size} open task${if (tasks.size == 1) "" else "s"}"
+                )
+                val rowIds = intArrayOf(R.id.task_r1_p, R.id.task_r2_p, R.id.task_r3_p, R.id.task_r4_p, R.id.task_r5_p)
+                for (idx in 0 until 5) {
+                    if (idx < tasks.size) {
+                        val task = tasks[idx]
+                        val due = task.dueAt?.date?.toString()
+                            ?: task.dueAt?.dateTime?.date?.toString()
+                            ?: task.dueAt?.date?.toString()
+                        views.setTextViewText(rowIds[idx], if (due.isNullOrBlank()) task.title else "${task.title} · $due")
+                        views.setViewVisibility(rowIds[idx], View.VISIBLE)
+                        val intent = Intent(context, MainActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                            putExtra("navigate_to", "task_detail/${task.id}")
+                        }
+                        val rowPending = PendingIntent.getActivity(
+                            context, 1200 + idx, intent,
+                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                        )
+                        views.setOnClickPendingIntent(rowIds[idx], rowPending)
+                    } else {
+                        views.setTextViewText(rowIds[idx], "")
+                        views.setViewVisibility(rowIds[idx], View.GONE)
+                        views.setOnClickPendingIntent(rowIds[idx], null)
+                    }
+                }
+
                 val intent = Intent(context, MainActivity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                     putExtra("navigate_to", "tasks")
                 }
                 val pendingIntent = PendingIntent.getActivity(
@@ -52,16 +82,6 @@ class TasksWidgetReceiver : AppWidgetProvider() {
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
                 views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
-                views.setTextViewText(R.id.widget_tasks_due, "Next tasks")
-                views.setTextViewText(
-                    R.id.widget_tasks_text,
-                    if (tasks.isEmpty()) "No tasks" else tasks.joinToString("\n") { task ->
-                        val due = task.dueAt?.date?.toString()
-                            ?: task.dueAt?.dateTime?.date?.toString()
-                            ?: ""
-                        if (due.isBlank()) task.title else "${task.title} · $due"
-                    }
-                )
                 appWidgetManager.updateAppWidget(appWidgetId, views)
             } catch (e: Exception) {
                 Log.e("TasksWidgetReceiver", "Unable to update widget", e)

@@ -5,24 +5,29 @@
     android:background="#1A1A2E"
     android:orientation="vertical"
     android:padding="10dp"
-    android:gravity="center_vertical"
     android:id="@+id/widget_root">
+
+    <TextView
+        android:id="@+id/widget_email_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="EMAIL"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        android:fontFamily="sans-serif-condensed" />
 
     <TextView
         android:id="@+id/widget_email_count"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="0"
-        android:textColor="#FFFFFF"
-        android:textSize="24sp"
-        android:fontFamily="sans-serif-condensed"
-        android:layout_gravity="center_horizontal" />
-
-    <TextView
-        android:id="@+id/widget_email_account"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text=""
+        android:text="No accounts"
         android:textColor="#888888"
-        android:textSize="11sp" />
+        android:textSize="11sp"
+        android:layout_marginBottom="4dp" />
+
+    <TextView android:id="@+id/email_r1_p" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#F0F0F0" android:textSize="12sp" android:clickable="true" android:maxLines="1" android:ellipsize="end" />
+    <TextView android:id="@+id/email_r2_p" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#DDDDDD" android:textSize="12sp" android:clickable="true" android:maxLines="1" android:ellipsize="end" />
+    <TextView android:id="@+id/email_r3_p" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#CCCCCC" android:textSize="12sp" android:clickable="true" android:maxLines="1" android:ellipsize="end" />
+    <TextView android:id="@+id/email_r4_p" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#BBBBBB" android:textSize="12sp" android:clickable="true" android:maxLines="1" android:ellipsize="end" />
+    <TextView android:id="@+id/email_r5_p" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#AAAAAA" android:textSize="12sp" android:clickable="true" android:maxLines="1" android:ellipsize="end" />
 </LinearLayout>

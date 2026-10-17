@@ -101,6 +101,9 @@ data class UnifiedContact(
     val source: ContactSource = ContactSource.LOCAL,
     val sourceId: String? = null,
     val accountId: String? = null, // Which account this contact came from
+    // Exact CardDAV href returned by the server; enables update/delete against the
+    // correct resource even when the contact lives in a non-first address book.
+    val serverHref: String? = null,
     @TypeConverters(DateTimeConverter::class) val createdAt: Instant = Clock.System.now(),
     @TypeConverters(DateTimeConverter::class) val updatedAt: Instant = Clock.System.now(),
     @TypeConverters(DateTimeConverter::class) val lastSyncedAt: Instant? = null,

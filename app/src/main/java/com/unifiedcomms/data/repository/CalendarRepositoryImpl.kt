@@ -51,17 +51,25 @@ class CalendarRepositoryImpl(
     override fun getEventsInRangeUnified(accountIds: List<String>, start: Long, end: Long): Flow<List<CalendarEvent>> =
         eventDao.getUnifiedCalendar(accountIds).map { list -> expandInWindow(list, start, end) }
 
+    // The window must be the LOCAL calendar day, not the UTC epoch slice —
+    // `date % 86_400_000L` puts the boundary at UTC midnight and shows events
+    // near the edge on the wrong day.
+    private fun localDayWindow(date: Long): Pair<Long, Long> {
+        val zone = java.time.ZoneId.systemDefault()
+        val d = java.time.Instant.ofEpochMilli(date).atZone(zone).toLocalDate()
+        val start = d.atStartOfDay(zone).toInstant().toEpochMilli()
+        return start to start + 86_400_000L - 1
+    }
+
     override fun getEventsForDate(accountId: String, date: Long): Flow<List<CalendarEvent>> =
         eventDao.getAllForAccount(accountId).map { list ->
-            val dayStart = date - (date % 86_400_000L)
-            val dayEnd = dayStart + 86_400_000L - 1
+            val (dayStart, dayEnd) = localDayWindow(date)
             expandInWindow(list, dayStart, dayEnd)
         }
 
     override fun getEventsForDateUnified(accountIds: List<String>, date: Long): Flow<List<CalendarEvent>> =
         eventDao.getUnifiedCalendar(accountIds).map { list ->
-            val dayStart = date - (date % 86_400_000L)
-            val dayEnd = dayStart + 86_400_000L - 1
+            val (dayStart, dayEnd) = localDayWindow(date)
             expandInWindow(list, dayStart, dayEnd)
         }
 

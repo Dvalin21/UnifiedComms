@@ -335,7 +335,10 @@ object NotificationHelper {
             .setContentText(message)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .setOngoing(true)
+            // Only in-progress syncs should be ongoing; "Sync completed"/"Sync failed"
+            // are sticky-looking otherwise and never auto-cancel.
+            .setOngoing(message.startsWith("Syncing"))
+            .setAutoCancel(true)
 
         if (progress >= 0) {
             builder.setProgress(100, progress, false)

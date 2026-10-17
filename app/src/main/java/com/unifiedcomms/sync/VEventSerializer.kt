@@ -102,14 +102,20 @@ object VEventSerializer {
         // them as overrides of the master. Without this, editing one occurrence of a
         // recurring event is silently lost on round-trip (ICalParser reads RECURRENCE-ID
         // back but the serializer never wrote it).
-        event.recurrenceId?.let { rid ->
-            sb.appendIcalLine("RECURRENCE-ID:${rid}")
+        event.recurrenceId?.let {
+            // RFC 5545 RECURRENCE-ID is the ORIGINAL occurrence's date-time, never
+            // the master UID. Falling back to startAt is correct for an unmoved
+            // override and wrong-by-design only for moved ones; RecurrenceExpander
+            // and the parser both materialize occurrenceStartMs, so prefer it.
+            val ridMs = event.occurrenceStartMs ?: event.startAt.toInstant().toEpochMilliseconds()
+            sb.appendIcalLine("RECURRENCE-ID:${utcStampFormat(ridMs)}")
         }
 
-        // ponytail: emit EXDATE entries so server-side cancellations of specific occurrences
-        // survive a round-trip. ICalParser reads EXDATE back into recurrenceExceptions.
+        // EXDATE entries (server-side cancellation of specific occurrences) also
+        // must be RFC date-times, not raw epoch milliseconds — the previous format
+        // fed `1234567890000` to servers, which could not be parsed and was dropped.
         event.recurrenceExceptions.filter { it.isDeleted }.forEach { ex ->
-            sb.appendIcalLine("EXDATE:${ex.originalDate.toEpochMilliseconds()}")
+            sb.appendIcalLine("EXDATE:${utcStampFormat(ex.originalDate.toEpochMilliseconds())}")
         }
 
         // Preserve the user-chosen event color so it survives a round-trip through
@@ -197,6 +203,9 @@ object VEventSerializer {
 
     private fun nowUtcStamp(): String =
         java.time.Instant.now().atZone(ZoneId.of("UTC")).format(DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'"))
+
+    private fun utcStampFormat(epochMs: Long): String =
+        java.time.Instant.ofEpochMilli(epochMs).atZone(ZoneId.of("UTC")).format(DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'"))
 
     private fun nowUtcDate(): String =
         java.time.Instant.now().atZone(ZoneId.of("UTC")).format(DateTimeFormatter.ofPattern("yyyyMMdd"))

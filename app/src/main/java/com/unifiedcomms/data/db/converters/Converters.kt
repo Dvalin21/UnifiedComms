@@ -12,6 +12,18 @@ import java.time.format.DateTimeParseException
 // ponytail: one corrupt row must not kill the whole query. Every decode is guarded.
 private inline fun <T> decodeOr(default: T, block: () -> T): T = runCatching(block).getOrElse { default }
 
+// ponytail: a PERSISTED config must round-trip every field. kotlinx-serialization
+// defaults to encodeDefaults=false, which silently omits any field equal to its
+// default — measured on device: a mailcow ServerConfig stored as
+// {"imapHost":..,"smtpHost":..} with imapPort/smtpPort/imapUseSsl/smtpUseStartTls
+// all dropped. Runtime survived only because decoding fell back to the same
+// defaults, so the loss was invisible until something read the raw JSON.
+// One shared instance so no converter can regress independently.
+private val persistenceJson = Json {
+    ignoreUnknownKeys = true
+    encodeDefaults = true
+}
+
 class DateTimeConverter {
     @TypeConverter
     fun fromInstant(value: Instant?): Long? = value?.toEpochMilliseconds()
@@ -33,7 +45,7 @@ class DateTimeConverter {
 }
 
 class StringListConverter {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = persistenceJson
 
     @TypeConverter
     fun fromList(value: List<String>?): String? = value?.let { json.encodeToString(it) }
@@ -43,7 +55,7 @@ class StringListConverter {
 }
 
 class MapConverter {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = persistenceJson
 
     @TypeConverter
     fun fromMap(value: Map<String, String>?): String? = value?.let { json.encodeToString(it) }
@@ -53,7 +65,7 @@ class MapConverter {
 }
 
 class AttachmentListConverter {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = persistenceJson
 
     @TypeConverter
     fun fromList(value: List<com.unifiedcomms.data.model.Attachment>?): String? = value?.let { json.encodeToString(it) }
@@ -64,7 +76,7 @@ class AttachmentListConverter {
 }
 
 class EventAttachmentListConverter {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = persistenceJson
 
     @TypeConverter
     fun fromList(value: List<com.unifiedcomms.data.model.EventAttachment>?): String? = value?.let { json.encodeToString(it) }
@@ -75,7 +87,7 @@ class EventAttachmentListConverter {
 }
 
 class AttendeeListConverter {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = persistenceJson
 
     @TypeConverter
     fun fromList(value: List<com.unifiedcomms.data.model.EventAttendee>?): String? = value?.let { json.encodeToString(it) }
@@ -86,7 +98,7 @@ class AttendeeListConverter {
 }
 
 class RecurrenceExceptionListConverter {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = persistenceJson
 
     @TypeConverter
     fun fromList(value: List<com.unifiedcomms.data.model.RecurrenceException>?): String? = value?.let { json.encodeToString(it) }
@@ -97,7 +109,7 @@ class RecurrenceExceptionListConverter {
 }
 
 class EventColorConverter {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = persistenceJson
 
     @TypeConverter
     fun fromColor(value: com.unifiedcomms.data.model.EventColor?): String? = value?.let { json.encodeToString(it) }
@@ -108,7 +120,7 @@ class EventColorConverter {
 }
 
 class EventDateTimeConverter {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = persistenceJson
 
     @TypeConverter
     fun fromDateTime(value: com.unifiedcomms.data.model.EventDateTime?): String? = value?.let { json.encodeToString(it) }
@@ -119,7 +131,7 @@ class EventDateTimeConverter {
 }
 
 class RecurrenceRuleConverter {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = persistenceJson
 
     @TypeConverter
     fun fromRule(value: com.unifiedcomms.data.model.RecurrenceRule?): String? = value?.let { json.encodeToString(it) }
@@ -130,7 +142,7 @@ class RecurrenceRuleConverter {
 }
 
 class EmailRecipientsConverter {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = persistenceJson
 
     @TypeConverter
     fun fromRecipients(value: com.unifiedcomms.data.model.EmailRecipients?): String? = value?.let { json.encodeToString(it) }
@@ -141,7 +153,7 @@ class EmailRecipientsConverter {
 }
 
 class EmailAddressConverter {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = persistenceJson
 
     @TypeConverter
     fun fromAddress(value: com.unifiedcomms.data.model.EmailAddress?): String? = value?.let { json.encodeToString(it) }
@@ -152,7 +164,7 @@ class EmailAddressConverter {
 }
 
 class InviteMessageConverter {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = persistenceJson
 
     @TypeConverter
     fun fromInvite(value: com.unifiedcomms.data.model.CalendarInviteMessage?): String? =
@@ -164,7 +176,7 @@ class InviteMessageConverter {
 }
 
 class SystemLabelsConverter {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = persistenceJson
 
     @TypeConverter
     fun fromLabels(value: com.unifiedcomms.data.model.SystemLabels?): String? = value?.let { json.encodeToString(it) }
@@ -175,7 +187,7 @@ class SystemLabelsConverter {
 }
 
 class EmailFlagsConverter {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = persistenceJson
 
     @TypeConverter
     fun fromFlags(value: com.unifiedcomms.data.model.EmailFlags?): String? = value?.let { json.encodeToString(it) }
@@ -186,7 +198,7 @@ class EmailFlagsConverter {
 }
 
 class TaskDateTimeConverter {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = persistenceJson
 
     @TypeConverter
     fun fromDateTime(value: com.unifiedcomms.data.model.TaskDateTime?): String? = value?.let { json.encodeToString(it) }
@@ -197,7 +209,7 @@ class TaskDateTimeConverter {
 }
 
 class GeoLocationConverter {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = persistenceJson
 
     @TypeConverter
     fun fromGeo(value: com.unifiedcomms.data.model.GeoLocation?): String? = value?.let { json.encodeToString(it) }
@@ -208,7 +220,7 @@ class GeoLocationConverter {
 }
 
 class EventReminderListConverter {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = persistenceJson
 
     @TypeConverter
     fun fromList(value: List<com.unifiedcomms.data.model.EventReminder>?): String? = value?.let { json.encodeToString(it) }
@@ -229,7 +241,7 @@ class InstantListConverter {
 }
 
 class EventAttendeeConverter {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = persistenceJson
 
     @TypeConverter
     fun fromAttendee(value: com.unifiedcomms.data.model.EventAttendee?): String? = value?.let { json.encodeToString(it) }
@@ -240,7 +252,7 @@ class EventAttendeeConverter {
 }
 
 class ConferenceDataConverter {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = persistenceJson
 
     @TypeConverter
     fun fromConference(value: com.unifiedcomms.data.model.ConferenceData?): String? = value?.let { json.encodeToString(it) }
@@ -251,7 +263,7 @@ class ConferenceDataConverter {
 }
 
 class TaskAssigneeConverter {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = persistenceJson
 
     @TypeConverter
     fun fromAssignee(value: com.unifiedcomms.data.model.TaskAssignee?): String? = value?.let { json.encodeToString(it) }
@@ -262,7 +274,7 @@ class TaskAssigneeConverter {
 }
 
 class TaskAttachmentListConverter {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = persistenceJson
 
     @TypeConverter
     fun fromList(value: List<com.unifiedcomms.data.model.TaskAttachment>?): String? = value?.let { json.encodeToString(it) }
@@ -273,7 +285,7 @@ class TaskAttachmentListConverter {
 }
 
 class ServerConfigConverter {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = persistenceJson
 
     @TypeConverter
     fun fromConfig(value: com.unifiedcomms.data.model.ServerConfig?): String? = value?.let { json.encodeToString(it) }
@@ -284,7 +296,7 @@ class ServerConfigConverter {
 }
 
 class AuthConfigConverter {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = persistenceJson
 
     @TypeConverter
     fun fromConfig(value: com.unifiedcomms.data.model.AuthConfig?): String? = value?.let { json.encodeToString(it) }
@@ -295,7 +307,7 @@ class AuthConfigConverter {
 }
 
 class SyncConfigConverter {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = persistenceJson
 
     @TypeConverter
     fun fromConfig(value: com.unifiedcomms.data.model.SyncConfig?): String? = value?.let { json.encodeToString(it) }
@@ -306,7 +318,7 @@ class SyncConfigConverter {
 }
 
 class UIConfigConverter {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = persistenceJson
 
     @TypeConverter
     fun fromConfig(value: com.unifiedcomms.data.model.UIConfig?): String? = value?.let { json.encodeToString(it) }

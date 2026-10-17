@@ -141,19 +141,22 @@ interface ContactDao {
 
     @Transaction
     suspend fun mergeContacts(primaryId: String, secondaryIds: List<String>) {
-        val primary = getById(primaryId) ?: return
+        var current = getById(primaryId) ?: return
         secondaryIds.forEach { secondaryId ->
             val secondary = getById(secondaryId) ?: return@forEach
-            val merged = primary.copy(
-                emails = (primary.emails + secondary.emails).distinct(),
-                phoneNumbers = (primary.phoneNumbers + secondary.phoneNumbers).distinct(),
-                addresses = (primary.addresses + secondary.addresses).distinct(),
-                websites = (primary.websites + secondary.websites).distinct(),
-                notes = "${primary.notes ?: ""}\n\n-- Merged from ${secondary.displayName} --\n${secondary.notes ?: ""}",
-                tags = (primary.tags + secondary.tags).distinct()
+            val merged = current.copy(
+                emails = (current.emails + secondary.emails).distinct(),
+                phoneNumbers = (current.phoneNumbers + secondary.phoneNumbers).distinct(),
+                addresses = (current.addresses + secondary.addresses).distinct(),
+                websites = (current.websites + secondary.websites).distinct(),
+                notes = "${current.notes ?: ""}\n\n-- Merged from ${secondary.displayName} --\n${secondary.notes ?: ""}",
+                tags = (current.tags + secondary.tags).distinct()
             )
             update(merged)
             deleteById(secondaryId)
+            // Chain each merge onto the row just written; computing from the
+            // pre-loop snapshot would silently discard earlier merges.
+            current = merged
         }
     }
 }

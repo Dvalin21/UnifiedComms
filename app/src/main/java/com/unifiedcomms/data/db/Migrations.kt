@@ -24,6 +24,12 @@ object Migrations {
             db.execSQL("ALTER TABLE emails ADD COLUMN imapUid TEXT")
             // Backfill stable ID from existing uid where possible.
             db.execSQL("UPDATE emails SET imapUid = uid WHERE imapUid IS NULL")
+            // A unique index below requires the backfilled rows to be unique;
+            // collapse accidental duplicates (same account/folder/uid twice)
+            // before creating it, keeping the freshest copy.
+            db.execSQL(
+                "DELETE FROM emails WHERE rowid NOT IN (SELECT MAX(rowid) FROM emails GROUP BY accountId, folder, imapUid)"
+            )
             db.execSQL(
                 "CREATE UNIQUE INDEX IF NOT EXISTS index_emails_accountId_folder_imapUid " +
                     "ON emails(accountId, folder, imapUid)"
@@ -165,6 +171,44 @@ object Migrations {
                 "UPDATE tasks SET etag = NULL " +
                     "WHERE isLocalOnly = 0 AND needsSync = 0"
             )
+        }
+    }
+    /**
+     * 1) The exact CalDAV href of a contact resource (servers with >1 address book
+     *    previously forced every contact update/delete onto the first book).
+     * 2) `occurrenceStartMs` on calendar_events: the RFC 5545 RECURRENCE-ID value
+     *    for expanded/edited occurrences. Was (incorrectly) serialized from the
+     *    master UID, which servers reject on import.
+     */
+    val MIGRATION_9_10 = object : Migration(9, 10) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            if (!db.columnExists("contacts", "serverHref")) {
+                db.execSQL("ALTER TABLE contacts ADD COLUMN serverHref TEXT")
+            }
+            if (!db.columnExists("calendar_events", "occurrenceStartMs")) {
+                db.execSQL("ALTER TABLE calendar_events ADD COLUMN occurrenceStartMs INTEGER")
+            }
+            // Stale duplicate thread index left by older dumps — the entity's
+            // equivalent is `index_emails_threadId` (UNIQUE off), and Room's
+            // validator refuses the schema that carries the legacy name too.
+            // Stale indexes left by older schema variants — both
+            // index_emails_threadId/index_calendar_events_*/index_tasks_* exist
+            // and Room validates names. Drop every legacy idx_* index.
+            dropLegacyIdxIndexes(db, listOf("emails", "calendar_events", "tasks", "calendars", "task_lists", "messages", "contacts", "accounts"))
+        }
+    }
+}
+
+/** The duplicate emails/calendar index originally created before the entity
+ *  legal index names took over. Dropping it keeps the schema validation green. */
+private fun dropLegacyIdxIndexes(db: SupportSQLiteDatabase, tables: List<String>) {
+    for (table in tables) {
+        runCatching {
+            db.query("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=? AND name LIKE 'idx_%'", arrayOf(table)).use { c ->
+                val names = mutableListOf<String>()
+                while (c.moveToNext()) names += c.getString(0)
+                names.forEach { db.execSQL("DROP INDEX IF EXISTS $it") }
+            }
         }
     }
 }

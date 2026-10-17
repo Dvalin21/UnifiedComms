@@ -41,6 +41,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
@@ -950,7 +951,11 @@ fun CreateEventScreen(
     viewModel: MainViewModel,
     accountId: String,
     eventId: String? = null,
-    onSave: () -> Unit
+    onSave: () -> Unit,
+    // ponytail: onSave means "leave after a successful save"; onCancel means
+    // "leave without saving". They were the same callback, so the back arrow
+    // silently discarded a half-built event with no confirmation.
+    onCancel: () -> Unit = onSave
 ) {
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
@@ -961,8 +966,22 @@ fun CreateEventScreen(
     var selectedColor by remember { mutableStateOf(0xFFE57373) }
     var colorChanged by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
+    var startHour by remember { mutableStateOf(9) }
+    var startMinute by remember { mutableStateOf(0) }
+    var endHour by remember { mutableStateOf(10) }
+    var endMinute by remember { mutableStateOf(0) }
+    var showStartTimePicker by remember { mutableStateOf(false) }
+    var showEndTimePicker by remember { mutableStateOf(false) }
+    var showDiscardDialog by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
     val defaultReminderMinutes = remember { PreferencesManager.getInstance().getDefaultReminderMinutes() }
+
+    // Anything the user entered is worth losing, so ask before discarding it.
+    val draftDirty = title.isNotBlank() || description.isNotBlank() ||
+            location.isNotBlank() || attendeeInput.isNotBlank()
+    val attemptCancel: () -> Unit = {
+        if (draftDirty) showDiscardDialog = true else onCancel()
+    }
     // ponytail: edit_event/{eventId} passes an existing event; load it so we UPDATE
     // instead of always INSERTing a new (duplicate) event (#17).
     var existingEvent by remember { mutableStateOf<com.unifiedcomms.data.model.CalendarEvent?>(null) }
@@ -983,6 +1002,12 @@ fun CreateEventScreen(
                 selectedDate = ev.startAt.date?.let { java.time.LocalDate.of(it.year, it.monthNumber, it.dayOfMonth) }
                     ?: ev.startAt.dateTime?.date?.let { java.time.LocalDate.of(it.year, it.monthNumber, it.dayOfMonth) }
                     ?: selectedDate
+                val existingStart = ev.startAt.dateTime
+                if (existingStart != null) {
+                    startHour = existingStart.hour; startMinute = existingStart.minute
+                    val d = ev.endAt.dateTime
+                    if (d != null) { endHour = d.hour; endMinute = d.minute }
+                }
             }
         }
     }
@@ -993,7 +1018,7 @@ fun CreateEventScreen(
         topBar = {
             TopAppBar(
                 title = { Text(if (eventId == null) "Create Event" else "Edit Event") },
-                navigationIcon = { IconButton(onClick = onSave) { Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Cancel") } },
+                navigationIcon = { IconButton(onClick = attemptCancel) { Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Cancel") } },
                 actions = {
                     IconButton(onClick = {
                         if (title.isNotBlank()) {
@@ -1039,13 +1064,18 @@ fun CreateEventScreen(
                                 // not a reason to discard the event. "local" keeps it
                                 // queued until a collection is discovered.
                                 val calId = baseCalendar ?: discoveredCalendar ?: "local"
-                                val startDateTime = base?.startAt?.dateTime
-                                val endDateTime = base?.endAt?.dateTime
-                                val (sh, sm) = if (startDateTime != null) startDateTime.hour to startDateTime.minute else 9 to 0
-                                val (eh, em) = if (endDateTime != null) endDateTime.hour to endDateTime.minute else 10 to 0
+                                // Prefer the user's (or loaded) time selection over a fixed 9-10.
+                                val sh = if (isAllDay) 0 else startHour
+                                val sm = if (isAllDay) 0 else startMinute
+                                val eh = if (isAllDay) 0 else endHour
+                                val em = if (isAllDay) 0 else endMinute
                                 val endDate = if (isAllDay) selectedDate.plusDays(1) else selectedDate
                                 val timeZone = base?.startAt?.timeZone
                                     ?: kotlinx.datetime.TimeZone.currentSystemDefault().id
+                                if (!isAllDay && (eh * 60 + em) <= (sh * 60 + sm)) {
+                                    saveError = "End time must be after start time"
+                                    return@launch
+                                }
                                 val event = com.unifiedcomms.data.model.CalendarEvent(
                                     id = base?.id ?: java.util.UUID.randomUUID().toString(),
                                     accountId = base?.accountId ?: acct.id,
@@ -1059,8 +1089,8 @@ fun CreateEventScreen(
                                             selectedDate.year,
                                             selectedDate.monthValue,
                                             selectedDate.dayOfMonth,
-                                            if (isAllDay) 0 else sh,
-                                            if (isAllDay) 0 else sm
+                                            sh,
+                                            sm
                                         ),
                                         date = kotlinx.datetime.LocalDate(selectedDate.year, selectedDate.monthValue, selectedDate.dayOfMonth),
                                         timeZone = timeZone,
@@ -1071,8 +1101,8 @@ fun CreateEventScreen(
                                             endDate.year,
                                             endDate.monthValue,
                                             endDate.dayOfMonth,
-                                            if (isAllDay) 0 else eh,
-                                            if (isAllDay) 0 else em
+                                            eh,
+                                            em
                                         ),
                                         date = kotlinx.datetime.LocalDate(endDate.year, endDate.monthValue, endDate.dayOfMonth),
                                         timeZone = timeZone,
@@ -1148,6 +1178,40 @@ fun CreateEventScreen(
                 Text(text = "Date", fontWeight = FontWeight.Bold)
                 TextButton(onClick = { showDatePicker = true }) { Text(selectedDate.toString()) }
             }
+            if (!isAllDay) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = "Start", fontWeight = FontWeight.Bold)
+                    TextButton(onClick = { showStartTimePicker = true }) {
+                        Text(String.format("%02d:%02d", startHour, startMinute))
+                    }
+                    Text(text = "End", fontWeight = FontWeight.Bold)
+                    TextButton(onClick = { showEndTimePicker = true }) {
+                        Text(String.format("%02d:%02d", endHour, endMinute))
+                    }
+                }
+            }
+            if (showStartTimePicker || showEndTimePicker) {
+                val isStart = showStartTimePicker
+                val timeState = androidx.compose.material3.rememberTimePickerState(
+                    initialHour = if (isStart) startHour else endHour,
+                    initialMinute = if (isStart) startMinute else endMinute
+                )
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { showStartTimePicker = false; showEndTimePicker = false },
+                    title = { Text(if (isStart) "Start time" else "End time") },
+                    text = { androidx.compose.material3.TimePicker(state = timeState) },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            if (isStart) { startHour = timeState.hour; startMinute = timeState.minute }
+                            else { endHour = timeState.hour; endMinute = timeState.minute }
+                            showStartTimePicker = false; showEndTimePicker = false
+                        }) { Text("OK") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showStartTimePicker = false; showEndTimePicker = false }) { Text("Cancel") }
+                    }
+                )
+            }
 
             Text(text = "Calendar Color", fontWeight = FontWeight.Bold)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1177,6 +1241,24 @@ fun CreateEventScreen(
                 minLines = 2
             )
         }
+    }
+
+    // Ask before throwing away an event the user was building.
+    if (showDiscardDialog) {
+        AlertDialog(
+            onDismissRequest = { showDiscardDialog = false },
+            title = { Text("Discard event?") },
+            text = { Text("This event has not been saved.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDiscardDialog = false
+                    onCancel()
+                }) { Text("Discard") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDiscardDialog = false }) { Text("Keep editing") }
+            }
+        )
     }
 }
 

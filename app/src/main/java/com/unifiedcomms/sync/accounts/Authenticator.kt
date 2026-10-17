@@ -108,22 +108,3 @@ class UnifiedCommsAuthenticator(private val context: Context) : AbstractAccountA
         return bundle
     }
 }
-
-class UnifiedCommsAuthenticatorProvider : android.content.ContentProvider() {
-    private var authenticator: UnifiedCommsAuthenticator? = null
-
-    override fun onCreate(): Boolean {
-        authenticator = UnifiedCommsAuthenticator(context!!)
-        return true
-    }
-
-    override fun query(uri: android.net.Uri, projection: Array<out String>?, selection: String?, selectionArgs: Array<out String>?, sortOrder: String?): android.database.Cursor? = null
-
-    override fun getType(uri: android.net.Uri): String? = null
-
-    override fun insert(uri: android.net.Uri, values: android.content.ContentValues?): android.net.Uri? = null
-
-    override fun delete(uri: android.net.Uri, selection: String?, selectionArgs: Array<out String>?): Int = 0
-
-    override fun update(uri: android.net.Uri, values: android.content.ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int = 0
-}
