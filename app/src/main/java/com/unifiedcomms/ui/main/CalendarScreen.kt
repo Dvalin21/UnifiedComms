@@ -327,7 +327,10 @@ fun DayView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClick
                 for (h in 0..23) {
                     Row(modifier = Modifier.fillMaxWidth().height(HOUR_H)) {
                         Text(
-                            text = java.time.LocalTime.of(h, 0).format(java.time.format.DateTimeFormatter.ofPattern("h a")),
+                            text = com.unifiedcomms.util.TimeFormat.time(
+                                java.time.LocalTime.of(h, 0),
+                                androidx.compose.ui.platform.LocalContext.current
+                            ),
                             fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.width(56.dp).padding(top = 2.dp), textAlign = TextAlign.End
                         )
@@ -477,7 +480,10 @@ fun WeekView(date: java.time.LocalDate, events: List<CalendarEvent>, onEventClic
                 for (h in 0..23) {
                     Box(modifier = Modifier.height(HOUR_H), contentAlignment = Alignment.TopEnd) {
                         Text(
-                            text = java.time.LocalTime.of(h, 0).format(java.time.format.DateTimeFormatter.ofPattern("h a")),
+                            text = com.unifiedcomms.util.TimeFormat.time(
+                                java.time.LocalTime.of(h, 0),
+                                androidx.compose.ui.platform.LocalContext.current
+                            ),
                             fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(end = 4.dp, top = 2.dp)
                         )
@@ -737,8 +743,12 @@ fun MonthView(
                         .atZone(safeZoneId(ev.startAt.timeZone)).toLocalDateTime()
                     val endLdt = java.time.Instant.ofEpochMilli(ev.endAt.toInstant(ez).toEpochMilliseconds())
                         .atZone(safeZoneId(ev.endAt.timeZone)).toLocalDateTime()
-                    val startStr = startLdt.format(java.time.format.DateTimeFormatter.ofPattern("h:mm a"))
-                    val endStr = endLdt.format(java.time.format.DateTimeFormatter.ofPattern("h:mm a"))
+                    val startStr = com.unifiedcomms.util.TimeFormat.time(
+                        startLdt, androidx.compose.ui.platform.LocalContext.current
+                    )
+                    val endStr = com.unifiedcomms.util.TimeFormat.time(
+                        endLdt, androidx.compose.ui.platform.LocalContext.current
+                    )
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -795,7 +805,6 @@ fun CurrentTimePanel(events: List<CalendarEvent>) {
     val today = java.time.LocalDate.now()
     val todayCount = events.count { !isCancelled(it) && isSameDay(it.startAt.toInstant(TimeZone.of(it.startAt.timeZone)), today) }
     val dateFmt = DateTimeFormatter.ofPattern("EEE, MMM d yyyy")
-    val timeFmt = DateTimeFormatter.ofPattern("HH:mm")
     Surface(
         modifier = Modifier.fillMaxWidth().padding(16.dp),
         shape = RoundedCornerShape(16.dp),
@@ -821,7 +830,9 @@ fun CurrentTimePanel(events: List<CalendarEvent>) {
                 )
             }
             Text(
-                text = now.toLocalTime().format(timeFmt),
+                text = com.unifiedcomms.util.TimeFormat.time(
+                    now.toLocalTime(), androidx.compose.ui.platform.LocalContext.current
+                ),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
@@ -868,14 +879,6 @@ private fun isSameDay(instant: kotlinx.datetime.Instant, date: java.time.LocalDa
 
 private fun isCancelled(event: com.unifiedcomms.data.model.CalendarEvent): Boolean {
     return event.status == com.unifiedcomms.data.model.EventStatus.CANCELLED
-}
-
-// 12-hour clock (e.g. 6 PM, not 18:00) for event chips and labels.
-private fun format12h(hour: Int): String {
-    val h = ((hour % 24) + 24) % 24
-    val ampm = if (h < 12) "AM" else "PM"
-    val h12 = if (h % 12 == 0) 12 else h % 12
-    return "$h12 $ampm"
 }
 
 // ponytail: minutes from local midnight for an event's start, used to position
@@ -926,7 +929,7 @@ fun EventChip(event: MockEvent, compact: Boolean = false, modifier: Modifier = M
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = if (compact) 3.dp else 6.dp)) {
             if (!compact) {
                 Text(
-                    text = "${format12h(event.startHour)} – ${format12h(event.endHour)}",
+                    text = "${com.unifiedcomms.util.TimeFormat.time(java.time.LocalTime.of(event.startHour, 0), androidx.compose.ui.platform.LocalContext.current)} – ${com.unifiedcomms.util.TimeFormat.time(java.time.LocalTime.of(event.endHour, 0), androidx.compose.ui.platform.LocalContext.current)}",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
@@ -1182,11 +1185,21 @@ fun CreateEventScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(text = "Start", fontWeight = FontWeight.Bold)
                     TextButton(onClick = { showStartTimePicker = true }) {
-                        Text(String.format("%02d:%02d", startHour, startMinute))
+                        Text(
+                            com.unifiedcomms.util.TimeFormat.time(
+                                java.time.LocalTime.of(startHour, startMinute),
+                                androidx.compose.ui.platform.LocalContext.current
+                            )
+                        )
                     }
                     Text(text = "End", fontWeight = FontWeight.Bold)
                     TextButton(onClick = { showEndTimePicker = true }) {
-                        Text(String.format("%02d:%02d", endHour, endMinute))
+                        Text(
+                            com.unifiedcomms.util.TimeFormat.time(
+                                java.time.LocalTime.of(endHour, endMinute),
+                                androidx.compose.ui.platform.LocalContext.current
+                            )
+                        )
                     }
                 }
             }
@@ -1272,13 +1285,12 @@ fun EventDetailScreen(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var actionError by remember { mutableStateOf<String?>(null) }
     val coroutineScope = rememberCoroutineScope()
-    val fmt = java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy h:mm a")
     val eventTz = kotlinx.datetime.TimeZone.of(event.startAt.timeZone)
     val startZoned = java.time.Instant.ofEpochMilli(event.startAt.toInstant(eventTz).toEpochMilliseconds())
         .atZone(safeZoneId(event.startAt.timeZone))
     val endZoned = java.time.Instant.ofEpochMilli(event.endAt.toInstant(eventTz).toEpochMilliseconds())
         .atZone(safeZoneId(event.endAt.timeZone))
-    val range = "${fmt.format(startZoned)} - ${fmt.format(endZoned)}"
+    val range = "${com.unifiedcomms.util.TimeFormat.dateTime(startZoned, androidx.compose.ui.platform.LocalContext.current)} - ${com.unifiedcomms.util.TimeFormat.dateTime(endZoned, androidx.compose.ui.platform.LocalContext.current)}"
     val shareText = buildString {
         appendLine(event.title)
         appendLine(range)

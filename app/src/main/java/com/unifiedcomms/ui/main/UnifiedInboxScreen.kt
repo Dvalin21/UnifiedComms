@@ -400,11 +400,12 @@ fun EmailOverviewScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = java.time.format.DateTimeFormatter.ofPattern("MMM d, h:mm a").format(
+                                text = com.unifiedcomms.util.TimeFormat.shortDateTime(
                                     java.time.LocalDateTime.ofInstant(
                                         java.time.Instant.ofEpochMilli(email.receivedAt.toEpochMilliseconds()),
                                         java.time.ZoneId.systemDefault()
-                                    )
+                                    ),
+                                    androidx.compose.ui.platform.LocalContext.current
                                 ),
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,

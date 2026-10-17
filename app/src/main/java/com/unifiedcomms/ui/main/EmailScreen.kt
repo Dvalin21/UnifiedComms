@@ -114,7 +114,9 @@ fun EmailScreen(
     val emails by viewModel.emailRepository
         .getByAccountAndFolder(accountId, resolvedFolder, 100, 0)
         .collectAsStateWithLifecycle(initialValue = emptyList())
-    val messages = emails.map { it.toEmailMessage(resolvedFolder) }
+    val messages = emails.map {
+        it.toEmailMessage(resolvedFolder, androidx.compose.ui.platform.LocalContext.current)
+    }
     LaunchedEffect(accountId, resolvedFolder) {
         if (!resolvedFolder.equals("INBOX", ignoreCase = true) && emails.isEmpty()) {
             viewModel.syncFolder(accountId, resolvedFolder)
@@ -418,8 +420,7 @@ fun ComposeEmailScreen(
     }
 }
 
-private fun Email.toEmailMessage(folder: String): EmailMessage {
-    val formatter = java.time.format.DateTimeFormatter.ofPattern("h:mm a")
+private fun Email.toEmailMessage(folder: String, context: android.content.Context): EmailMessage {
     val ldt = java.time.LocalDateTime.ofInstant(
         java.time.Instant.ofEpochMilli(receivedAt.toEpochMilliseconds()),
         java.time.ZoneId.systemDefault()
@@ -436,7 +437,7 @@ private fun Email.toEmailMessage(folder: String): EmailMessage {
         from = from,
         subject = subject,
         body = preview.ifBlank { bodyText.orEmpty() }.stripHtml().take(120),
-        time = formatter.format(ldt),
+        time = com.unifiedcomms.util.TimeFormat.time(ldt, context),
         isUnread = isUnread(),
         initials = contact?.getInitials() ?: "?"
     )
@@ -574,8 +575,13 @@ fun EmailDetailScreen(
                     Text(e.subject, style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = java.time.format.DateTimeFormatter.ofPattern("EEE, d MMM yyyy HH:mm")
-                            .format(java.time.LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(e.receivedAt.toEpochMilliseconds()), java.time.ZoneId.systemDefault())),
+                        text = com.unifiedcomms.util.TimeFormat.fullDateTime(
+                            java.time.LocalDateTime.ofInstant(
+                                java.time.Instant.ofEpochMilli(e.receivedAt.toEpochMilliseconds()),
+                                java.time.ZoneId.systemDefault()
+                            ),
+                            context
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -585,7 +591,7 @@ fun EmailDetailScreen(
                     // ponytail: render a clean invite card when the email carries a parsed
                     // text/calendar invite. This is the actionable surface — Accept/Decline/Add.
                     e.invite?.let { inv ->
-                        InviteCard(invite = inv, viewModel = viewModel)
+                        InviteCard(invite = inv, viewModel = viewModel, context = context)
                         Spacer(modifier = Modifier.height(16.dp))
                     }
                     // ponytail: when the email carries a parsed invite, the InviteCard above
@@ -672,7 +678,11 @@ private fun AttachmentRow(attachment: com.unifiedcomms.data.model.Attachment, on
 }
 
 @Composable
-private fun InviteCard(invite: CalendarInviteMessage, viewModel: MainViewModel) {
+private fun InviteCard(
+    invite: CalendarInviteMessage,
+    viewModel: MainViewModel,
+    context: android.content.Context
+) {
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
     var acceptResult by remember { mutableStateOf<String?>(null) }
@@ -682,7 +692,6 @@ private fun InviteCard(invite: CalendarInviteMessage, viewModel: MainViewModel) 
     val start = runCatching { LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(invite.startAt.toEpochMilliseconds()), tz) }.getOrDefault(LocalDateTime.now())
     val end = runCatching { LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(invite.endAt.toEpochMilliseconds()), tz) }.getOrDefault(LocalDateTime.now())
     val dateFmt = DateTimeFormatter.ofPattern("EEE, MMM d, yyyy")
-    val timeFmt = DateTimeFormatter.ofPattern("h:mm a")
 
     Surface(
         shape = RoundedCornerShape(12.dp),
@@ -705,7 +714,7 @@ private fun InviteCard(invite: CalendarInviteMessage, viewModel: MainViewModel) 
             Spacer(modifier = Modifier.height(12.dp))
             Text("${start.format(dateFmt)}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
             Text(
-                "${start.format(timeFmt)} – ${end.format(timeFmt)} (${invite.timezone.takeIf { it.isNotBlank() } ?: "local"})",
+                "${com.unifiedcomms.util.TimeFormat.time(start, context)} – ${com.unifiedcomms.util.TimeFormat.time(end, context)} (${invite.timezone.takeIf { it.isNotBlank() } ?: "local"})",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onPrimaryContainer
             )
