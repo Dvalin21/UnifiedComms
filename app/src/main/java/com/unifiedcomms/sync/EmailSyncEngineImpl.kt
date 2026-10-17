@@ -805,6 +805,15 @@ class EmailSyncEngineImpl(
                 invite = invite
             )
         } catch (e: Exception) {
+            // ponytail: a message that fails to parse must leave a trace.
+            // Returning null silently made malformed mail vanish from the
+            // mailbox with nothing in any log, which is how a whole class of
+            // parsing bugs stayed invisible.
+            Log.w(
+                "EmailSyncEngineImpl",
+                "parseEmail failed folder=$folder messageId=$messageId subject=${runCatching { msg.subject }.getOrNull()}",
+                e
+            )
             null
         }
         return email
