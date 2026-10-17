@@ -1,142 +1,67 @@
 # Changelog
 
-All notable changes to UnifiedComms will be documented in this file.
+All notable changes to UnifiedComms are documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [1.0.0-alpha] - 2024-12-19
-
-### Added
-- **Multi-account Email Sync**
-  - Google (OAuth 2.0), Microsoft/Outlook (OAuth 2.0), Yahoo (OAuth 2.0), iCloud (OAuth 2.0)
-  - Exchange/Office 365 (OAuth 2.0 + EWS)
-  - Mailcow (manual IMAP/SMTP/CalDAV/CardDAV)
-  - Generic IMAP/SMTP with custom server config
-  - Generic CalDAV/CardDAV
-  - Unified inbox with color-coded account indicators
-  - Push notifications (IDLE for IMAP, webhooks for Exchange/Gmail)
-  - Full folder sync: INBOX, Sent, Drafts, Trash, Spam, Archive, custom folders
-  - Attachments: download, preview, auto-download toggle
-  - Threading/conversation view
-  - Flags: read/unread, starred, answered, forwarded
-  - Search across all accounts (subject, sender, body)
-
-- **Calendar Sync**
-  - Google Calendar API, CalDAV, Exchange EWS, iCloud CalDAV
-  - Shared calendars fully supported
-  - **Event colors preserved exactly as on server**
-  - Multiple views: Month, Week, Day (6 AM - 10 PM hourly)
-  - Event creation with:
-    - Title, description, location, start/end, all-day
-    - Calendar color picker (18 Material colors)
-    - Attendees with email invites
-    - Reminders (default 1 hour, configurable)
-    - Recurrence: Daily, Weekly, Monthly, Yearly, Custom RRULE
-  - Invite responses: **Yes / No / Maybe** buttons in notification and chat
-  - Time zone handling for travel
-  - Search events by title, location, description
-
-- **Tasks**
-  - CalDAV VTODO, Google Tasks API
-  - Multiple lists per account (Personal, Work, Shopping, custom)
-  - Subtasks with progress tracking (X/Y, percentage)
-  - Due dates with reminders
-  - Recurring tasks
-  - Priority levels: Low, Normal, High, Urgent (color-coded)
-  - Categories/tags
-  - Drag-to-reorder, swipe actions
-  - Filters: All, Active, Completed, Starred, Overdue, Today
-
-- **Messaging (Inter-app, UnifiedComms users only)**
-  - End-to-end encryption: AES-256 + RSA-4096 key exchange
-  - Direct messages (1:1), Group chats, Broadcast
-  - Rich sharing in chat:
-    - Calendar invites with Yes/No/Maybe response buttons
-    - Task sharing with due date, priority
-    - Email sharing with preview
-  - Disappearing messages (per-conversation timer)
-  - Read receipts (delivered/read)
-  - Voice messages
-  - Push notifications via FCM/WebPush
-  - Per-conversation mute, pin, archive
-
-- **Widgets (Glance)**
-  - **Email Widget**: Per-account unread badges, quick Compose/Inbox
-  - **Calendar Widget**: Today's events with colored time blocks, New Event
-  - **Tasks Widget**: Progress ring, checkable tasks with priority bars
-  - **Unified Widget**: Three-panel design (Calendar + Tasks + Quick Actions)
-  - Configurable sizes (2×2 to 5×5), accounts, filters
-  - Auto-refresh every 30 minutes + on app sync
-  - Dark/light theme aware
-
-- **Reminders**
-  - **Full-screen alerts** (1 hour default before events)
-  - Shows over lock screen, turns screen on
-  - Actions: Snooze 5min, Dismiss, View Event
-  - Also creates standard notification as backup
-  - Default reminder time configurable (At time, 5/15/30 min, 1 hour, 1 day)
-
-- **Security & Privacy**
-  - **Zero telemetry**: No analytics, crash reporting, usage tracking
-  - **Local-first**: All data stored locally in encrypted Room database (SQLCipher)
-  - **Biometric lock**: Fingerprint/Face ID with configurable auto-lock timeout
-  - **AES-256 encryption** at rest (Android Keystore, hardware-backed)
-  - **Certificate pinning** for all known providers
-  - **App password support** for services requiring it
-  - **E2E encrypted messaging** (keys never leave device)
-  - Data control: Clear All Data, Backup & Restore (encrypted export/import)
-
-- **UI/UX**
-  - Material 3 (Material You) with dynamic theming
-  - Account color palette (18 Material colors assigned per-account)
-  - Dark/Light/System theme
-  - Responsive: Phones (6.5") to Tablets (14.5") with adaptive layouts
-  - Accessibility: TalkBack, large text, high contrast
-  - Smooth animations, shared element transitions
-
-- **System Integration**
-  - Android Account Authenticator (system account manager)
-  - Sync Adapter (system sync framework)
-  - ContentProvider for data sharing
-  - Foreground sync service with progress notification
-  - Boot receiver for auto-start
-  - WorkManager-ready for background sync
-
-- **Build & CI**
-  - Gradle 8.5, Kotlin 1.9, Compose BOM 2024.06
-  - Hilt 2.50, Room 2.6, Glance 1.1
-  - GitHub Actions: lint (ktlint, detekt), test, build debug/release
-  - ProGuard/R8 full mode for release
-  - BuildConfig fields for OAuth credentials (env vars)
-
-### Security
-- Network Security Config: cleartext disabled, cert pinning for known providers
-- EncryptedSharedPreferences for all sensitive prefs
-- Data extraction rules: exclude database, auth tokens, encryption keys, attachments
-- Backup rules: exclude all sensitive data
-
-### Documentation
-- Comprehensive README with feature usage guide for all modules
-- MIT License
-- GitHub Actions CI workflow
-
----
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-### Planned
-- PGP/GPG email encryption support
-- CalDAV scheduling (iTIP) for full invite workflow
-- CardDAV sync for contacts (photos, groups)
-- Message reactions, threads, search
-- Widget configuration activities (per-widget settings UI)
-- Tablet-optimized layouts (two-pane, drag-drop)
-- Export/import account settings
-- Backup to local file / cloud (encrypted)
-- Conversation pinning with custom emoji
-- Message translation (on-device)
-- Smart replies (on-device ML)
-- Calendar heat map view
-- Task Kanban board view
-- Unified search across all data types
+### Fixed
+- **Draft discard (data loss).** The compose screen's back arrow and the event
+  editor's back arrow called the same callback as "send"/"save", so a
+  half-written message or event was destroyed with no confirmation. Both now
+  ask before discarding.
+- **Room converters dropped default-valued fields.** Every converter used
+  `Json { ignoreUnknownKeys = true }`, whose default is `encodeDefaults = false`,
+  so any field equal to its declared default was silently omitted from the
+  stored JSON — a mailcow `ServerConfig` persisted as `{"imapHost":..,
+  "smtpHost":..}` with `imapPort`, `smtpPort`, `imapUseSsl` and
+  `smtpUseStartTls` all missing. Decoding masked it by falling back to the same
+  defaults, so the loss only surfaced when something read the raw JSON. All
+  converters now share one instance with `encodeDefaults = true`.
+- **Silent parse failures.** `parseEmail` returned `null` on error with no
+  logging, so malformed mail vanished from the mailbox with no trace.
+- **Time format ignored the system setting.** Seven sites hardcoded a time
+  pattern, and CalendarScreen showed `h:mm a` and `HH:mm` on the same screen, so
+  a 24-hour-locale user saw 15:30 rendered as "3:30 PM". All display sites now
+  go through `util/TimeFormat`, which honours `DateFormat.is24HourFormat`.
+- **Send paths logged nothing.** `sendEmail` returned success with no log line;
+  both send paths now record their outcome (message content is deliberately not
+  logged).
+- **Release signing could use a default password.** The signing config fell
+  back to `storePassword "password"` when the environment variables were absent,
+  so a forgotten variable produced a release signed with a publicly known
+  password and the build still succeeded. It now fails configuration instead.
+- **Schema was never exported.** `exportSchema = false` meant the configured
+  `room.schemaLocation` produced nothing, so the migrations could not be checked
+  by any tool. Schemas are now written to `app/schemas/`.
+
+### Removed
+- **The dead chat subsystem.** The chat feature was removed in 3ab6450 but its
+  data layer stayed behind with zero consumers: the `Message` entity, its DAO,
+  `MessagingRepository` and its impl, a "Messages" notification channel, and a
+  `showMessageNotification` that routed to a route which no longer existed —
+  ~361 lines, plus the now-empty `messages` table (dropped by
+  `MIGRATION_10_11`, version 10 → 11).
+  Note that `Message.kt` also declared `UnifiedContact` and
+  `CalendarInviteMessage`, and `MessageDao.kt` also declared the only
+  `ContactDao`; those live types were preserved.
+- **Dead code and unused configuration:** `RuntimePermissionGate`, the
+  `CalendarWidgetFactory`/`CalendarWidgetService` pair (which read a
+  SharedPreferences store nothing wrote), the unused Glance artifacts, the
+  unused `FOREGROUND_SERVICE` permissions, and the Hilt / at.bitfire proguard
+  keep rules for dependencies that are not on the classpath.
+- **Phantom root `version`.** The root build script declared `version = "1.0.0"`
+  while the app reported 1.0.28; nothing read it.
+
+### Changed
+- Personal data removed from tracked test fixtures (a username in
+  `AutodiscoverDavTest`, a name in `CalendarDupeDebugTest`).
+
+## [1.0.0-alpha] - 2024-12-19
+
+Original alpha. The feature list recorded here — OAuth providers, PGP/MIME,
+push notifications, Glance widgets, tablet layouts, message reactions and the
+full chat feature — described intent rather than shipped behaviour. Several of
+those items were never implemented and the chat feature was later removed; see
+the Unreleased section above for what the code actually does today.
