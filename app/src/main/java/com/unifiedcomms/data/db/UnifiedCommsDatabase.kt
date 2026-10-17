@@ -20,7 +20,10 @@ import com.unifiedcomms.data.model.*
         UnifiedContact::class
     ],
     version = 11,
-    exportSchema = false
+    // ponytail: exporting the schema is what makes migrations verifiable.
+    // With this false the room.schemaLocation arg configured below produced
+    // nothing, so the 11 migrations could not be checked by any tool.
+    exportSchema = true
 )
 @TypeConverters(
     DateTimeConverter::class,
