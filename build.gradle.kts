@@ -16,7 +16,9 @@ plugins {
 
 allprojects {
     group = "com.unifiedcomms"
-    version = "1.0.0"
+    // ponytail: no `version` here. It was set to 1.0.0 while the app reported
+    // 1.0.28, and nothing read it — a second source of truth that only ever
+    // lied. The app's own versionCode/versionName is the single source.
 }
 
 tasks.register("clean", Delete::class) {

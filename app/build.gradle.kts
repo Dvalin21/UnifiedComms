@@ -33,21 +33,36 @@ android {
         ?: System.getenv("KEYSTORE_PATH")
         ?: ""
     if (keystorePath.isNotBlank()) {
+        // ponytail: never fall back to a guessed credential. The old defaults
+        // ("password" / "unifiedcomms-release") meant a release could be signed
+        // with a publicly known password when an env var was forgotten, and the
+        // build still reported success. Fail the configuration instead.
+        val resolvedStorePassword = localProps["KEYSTORE_PASSWORD"]
+            ?: (project.findProperty("KEYSTORE_PASSWORD") as String?)
+            ?: System.getenv("KEYSTORE_PASSWORD")
+        val resolvedKeyAlias = localProps["KEY_ALIAS"]
+            ?: (project.findProperty("KEY_ALIAS") as String?)
+            ?: System.getenv("KEY_ALIAS")
+        val resolvedKeyPassword = localProps["KEY_PASSWORD"]
+            ?: (project.findProperty("KEY_PASSWORD") as String?)
+            ?: System.getenv("KEY_PASSWORD")
+
+        require(!resolvedStorePassword.isNullOrBlank()) {
+            "KEYSTORE_PATH is set but KEYSTORE_PASSWORD is missing; refusing to sign with a default password"
+        }
+        require(!resolvedKeyAlias.isNullOrBlank()) {
+            "KEYSTORE_PATH is set but KEY_ALIAS is missing"
+        }
+        require(!resolvedKeyPassword.isNullOrBlank()) {
+            "KEYSTORE_PATH is set but KEY_PASSWORD is missing"
+        }
+
         signingConfigs {
             create("release") {
                 storeFile = file(keystorePath)
-                storePassword = localProps["KEYSTORE_PASSWORD"]
-                    ?: (project.findProperty("KEYSTORE_PASSWORD") as String?)
-                    ?: System.getenv("KEYSTORE_PASSWORD")
-                    ?: "password"
-                keyAlias = localProps["KEY_ALIAS"]
-                    ?: (project.findProperty("KEY_ALIAS") as String?)
-                    ?: System.getenv("KEY_ALIAS")
-                    ?: "unifiedcomms-release"
-                keyPassword = localProps["KEY_PASSWORD"]
-                    ?: (project.findProperty("KEY_PASSWORD") as String?)
-                    ?: System.getenv("KEY_PASSWORD")
-                    ?: "password"
+                storePassword = resolvedStorePassword
+                keyAlias = resolvedKeyAlias
+                keyPassword = resolvedKeyPassword
             }
         }
     }
