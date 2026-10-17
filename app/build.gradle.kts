@@ -240,11 +240,7 @@ dependencies {
     implementation("androidx.compose.animation:animation:1.6.7")
     implementation("androidx.compose.animation:animation-graphics:1.6.7")
 
-    // Widgets (Glance)
-    implementation("androidx.glance:glance:1.1.0")
-    implementation("androidx.glance:glance-appwidget:1.1.0")
-    implementation("androidx.glance:glance-appwidget-proto:1.1.0")
-    // implementation("androidx.glance:glance-wear-tiles:1.1.0") // not available
+    // Widgets (classic RemoteViews; Glance was never wired up)
 
     // Testing
     testImplementation("junit:junit:4.13.2")

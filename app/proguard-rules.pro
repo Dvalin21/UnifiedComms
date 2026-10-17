@@ -1,9 +1,5 @@
 # ProGuard rules for UnifiedComms
 
-# Keep Hilt generated classes
--keep class dagger.hilt.** { *; }
--keep class com.unifiedcomms.**_HiltComponents { *; }
-
 # Keep Room database classes
 -keep class com.unifiedcomms.data.db.** { *; }
 -keep class com.unifiedcomms.data.model.** { *; }
@@ -28,7 +24,7 @@
 -keep class com.sun.mail.** { *; }
 
 # Keep CalDAV/CardDAV
--keep class at.bitfire.** { *; }
+# (at.bitfire.* was removed with the unused ical4android/dav4jvm dependencies)
 
 # Keep WorkManager
 -keep class androidx.work.** { *; }
@@ -37,7 +33,7 @@
 -keep class androidx.security.crypto.** { *; }
 
 # Keep Glance
--keep class androidx.glance.** { *; }
+# (Glance was never wired up; widgets are classic RemoteViews)
 
 # Keep Coil
 -keep class coil.** { *; }
@@ -63,20 +59,15 @@
 -keep @androidx.room.Database class * {
     public <init>();
 }
--keep @dagger.hilt.android.HiltAndroidApp class * {
-    public <init>();
-}
--keep @dagger.hilt.android.AndroidEntryPoint class * {
-    public <init>();
-}
--keep @dagger.Module class * {
-    public <init>();
-}
--keep @dagger.hilt.InstallIn class * {
-    public <init>();
-}
+# kotlinx.serialization reflects on the synthetic constructor.
 -keep @kotlinx.serialization.Serializable class * {
     public <init>();
+}
+
+# Keep enum values
+-keepclassmembers enum * {
+    public static **[] values();
+    public static ** valueOf(java.lang.String);
 }
 
 # Optimize
@@ -100,10 +91,4 @@
 # Keep parcelable
 -keep class * implements android.os.Parcelable {
     public static final ** CREATOR;
-}
-
-# Keep enum values
--keepclassmembers enum * {
-    public static **[] values();
-    public static ** valueOf(java.lang.String);
 }
