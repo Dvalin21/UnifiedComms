@@ -172,8 +172,8 @@ data class EventColor(
             EventColor(background, foreground, calendarId, isExplicit = false)
         fun fromInt(background: Int, foreground: Int = -1): EventColor =
             EventColor(
-                String.format("#%06X", (0xFFFFFF and background)),
-                String.format("#%06X", (0xFFFFFF and foreground)),
+                String.format(java.util.Locale.ROOT, "#%06X", (0xFFFFFF and background)),
+                String.format(java.util.Locale.ROOT, "#%06X", (0xFFFFFF and foreground)),
                 isExplicit = true
             )
         @Suppress("UNUSED_PARAMETER")

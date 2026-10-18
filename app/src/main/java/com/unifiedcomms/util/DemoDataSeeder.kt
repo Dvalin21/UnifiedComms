@@ -17,6 +17,7 @@ import com.unifiedcomms.data.model.TaskPriority
 import com.unifiedcomms.data.model.TaskStatus
 import com.unifiedcomms.data.model.UIConfig
 import com.unifiedcomms.data.model.UnifiedContact
+import com.unifiedcomms.security.CryptoManagerFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -73,7 +74,7 @@ object DemoDataSeeder {
                 smtpPort = 587,
                 smtpUseStartTls = true
             ),
-            authConfig = AuthConfig.Password("demo@example.com", "demo"),
+            authConfig = CryptoManagerFactory.create(context).encryptAuthConfig(AuthConfig.Password("demo@example.com", "demo")),
             syncConfig = SyncConfig.Defaults(),
             uiConfig = UIConfig.Defaults(),
             isActive = true,
@@ -135,7 +136,7 @@ object DemoDataSeeder {
     private fun makeEvent(accountId: String, uid: String, title: String, start: String, end: String) = CalendarEvent(accountId = accountId, calendarId = "local", uid = uid, title = title, startAt = EventDateTime(LocalDateTime.parse(start), timeZone = java.time.ZoneId.systemDefault().id), endAt = EventDateTime(LocalDateTime.parse(end), timeZone = java.time.ZoneId.systemDefault().id), organizer = EventAttendee(email = "Demo User"))
 
     private fun taskDateTime(date: java.time.LocalDate, hour: Int, minute: Int): com.unifiedcomms.data.model.TaskDateTime {
-        val dt = LocalDateTime.parse(String.format("%sT%02d:%02d:00", date, hour, minute))
+        val dt = LocalDateTime.parse(String.format(java.util.Locale.ROOT, "%sT%02d:%02d:00", date, hour, minute))
         return com.unifiedcomms.data.model.TaskDateTime(dateTime = dt, timeZone = java.time.ZoneId.systemDefault().id)
     }
 }

@@ -189,7 +189,7 @@ object VEventSerializer {
         return runCatching {
             if (dt.isAllDay && dt.date != null) {
                 val d = dt.date!!
-                "$name;VALUE=DATE:${String.format("%04d%02d%02d", d.year, d.monthNumber, d.dayOfMonth)}"
+                "$name;VALUE=DATE:${String.format(java.util.Locale.ROOT, "%04d%02d%02d", d.year, d.monthNumber, d.dayOfMonth)}"
             } else if (dt.dateTime != null) {
                 val zoned = java.time.LocalDateTime.parse(dt.dateTime.toString()).atZone(zoneId)
                 val fmt = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss")

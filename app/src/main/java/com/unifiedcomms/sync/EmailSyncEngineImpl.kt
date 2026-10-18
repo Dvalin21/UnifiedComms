@@ -1,5 +1,7 @@
 package com.unifiedcomms.sync
 
+import android.annotation.SuppressLint
+
 import android.content.Context
 import android.util.Log
 import com.unifiedcomms.UnifiedCommsApplication
@@ -561,6 +563,7 @@ class EmailSyncEngineImpl(
     private fun base64(s: String): String =
         android.util.Base64.encodeToString(s.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
 
+    @SuppressLint("TrustAllX509TrustManager", "CustomX509TrustManager")
     private fun openImapSession(
         config: com.unifiedcomms.data.model.ServerConfig,
         connectTimeoutMs: Int = 60000,
@@ -1330,6 +1333,7 @@ class EmailSyncEngineImpl(
         }
     }
 
+    @SuppressLint("TrustAllX509TrustManager", "CustomX509TrustManager")
     private fun smtpSession(
         config: com.unifiedcomms.data.model.ServerConfig,
         auth: com.unifiedcomms.data.model.AuthConfig
@@ -1342,6 +1346,17 @@ class EmailSyncEngineImpl(
             put("mail.smtp.starttls.enable", config.smtpUseStartTls)
             put("mail.smtp.connectiontimeout", 30000)
             put("mail.smtp.timeout", 30000)
+            if (config.acceptAllCerts) {
+                put("mail.smtp.ssl.checkserveridentity", false)
+                val ctx = javax.net.ssl.SSLContext.getInstance("TLS")
+                ctx.init(null, arrayOf(object : javax.net.ssl.X509TrustManager {
+                    override fun checkClientTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
+                    override fun checkServerTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
+                    override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = emptyArray()
+                }), java.security.SecureRandom())
+                put("mail.smtp.ssl.socketFactory", ctx.socketFactory)
+                put("mail.smtp.starttls.enable", true)
+            }
         }
         return Session.getInstance(props, object : Authenticator() {
             override fun getPasswordAuthentication(): PasswordAuthentication {

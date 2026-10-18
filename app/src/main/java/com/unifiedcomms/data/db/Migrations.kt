@@ -5,16 +5,6 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 object Migrations {
     /**
-     * No-op baseline: defines the 1 → 1 path so Room has a verified
-     * schema anchor for the freshly exported v1 JSON.
-     */
-    val MIGRATION_1_1 = object : Migration(1, 1) {
-        override fun migrate(db: SupportSQLiteDatabase) {
-            // No columns changed in this transition.
-        }
-    }
-
-    /**
      * Adds IMAP UID-based sync state to emails so sequence number changes
      * after reconnect can’t cause duplicates or missed mail (K-9 pattern).
      */

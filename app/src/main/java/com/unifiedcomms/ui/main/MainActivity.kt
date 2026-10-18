@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -141,9 +142,22 @@ class MainActivity : FragmentActivity() {
         navigationIntent = intent
     }
 
+    private lateinit var permissionLauncher: androidx.activity.result.ActivityResultLauncher<Array<String>>
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         navigationIntent = intent
+        permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
+        val needed = mutableListOf<String>()
+        fun needs(p: String) = checkSelfPermission(p) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU && needs(android.Manifest.permission.POST_NOTIFICATIONS)) needed += android.Manifest.permission.POST_NOTIFICATIONS
+        if (needs(android.Manifest.permission.READ_CONTACTS)) needed += android.Manifest.permission.READ_CONTACTS
+        if (needs(android.Manifest.permission.WRITE_CONTACTS)) needed += android.Manifest.permission.WRITE_CONTACTS
+        if (needs(android.Manifest.permission.READ_CALENDAR)) needed += android.Manifest.permission.READ_CALENDAR
+        if (needs(android.Manifest.permission.WRITE_CALENDAR)) needed += android.Manifest.permission.WRITE_CALENDAR
+        if (needed.isNotEmpty()) {
+            permissionLauncher.launch(needed.toTypedArray())
+        }
         setContent {
             vm = viewModel()
             val mainPrefs = remember { PreferencesManager.getInstance() }
