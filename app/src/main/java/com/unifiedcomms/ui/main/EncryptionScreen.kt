@@ -53,7 +53,7 @@ fun EncryptionScreen(
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("Encryption", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) },
+                    title = { Text("Encryption at rest", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) },
                     navigationIcon = {
                         androidx.compose.material3.IconButton(onClick = onBack) {
                             Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Back")
