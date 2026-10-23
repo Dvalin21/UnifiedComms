@@ -71,8 +71,8 @@ android {
         applicationId = "com.unifiedcomms"
         minSdk = 31
         targetSdk = 35
-        versionCode = 28
-        versionName = "1.0.28"
+        versionCode = 29
+        versionName = "1.0.29"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
         multiDexEnabled = true
