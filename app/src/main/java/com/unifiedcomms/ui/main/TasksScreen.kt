@@ -356,6 +356,13 @@ fun CreateTaskScreen(
     var priority by remember { mutableStateOf(TaskPriority.NORMAL) }
     var listName by remember { mutableStateOf("") }
     val coroutineScope = rememberCoroutineScope()
+    var showDiscardDialog by remember { mutableStateOf(false) }
+
+    // Anything the user typed is worth losing, so ask before discarding it.
+    val draftDirty = title.isNotBlank() || description.isNotBlank()
+    val attemptCancel: () -> Unit = {
+        if (draftDirty) showDiscardDialog = true else onSave()
+    }
 
     LaunchedEffect(taskId) {
         if (taskId != null) {
@@ -387,7 +394,7 @@ fun CreateTaskScreen(
         topBar = {
             TopAppBar(
                 title = { Text(if (taskId == null) "Create Task" else "Edit Task") },
-                navigationIcon = { IconButton(onClick = onSave) { Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Cancel") } },
+                navigationIcon = { IconButton(onClick = attemptCancel) { Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Cancel") } },
                 actions = {
                     IconButton(onClick = {
                         if (title.isBlank()) {
@@ -509,5 +516,23 @@ fun CreateTaskScreen(
 
             TextField(value = listName, onValueChange = { listName = it }, label = { Text("List") }, modifier = Modifier.fillMaxWidth())
         }
+    }
+
+    // Ask before throwing away a task the user was building.
+    if (showDiscardDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showDiscardDialog = false },
+            title = { Text("Discard task?") },
+            text = { Text("This task has not been saved.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDiscardDialog = false
+                    onSave()
+                }) { Text("Discard") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDiscardDialog = false }) { Text("Keep editing") }
+            }
+        )
     }
 }
