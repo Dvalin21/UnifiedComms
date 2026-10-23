@@ -77,11 +77,8 @@ android {
         vectorDrawables.useSupportLibrary = true
         multiDexEnabled = true
         
-        buildConfigField("String", "GOOGLE_CLIENT_ID", "\"${System.getenv("GOOGLE_CLIENT_ID") ?: ""}\"")
-        buildConfigField("String", "MICROSOFT_CLIENT_ID", "\"${System.getenv("MICROSOFT_CLIENT_ID") ?: ""}\"")
-        buildConfigField("String", "YAHOO_CLIENT_ID", "\"${System.getenv("YAHOO_CLIENT_ID") ?: ""}\"")
-        buildConfigField("String", "YAHOO_CLIENT_SECRET", "\"${System.getenv("YAHOO_CLIENT_SECRET") ?: ""}\"")
-        buildConfigField("String", "APPLE_CLIENT_ID", "\"${System.getenv("APPLE_CLIENT_ID") ?: ""}\"")
+        // ponytail: OAuth client ids are read from the DB per-account (OAuthTokenRefresher),
+        // not from build config. These fields were never referenced in app/src.
     }
 
     buildTypes {
